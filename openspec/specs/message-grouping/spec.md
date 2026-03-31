@@ -1,0 +1,35 @@
+## ADDED Requirements
+
+### Requirement: Messages are grouped by sender and time proximity
+The system SHALL group consecutive messages from the same sender within a 2-minute window, displaying them visually as a single unit.
+
+#### Scenario: Messages from same sender within 2 minutes are grouped
+- **WHEN** two messages from user A are sent within 2 minutes of each other in chronological order
+- **THEN** they appear in the same group, with sender information shown only at the group start
+
+#### Scenario: Different senders create separate groups
+- **WHEN** a message from user B is sent after a message from user A
+- **THEN** user B's message starts a new group, even if sent within 2 minutes of user A's message
+
+#### Scenario: Time gap creates new group
+- **WHEN** user A sends a message, then more than 2 minutes pass, then user A sends another message
+- **THEN** the second message starts a new group despite being from the same sender
+
+#### Scenario: Attachments are not grouped
+- **WHEN** an attachment message is sent by user A
+- **THEN** it is treated as its own group regardless of time or sender, never grouped with text messages
+
+#### Scenario: Grouping context is consumed by single-item rendering
+- **WHEN** grouped message metadata is computed by list layer
+- **THEN** `MessageItem` renders using provided grouping context and does not recompute grouping from full list state
+
+### Requirement: Messages from same sender within 2-minute window SHALL continue grouping with reply features
+The system SHALL continue grouping messages by sender/time while supporting inline reply snippet rendering and linked reply-highlight states.
+
+#### Scenario: Inline reply snippet remains inside grouped row
+- **WHEN** a grouped message is a reply message
+- **THEN** reply snippet renders inline inside that message row without breaking group container structure
+
+#### Scenario: Linked highlight does not collapse grouped spacing
+- **WHEN** grouped message row participates in reply-linked highlight state
+- **THEN** highlight style applies while preserving group spacing and timestamp/avatar behavior

@@ -1,0 +1,83 @@
+server:
+  port: ${PORT:8082}
+
+spring:
+  application:
+    name: user-service
+
+  # ======================
+  # DATABASE (PostgreSQL)
+  # ======================
+  datasource:
+    url: ${MASTER_DATABASE_URL:jdbc:postgresql://localhost:5433/user_service}
+    username: ${MASTER_DATABASE_USER:postgres}
+    password: ${MASTER_DATABASE_PWD:postgres}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          time_zone: UTC
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: http://localhost:8081/.well-known/jwks.json
+
+  kafka:
+    bootstrap-servers: localhost:9092
+
+    consumer:
+      group-id: user-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.add.type.headers: true
+
+
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 5MB
+      max-request-size: 5MB
+
+cloudinary:
+  cloud-name: dblxoplvg
+  api-key: 877947325938691
+  api-secret: KfHivMv0wUQ9D-89rVx8Wu5U12w
+
+
+
+# ======================
+# ACTUATOR
+# ======================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+
+common:
+  security:
+    cors:
+      allowed-origins: "http://localhost:5173,http://localhost:5174,http://localhost:3000"
+      allowed-methods: "*"
+      allowed-headers: "*"
+
+logging:
+  pattern:
+    level: "%5p [${spring.application.name:},%X{traceId}]"

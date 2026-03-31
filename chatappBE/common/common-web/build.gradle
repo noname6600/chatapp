@@ -1,0 +1,49 @@
+plugins {
+    id 'java'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.example'
+version = '0.0.1-SNAPSHOT'
+description = 'Common Web Utilities'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.boot:spring-boot-dependencies:4.0.1"
+    }
+}
+
+dependencies {
+
+    implementation 'org.springframework:spring-web'
+    implementation 'org.springframework:spring-context'
+    implementation 'org.springframework:spring-webmvc'
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+    compileOnly 'jakarta.servlet:jakarta.servlet-api:6.0.0'
+    implementation 'jakarta.validation:jakarta.validation-api'
+    implementation 'org.springframework.cloud:spring-cloud-starter-openfeign:5.0.1'
+
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter-api'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
+}
+

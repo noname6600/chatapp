@@ -1,0 +1,68 @@
+server:
+  port: ${PORT:8086}
+
+spring:
+  application:
+    name: notification-service
+
+  # ======================
+  # DATABASE (PostgreSQL)
+  # ======================
+  datasource:
+    url: ${MASTER_DATABASE_URL:jdbc:postgresql://localhost:5435/notification_service}
+    username: ${MASTER_DATABASE_USER:postgres}
+    password: ${MASTER_DATABASE_PWD:postgres}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          time_zone: UTC
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: http://localhost:8081/.well-known/jwks.json
+
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: user-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.example.common.kafka.*"
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.add.type.headers: true
+
+
+# ======================
+# ACTUATOR
+# ======================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+
+common:
+  security:
+    cors:
+      allowed-origins: "http://localhost:5173,http://localhost:3000"
+      allowed-methods: "*"
+      allowed-headers: "*"
+
+logging:
+  pattern:
+    level: "%5p [${spring.application.name:},%X{traceId}]"

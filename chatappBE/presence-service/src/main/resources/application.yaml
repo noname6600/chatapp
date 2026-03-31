@@ -1,0 +1,49 @@
+server:
+  port: ${PORT:8084}
+
+spring:
+  application:
+    name: presence-service
+
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: http://localhost:8081/.well-known/jwks.json
+
+
+
+# ======================
+# ACTUATOR
+# ======================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+
+common:
+  security:
+    cors:
+      allowed-origins: "http://localhost:5173,http://localhost:5174,http://localhost:3000"
+      allowed-methods: "*"
+      allowed-headers: "*"
+
+logging:
+  pattern:
+    level: "%5p [${spring.application.name:},%X{traceId}]"
+
+presence:
+  auto-away-threshold-seconds: 60

@@ -1,0 +1,80 @@
+package com.example.notification.controller;
+
+import com.example.common.web.controller.BaseController;
+import com.example.common.web.response.ApiResponse;
+import com.example.notification.dto.NotificationListResponse;
+import com.example.notification.dto.NotificationResponse;
+import com.example.notification.dto.UnreadCountResponse;
+import com.example.notification.service.impl.NotificationCommandService;
+import com.example.notification.service.impl.NotificationQueryService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.UUID;
+
+@RestController
+@RequestMapping("/api/v1/notifications")
+@RequiredArgsConstructor
+public class NotificationController extends BaseController {
+
+    private final NotificationQueryService queryService;
+    private final NotificationCommandService commandService;
+
+    @GetMapping
+    public ResponseEntity<ApiResponse<NotificationListResponse>> getMyNotifications(
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        return ResponseEntity.ok(
+                ApiResponse.success(queryService.getNotificationsForUser(currentUserId(jwt)))
+        );
+    }
+
+    @GetMapping("/unread")
+    public ResponseEntity<ApiResponse<List<NotificationResponse>>> getUnread(
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        return ResponseEntity.ok(
+                ApiResponse.success(queryService.getUnreadNotifications(currentUserId(jwt)))
+        );
+    }
+
+    @PostMapping("/{id}/read")
+    public ResponseEntity<ApiResponse<Void>> markRead(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        commandService.markRead(id, currentUserId(jwt));
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    @PostMapping("/read-all")
+    public ResponseEntity<ApiResponse<Void>> markAllRead(
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        commandService.markAllRead(currentUserId(jwt));
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    @GetMapping("/unread/count")
+    public ResponseEntity<ApiResponse<UnreadCountResponse>> getUnreadCount(
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        long count = queryService.countUnread(currentUserId(jwt));
+
+        UnreadCountResponse response = UnreadCountResponse.builder()
+                .unreadCount(count)
+                .build();
+
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+}
+
+
+
+
+
+
