@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom"
 
 import { useNotifications } from "../../store/notification.store"
 import { useChat } from "../../store/chat.store"
+import { useFriendStore } from "../../store/friend.store"
 import type { Notification } from "../../types/notification"
 import NotificationPanel from "./NotificationPanel"
 
@@ -27,6 +28,7 @@ const NotificationBell = ({ compact = false }: NotificationBellProps) => {
     markRead,
     markAllRead,
   } = useNotifications()
+  const unreadFriendRequests = useFriendStore((s) => s.unreadFriendRequestCount)
 
   const [isOpen, setIsOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -55,7 +57,9 @@ const NotificationBell = ({ compact = false }: NotificationBellProps) => {
   }
 
   useEffect(() => {
-    void fetchNotifications()
+    void fetchNotifications().catch((error) => {
+      console.error("Failed to fetch notifications:", error)
+    })
   }, [fetchNotifications])
 
   useEffect(() => {
@@ -89,10 +93,11 @@ const NotificationBell = ({ compact = false }: NotificationBellProps) => {
   }, [isOpen])
 
   const badgeText = useMemo(() => {
-    if (unreadCount <= 0) return ""
-    if (unreadCount > 99) return "99+"
-    return String(unreadCount)
-  }, [unreadCount])
+    const totalUnread = unreadCount + unreadFriendRequests
+    if (totalUnread <= 0) return ""
+    if (totalUnread > 99) return "99+"
+    return String(totalUnread)
+  }, [unreadCount, unreadFriendRequests])
 
   const handleMarkAllRead = async () => {
     await markAllRead()
@@ -100,7 +105,7 @@ const NotificationBell = ({ compact = false }: NotificationBellProps) => {
 
   const handleNotificationClick = async (notification: Notification) => {
     if (!notification.isRead) {
-      void markRead(notification.id)
+      await markRead(notification.id)
     }
 
     if (isRoomNotification(notification) && notification.roomId) {
@@ -111,7 +116,7 @@ const NotificationBell = ({ compact = false }: NotificationBellProps) => {
     }
 
     if (notification.type === "FRIEND_REQUEST" || notification.type === "FRIEND_REQUEST_ACCEPTED") {
-      navigate("/friends")
+      navigate("/friends?tab=pending")
       setIsOpen(false)
       return
     }

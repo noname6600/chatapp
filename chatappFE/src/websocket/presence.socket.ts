@@ -7,6 +7,7 @@ import {
 } from "../config/presence.config";
 import { usePresenceStore } from "../store/presence.store";
 import type { PresenceStatus, PresenceUserState } from "../types/presence";
+import { getWsEndpoint } from "../config/ws.config";
 
 export interface PresenceWsEvent<T = unknown> {
   type: PresenceEventType;
@@ -25,7 +26,7 @@ const openHandlers = new Set<() => void>();
 const eventHandlers = new Set<(event: PresenceWsEvent) => void>();
 const offlineTimers = new Map<string, number>();
 
-const WS_URL = "ws://localhost:8084/ws/presence";
+const WS_URL = getWsEndpoint("PRESENCE");
 
 let activityTrackingBound = false;
 let lastActivityAt = Date.now();

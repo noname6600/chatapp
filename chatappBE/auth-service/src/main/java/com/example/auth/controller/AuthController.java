@@ -6,7 +6,7 @@ import com.example.common.web.exception.BusinessException;
 import com.example.common.web.exception.ErrorCode;
 import com.example.common.web.response.ApiResponse;
 import com.example.auth.service.IAuthService;
-import com.example.auth.service.impl.AuthService;
+import com.example.auth.service.IForgotPasswordService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController extends BaseController {
 
     private final IAuthService authService;
+    private final IForgotPasswordService forgotPasswordService;
 
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<AuthResponse>> register(
@@ -70,6 +71,62 @@ public class AuthController extends BaseController {
             @AuthenticationPrincipal JwtPrincipal principal
     ) {
         authService.logoutAll(principal.getAccountId());
+        return ok();
+    }
+
+    @PostMapping("/password/change")
+    public ResponseEntity<ApiResponse<Void>> changePassword(
+            @AuthenticationPrincipal JwtPrincipal principal,
+            @Valid @RequestBody ChangePasswordRequest request
+    ) {
+        if (principal == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED);
+        }
+        authService.changePassword(
+                principal.getAccountId(),
+                request.getCurrentPassword(),
+                request.getNewPassword()
+        );
+        return ok();
+    }
+
+    @GetMapping("/email/verification/status")
+    public ResponseEntity<ApiResponse<EmailVerificationStatusResponse>> getEmailVerificationStatus(
+            @AuthenticationPrincipal JwtPrincipal principal
+    ) {
+        EmailVerificationStatusResponse response = authService.getEmailVerificationStatus(principal.getAccountId());
+        return ok(response);
+    }
+
+    @PostMapping("/email/verification/send")
+    public ResponseEntity<ApiResponse<Void>> sendVerificationEmail(
+            @AuthenticationPrincipal JwtPrincipal principal
+    ) {
+        authService.sendVerificationEmail(principal.getAccountId());
+        return ok();
+    }
+
+    @PostMapping("/email/verification/confirm")
+    public ResponseEntity<ApiResponse<Void>> confirmEmail(
+            @Valid @RequestBody EmailVerificationConfirmRequest request
+    ) {
+        authService.confirmEmail(request.getToken());
+        return ok();
+    }
+
+    @PostMapping("/password/forgot")
+    public ResponseEntity<ApiResponse<Void>> forgotPassword(
+            @Valid @RequestBody ForgotPasswordRequest request
+    ) {
+        forgotPasswordService.requestReset(request.getEmail());
+        return ok(); // always 200 to avoid email existence leakage
+    }
+
+    @PostMapping("/password/reset")
+    public ResponseEntity<ApiResponse<Void>> resetPassword(
+            @Valid @RequestBody ResetPasswordRequest request
+    ) {
+        forgotPasswordService.resetPassword(request.getToken(), request.getNewPassword());
         return ok();
     }
 }

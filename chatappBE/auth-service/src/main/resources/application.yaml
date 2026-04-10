@@ -10,11 +10,15 @@ spring:
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        max.block.ms: 2000
+        delivery.timeout.ms: 3000
+        request.timeout.ms: 2000
 
   datasource:
-    url: ${MASTER_DATABASE_URL}
-    username: ${MASTER_DATABASE_USER}
-    password: ${MASTER_DATABASE_PWD}
+    url: ${AUTH_DATABASE_URL:jdbc:postgresql://localhost:5432/auth_service}
+    username: ${AUTH_DATABASE_USER:auth_user}
+    password: ${AUTH_DATABASE_PASSWORD:auth_password}
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -70,11 +74,28 @@ app:
   frontend:
     reset-password-url: ${FRONTEND_URL:http://localhost:5173}
 
+user-service:
+  base-url: ${USER_SERVICE_BASE_URL:http://localhost:8082/api/v1/users}
+
 management:
   endpoints:
     web:
       exposure:
         include: health,info
+
+common:
+  security:
+    cors:
+      allowed-origins:
+        - ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+      allowed-methods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - OPTIONS
+      allowed-headers:
+        - "*"
 
 logging:
   pattern:

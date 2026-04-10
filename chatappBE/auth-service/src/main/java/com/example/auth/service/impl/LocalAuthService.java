@@ -9,16 +9,23 @@ import com.example.auth.service.ILocalAuthService;
 import com.example.common.web.exception.BusinessException;
 import com.example.common.web.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class LocalAuthService implements ILocalAuthService {
+
+        private static final String INVALID_CREDENTIALS_MESSAGE = "Invalid credentials";
+        private static final String INCOMPLETE_ACCOUNT_MESSAGE =
+                        "Account setup incomplete. Please try again in a few seconds.";
 
     private final AccountRepository accountRepo;
     private final PasswordEncoder passwordEncoder;
@@ -29,6 +36,8 @@ public class LocalAuthService implements ILocalAuthService {
     public UUID register(String email, String password) {
 
         if (accountRepo.existsByEmail(email)) {
+            // Provide a consistent error regardless of verification state
+            // to avoid leaking whether the account is verified
             throw new BusinessException(
                     ErrorCode.CONFLICT,
                     "Email already registered"
@@ -41,6 +50,7 @@ public class LocalAuthService implements ILocalAuthService {
                             .email(email)
                             .passwordHash(passwordEncoder.encode(password))
                             .enabled(true)
+                            .emailVerified(false)
                             .createdAt(Instant.now())
                             .build()
             );
@@ -51,7 +61,12 @@ public class LocalAuthService implements ILocalAuthService {
                     email
             );
 
-            accountCreatedEventProducer.publish(account);
+                        boolean published = accountCreatedEventProducer.publish(account);
+                        if (!published) {
+                                log.warn("auth_registration_incomplete reason=account_created_event_not_published accountId={} email={}",
+                                                account.getId(), email);
+                                throw incompleteAccountException();
+                        }
 
             return account.getId();
 
@@ -67,20 +82,11 @@ public class LocalAuthService implements ILocalAuthService {
     public UUID login(String email, String password) {
 
         Account account = accountRepo.findByEmail(email)
-                .orElseThrow(() ->
-                        new BusinessException(
-                                ErrorCode.UNAUTHORIZED,
-                                "Invalid credentials"
-                        )
-                );
+                .orElseThrow(this::invalidCredentialsException);
 
         if (account.getPasswordHash() == null ||
                 !passwordEncoder.matches(password, account.getPasswordHash())) {
-
-            throw new BusinessException(
-                    ErrorCode.UNAUTHORIZED,
-                    "Invalid credentials"
-            );
+                        throw invalidCredentialsException();
         }
 
         if (!account.isEnabled()) {
@@ -92,4 +98,21 @@ public class LocalAuthService implements ILocalAuthService {
 
         return account.getId();
     }
+
+        private BusinessException invalidCredentialsException() {
+                log.info("auth_failure reason=invalid_credentials");
+                return new BusinessException(
+                                ErrorCode.UNAUTHORIZED,
+                                INVALID_CREDENTIALS_MESSAGE,
+                                Map.of("authCode", "invalid_credentials")
+                );
+        }
+
+        private BusinessException incompleteAccountException() {
+                return new BusinessException(
+                                ErrorCode.INCOMPLETE_ACCOUNT,
+                                INCOMPLETE_ACCOUNT_MESSAGE,
+                                Map.of("authCode", "incomplete_account")
+                );
+        }
 }

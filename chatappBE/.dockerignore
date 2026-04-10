@@ -1,0 +1,9 @@
+.git
+.gitignore
+.gradle
+**/.gradle
+**/build
+**/out
+**/.idea
+**/*.iml
+node_modules

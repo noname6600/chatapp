@@ -47,6 +47,10 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 const ROOM_MUTE_STORAGE_KEY = "notification_mutes_by_room"
 
 type SyncMode = "replace" | "reconcile"
+type SyncTriggerReason = "initial_load" | "socket_reconnect" | "manual_action" | "post-mark-read"
+
+// Constants for fetch throttling
+const RECONNECT_SYNC_COOLDOWN_MS = 2000 // 2 second minimum interval for reconnect-triggered syncs
 
 const isValidRealtimeNotification = (notification: Notification): boolean => {
   if (notification.type !== "MENTION") {
@@ -148,6 +152,24 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   mutesByRoomRef.current = mutesByRoom
   notificationsRef.current = notifications
   const latestRealtimeTimestampRef = useRef(0)
+  
+  // Refs for sync fetch throttling (tasks 2.1-2.4)
+  const syncInFlightRef = useRef<Promise<void> | null>(null)
+  const lastSyncTimeRef = useRef(0)
+  const lastSyncTriggerRef = useRef<SyncTriggerReason | null>(null)
+
+  const setNotificationsState = useCallback(
+    (updater: Notification[] | ((prev: Notification[]) => Notification[])) => {
+      setNotifications((prev) => {
+        const next = typeof updater === "function"
+          ? (updater as (prev: Notification[]) => Notification[])(prev)
+          : updater
+        notificationsRef.current = next
+        return next
+      })
+    },
+    []
+  )
 
   const applyRealtimeNotification = useCallback((payload: Notification) => {
     if (!isValidRealtimeNotification(payload)) {
@@ -162,7 +184,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     const isNew = !notificationsRef.current.some((item) => item.id === payload.id)
 
     let mergedNotifications: Notification[] = []
-    setNotifications((prev) => {
+    setNotificationsState((prev) => {
       mergedNotifications = mergeNotifications([payload], prev)
       return mergedNotifications
     })
@@ -181,50 +203,100 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
       return Math.max(unreadFloor, next)
     })
-  }, [])
+  }, [setNotificationsState, userId])
 
-  const syncNotifications = useCallback(async (mode: SyncMode = "replace") => {
-    const response = await getNotificationsApi()
-    const incoming = response.notifications || []
-    const incomingUnreadCount = response.unreadCount || 0
+  const syncNotifications = useCallback(
+    async (
+      mode: SyncMode = "replace",
+      triggerReason: SyncTriggerReason = "manual_action"
+    ) => {
+      const now = Date.now()
+      const timeSinceLastSync = now - lastSyncTimeRef.current
+      const isReconnectTrigger = triggerReason === "socket_reconnect"
 
-    const serverNewestTimestamp = getNewestTimestamp(incoming)
-    const hasNewerRealtimeEvents =
-      mode === "reconcile" &&
-      serverNewestTimestamp < latestRealtimeTimestampRef.current
-
-    let mergedNotifications: Notification[] = []
-    setNotifications((prev) => {
-      if (hasNewerRealtimeEvents) {
-        mergedNotifications = mergeNotifications(incoming, prev)
-        return mergedNotifications
+      // Task 2.1: Single-flight guard - return existing in-flight promise
+      if (syncInFlightRef.current) {
+        console.debug("[notification-sync] Fetch already in-flight, coalescing request", {
+          triggerReason,
+          previousTrigger: lastSyncTriggerRef.current,
+        })
+        return syncInFlightRef.current
       }
-      mergedNotifications = mergeNotifications(incoming)
-      return mergedNotifications
-    })
 
-    const unreadFloor = countUnreadNotifications(
-      mergedNotifications,
-      mutesByRoomRef.current,
-      userId ?? null
-    )
-
-    setUnreadCount((prev) => {
-      if (hasNewerRealtimeEvents) {
-        return Math.max(unreadFloor, prev, incomingUnreadCount)
+      // Task 2.2: Apply reconnect-trigger cooldown
+      if (
+        isReconnectTrigger &&
+        timeSinceLastSync < RECONNECT_SYNC_COOLDOWN_MS
+      ) {
+        console.debug("[notification-sync] Skipping reconnect sync due to cooldown", {
+          timeSinceLastSyncMs: timeSinceLastSync,
+          cooldownMs: RECONNECT_SYNC_COOLDOWN_MS,
+        })
+        return
       }
-      return Math.max(unreadFloor, incomingUnreadCount)
-    })
-  }, [])
+
+      // Task 2.4: Log fetch execution decision
+      console.log("[notification-sync] Executing fetch request", {
+        triggerReason,
+        mode,
+        timeSinceLastSyncMs: timeSinceLastSync,
+      })
+
+      // Create single-flight promise
+      const syncPromise = (async () => {
+        try {
+          const response = await getNotificationsApi()
+          const incoming = response.notifications || []
+          const incomingUnreadCount = response.unreadCount || 0
+
+          const serverNewestTimestamp = getNewestTimestamp(incoming)
+          const hasNewerRealtimeEvents =
+            mode === "reconcile" &&
+            serverNewestTimestamp < latestRealtimeTimestampRef.current
+
+          let mergedNotifications: Notification[] = []
+          setNotificationsState((prev) => {
+            if (hasNewerRealtimeEvents) {
+              mergedNotifications = mergeNotifications(incoming, prev)
+              return mergedNotifications
+            }
+            mergedNotifications = mergeNotifications(incoming)
+            return mergedNotifications
+          })
+
+          const unreadFloor = countUnreadNotifications(
+            mergedNotifications,
+            mutesByRoomRef.current,
+            userId ?? null
+          )
+
+          setUnreadCount((prev) => {
+            if (hasNewerRealtimeEvents) {
+              return Math.max(unreadFloor, prev, incomingUnreadCount)
+            }
+            return Math.max(unreadFloor, incomingUnreadCount)
+          })
+        } finally {
+          lastSyncTimeRef.current = Date.now()
+          lastSyncTriggerRef.current = triggerReason
+          syncInFlightRef.current = null
+        }
+      })()
+
+      syncInFlightRef.current = syncPromise
+      return syncPromise
+    },
+    [setNotificationsState, userId]
+  )
 
   const fetchNotifications = useCallback(async () => {
-    await syncNotifications("replace")
+    await syncNotifications("replace", "manual_action")
   }, [syncNotifications])
 
   const markRead = useCallback(async (id: string) => {
     let decremented = false
 
-    setNotifications((prev) =>
+    setNotificationsState((prev) =>
       prev.map((item) => {
         if (item.id !== id || item.isRead) return item
         decremented = true
@@ -237,13 +309,15 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
 
     await markNotificationReadApi(id)
-  }, [])
+    await syncNotifications("replace", "post-mark-read")
+  }, [setNotificationsState, syncNotifications])
 
   const markAllRead = useCallback(async () => {
-    setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })))
+    setNotificationsState((prev) => prev.map((item) => ({ ...item, isRead: true })))
     setUnreadCount(0)
     await markAllNotificationsReadApi()
-  }, [])
+    await syncNotifications("replace", "post-mark-read")
+  }, [setNotificationsState, syncNotifications])
 
   const fetchRoomMute = useCallback(async (roomId: string) => {
     const response = await getRoomMuteSettingsApi(roomId)
@@ -293,7 +367,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     connectNotificationSocket()
 
     const unsubscribeOpen = onNotificationSocketOpen(() => {
-      void syncNotifications("reconcile").catch(() => {})
+      void syncNotifications("reconcile", "socket_reconnect").catch(() => {})
     })
 
     const unsubscribeEvent = onNotificationEvent((event) => {

@@ -1,7 +1,7 @@
 package com.example.auth.configuration;
 
+import com.example.auth.dto.JwtPrincipal;
 import com.example.auth.jwt.IJwtVerifierService;
-import com.example.auth.service.ITokenService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -44,7 +44,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                 UsernamePasswordAuthenticationToken authentication =
                         new UsernamePasswordAuthenticationToken(
-                                accountId,
+                        new JwtPrincipal(accountId),
                                 null,
                                 List.of()
                         );

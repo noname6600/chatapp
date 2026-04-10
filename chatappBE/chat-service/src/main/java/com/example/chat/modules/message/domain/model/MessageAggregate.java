@@ -40,7 +40,7 @@ public class MessageAggregate {
             String blocksJson
     ) {
 
-        MessageType type = resolveType(content, drafts);
+        MessageType type = resolveType(content, drafts, blocksJson);
 
         UUID messageId = UUID.randomUUID();
 
@@ -71,15 +71,17 @@ public class MessageAggregate {
 
     private static MessageType resolveType(
             String content,
-            List<AttachmentDraft> attachments
+            List<AttachmentDraft> attachments,
+            String blocksJson
     ) {
 
         boolean hasContent = content != null && !content.isBlank();
         boolean hasAttachments = attachments != null && !attachments.isEmpty();
+        boolean hasBlocks = blocksJson != null && !blocksJson.isBlank();
 
-        if (hasContent && hasAttachments) return MessageType.MIXED;
+        if (hasAttachments && (hasContent || hasBlocks)) return MessageType.MIXED;
         if (hasAttachments) return MessageType.ATTACHMENT;
-        if (hasContent) return MessageType.TEXT;
+        if (hasContent || hasBlocks) return MessageType.TEXT;
 
         throw new BusinessException(
                 ErrorCode.MESSAGE_CONTENT_EMPTY,
@@ -219,11 +221,15 @@ public class MessageAggregate {
                 attachments != null &&
                         !attachments.isEmpty();
 
+        boolean hasBlocks =
+                message.getBlocksJson() != null &&
+                        !message.getBlocksJson().isBlank();
+
         switch (message.getType()) {
 
             case TEXT:
 
-                if (!hasContent)
+                if (!hasContent && !hasBlocks)
                     throw new BusinessException(
                             ErrorCode.MESSAGE_CONTENT_EMPTY,
                             "TEXT must contain content"

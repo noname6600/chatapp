@@ -1,0 +1,459 @@
+services:
+
+  # ─────────────────────────────────────────────────────────
+  # INFRASTRUCTURE
+  # ─────────────────────────────────────────────────────────
+  auth-db:
+    image: postgres:18-alpine
+    container_name: chatapp-auth-db
+    environment:
+      POSTGRES_DB: ${AUTH_DATABASE_NAME:-auth_service}
+      POSTGRES_USER: ${AUTH_DATABASE_USER:-auth_user}
+      POSTGRES_PASSWORD: ${AUTH_DATABASE_PASSWORD:-auth_password}
+    volumes:
+      - auth-postgres-data:/var/lib/postgresql/data
+    networks:
+      - chatapp-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AUTH_DATABASE_USER:-auth_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  user-db:
+    image: postgres:18-alpine
+    container_name: chatapp-user-db
+    environment:
+      POSTGRES_DB: ${USER_DATABASE_NAME:-user_service}
+      POSTGRES_USER: ${USER_DATABASE_USER:-user_user}
+      POSTGRES_PASSWORD: ${USER_DATABASE_PASSWORD:-user_password}
+    volumes:
+      - user-postgres-data:/var/lib/postgresql/data
+    networks:
+      - chatapp-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${USER_DATABASE_USER:-user_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  chat-db:
+    image: postgres:18-alpine
+    container_name: chatapp-chat-db
+    environment:
+      POSTGRES_DB: ${CHAT_DATABASE_NAME:-chat_service}
+      POSTGRES_USER: ${CHAT_DATABASE_USER:-chat_user}
+      POSTGRES_PASSWORD: ${CHAT_DATABASE_PASSWORD:-chat_password}
+    volumes:
+      - chat-postgres-data:/var/lib/postgresql/data
+    networks:
+      - chatapp-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${CHAT_DATABASE_USER:-chat_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  friendship-db:
+    image: postgres:18-alpine
+    container_name: chatapp-friendship-db
+    environment:
+      POSTGRES_DB: ${FRIENDSHIP_DATABASE_NAME:-friendship_service}
+      POSTGRES_USER: ${FRIENDSHIP_DATABASE_USER:-friendship_user}
+      POSTGRES_PASSWORD: ${FRIENDSHIP_DATABASE_PASSWORD:-friendship_password}
+    volumes:
+      - friendship-postgres-data:/var/lib/postgresql/data
+    networks:
+      - chatapp-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${FRIENDSHIP_DATABASE_USER:-friendship_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  notification-db:
+    image: postgres:18-alpine
+    container_name: chatapp-notification-db
+    environment:
+      POSTGRES_DB: ${NOTIFICATION_DATABASE_NAME:-notification_service}
+      POSTGRES_USER: ${NOTIFICATION_DATABASE_USER:-notification_user}
+      POSTGRES_PASSWORD: ${NOTIFICATION_DATABASE_PASSWORD:-notification_password}
+    volumes:
+      - notification-postgres-data:/var/lib/postgresql/data
+    networks:
+      - chatapp-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${NOTIFICATION_DATABASE_USER:-notification_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: chatapp-redis
+    networks:
+      - chatapp-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: chatapp-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - chatapp-net
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc localhost 2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: chatapp-kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:29092
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - chatapp-net
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ─────────────────────────────────────────────────────────
+  # MICROSERVICES
+  # ─────────────────────────────────────────────────────────
+  auth-service:
+    build:
+      context: .
+      dockerfile: auth-service/Dockerfile
+    container_name: chatapp-auth
+    depends_on:
+      auth-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      PORT: 8081
+      AUTH_DATABASE_URL: jdbc:postgresql://auth-db:5432/${AUTH_DATABASE_NAME:-auth_service}
+      AUTH_DATABASE_USER: ${AUTH_DATABASE_USER:-auth_user}
+      AUTH_DATABASE_PASSWORD: ${AUTH_DATABASE_PASSWORD:-auth_password}
+      KAFKA_SERVERS: kafka:9092
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      MAIL_USERNAME: ${MAIL_USERNAME}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+    networks:
+      - chatapp-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  user-service:
+    build:
+      context: .
+      dockerfile: user-service/Dockerfile
+    container_name: chatapp-user
+    depends_on:
+      user-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    environment:
+      PORT: 8082
+      USER_DATABASE_URL: jdbc:postgresql://user-db:5432/${USER_DATABASE_NAME:-user_service}
+      USER_DATABASE_USER: ${USER_DATABASE_USER:-user_user}
+      USER_DATABASE_PASSWORD: ${USER_DATABASE_PASSWORD:-user_password}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+    networks:
+      - chatapp-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8082/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  chat-service:
+    build:
+      context: .
+      dockerfile: chat-service/Dockerfile
+    container_name: chatapp-chat
+    depends_on:
+      chat-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    environment:
+      PORT: 8083
+      CHAT_DATABASE_URL: jdbc:postgresql://chat-db:5432/${CHAT_DATABASE_NAME:-chat_service}
+      CHAT_DATABASE_USER: ${CHAT_DATABASE_USER:-chat_user}
+      CHAT_DATABASE_PASSWORD: ${CHAT_DATABASE_PASSWORD:-chat_password}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
+      SERVICES_USER_URL: http://user-service:8082
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+    networks:
+      - chatapp-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8083/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  presence-service:
+    build:
+      context: .
+      dockerfile: presence-service/Dockerfile
+    container_name: chatapp-presence
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    environment:
+      PORT: 8084
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+    networks:
+      - chatapp-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8084/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  friendship-service:
+    build:
+      context: .
+      dockerfile: friendship-service/Dockerfile
+    container_name: chatapp-friendship
+    depends_on:
+      friendship-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    environment:
+      PORT: 8085
+      FRIENDSHIP_DATABASE_URL: jdbc:postgresql://friendship-db:5432/${FRIENDSHIP_DATABASE_NAME:-friendship_service}
+      FRIENDSHIP_DATABASE_USER: ${FRIENDSHIP_DATABASE_USER:-friendship_user}
+      FRIENDSHIP_DATABASE_PASSWORD: ${FRIENDSHIP_DATABASE_PASSWORD:-friendship_password}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
+      SERVICES_USER_URL: http://user-service:8082
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+    networks:
+      - chatapp-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8085/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: notification-service/Dockerfile
+    container_name: chatapp-notification
+    depends_on:
+      notification-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    environment:
+      PORT: 8086
+      NOTIFICATION_DATABASE_URL: jdbc:postgresql://notification-db:5432/${NOTIFICATION_DATABASE_NAME:-notification_service}
+      NOTIFICATION_DATABASE_USER: ${NOTIFICATION_DATABASE_USER:-notification_user}
+      NOTIFICATION_DATABASE_PASSWORD: ${NOTIFICATION_DATABASE_PASSWORD:-notification_password}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+    networks:
+      - chatapp-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8086/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  upload-service:
+    build:
+      context: .
+      dockerfile: upload-service/Dockerfile
+    container_name: chatapp-upload
+    depends_on:
+      auth-service:
+        condition: service_healthy
+    environment:
+      PORT: 8088
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+    networks:
+      - chatapp-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8088/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ─────────────────────────────────────────────────────────
+  # API GATEWAY
+  # ─────────────────────────────────────────────────────────
+  gateway-service:
+    build:
+      context: .
+      dockerfile: gateway-service/Dockerfile
+    container_name: chatapp-gateway
+    depends_on:
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    environment:
+      PORT: 8080
+      AUTH_SERVICE_HOST: auth-service
+      AUTH_SERVICE_PORT: 8081
+      USER_SERVICE_HOST: user-service
+      USER_SERVICE_PORT: 8082
+      CHAT_SERVICE_HOST: chat-service
+      CHAT_SERVICE_PORT: 8083
+      PRESENCE_SERVICE_HOST: presence-service
+      PRESENCE_SERVICE_PORT: 8084
+      FRIENDSHIP_SERVICE_HOST: friendship-service
+      FRIENDSHIP_SERVICE_PORT: 8085
+      NOTIFICATION_SERVICE_HOST: notification-service
+      NOTIFICATION_SERVICE_PORT: 8086
+      UPLOAD_SERVICE_HOST: upload-service
+      UPLOAD_SERVICE_PORT: 8088
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+    networks:
+      - chatapp-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ─────────────────────────────────────────────────────────
+  # FRONTEND
+  # ─────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ../chatappFE
+      dockerfile: Dockerfile
+    container_name: chatapp-frontend
+    networks:
+      - chatapp-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:80/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ─────────────────────────────────────────────────────────
+  # EDGE PROXY
+  # ─────────────────────────────────────────────────────────
+  nginx:
+    image: nginx:stable-alpine
+    container_name: chatapp-nginx
+    depends_on:
+      frontend:
+        condition: service_healthy
+      gateway-service:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+    networks:
+      - chatapp-net
+    restart: unless-stopped
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: chatapp-certbot
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    # Renew certs every 12 hours; certbot skips if not yet due
+    entrypoint: /bin/sh -c "trap exit TERM; while :; do certbot renew --webroot --webroot-path=/var/www/certbot; sleep 12h & wait $${!}; done"
+    networks:
+      - chatapp-net
+    restart: unless-stopped
+
+# ─────────────────────────────────────────────────────────
+# NETWORKS & VOLUMES
+# ─────────────────────────────────────────────────────────
+networks:
+  chatapp-net:
+    driver: bridge
+
+volumes:
+  auth-postgres-data:
+  user-postgres-data:
+  chat-postgres-data:
+  friendship-postgres-data:
+  notification-postgres-data:

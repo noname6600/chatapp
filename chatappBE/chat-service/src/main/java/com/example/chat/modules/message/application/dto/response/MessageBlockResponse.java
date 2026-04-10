@@ -19,4 +19,6 @@ public class MessageBlockResponse {
     private String text;
 
     private AttachmentResponse attachment;
+
+    private RoomInviteResponse roomInvite;
 }

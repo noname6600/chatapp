@@ -1,30 +1,68 @@
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { Menu, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { updateMyPresenceApi } from "../../api/presence.service";
+import { usePresenceStore } from "../../store/presence.store";
+import type { PresenceStatus } from "../../types/presence";
 import { useAuth } from "../../hooks/useAuth";
+import { useFriendStore } from "../../store/friend.store";
 import UserAvatar from "../user/UserAvatar";
 import NotificationBell from "../notifications/NotificationBell";
 
 const menu = [
   { to: "/chat", label: "Chat" },
   { to: "/friends", label: "Friends" },
-  { to: "/notifications", label: "Notifications" },
-  { to: "/me", label: "Profile" },
+  { to: "/settings", label: "Settings" },
 ];
 
+const statusDotClass: Record<PresenceStatus, string> = {
+  ONLINE: "bg-green-500",
+  AWAY: "bg-amber-500",
+  OFFLINE: "bg-gray-400",
+};
+
+const statusOptions: PresenceStatus[] = ["ONLINE", "AWAY", "OFFLINE"];
+
 const Sidebar = () => {
-  const { logout, currentUser } = useAuth();
+  const { logout, currentUser, userId } = useAuth();
   const location = useLocation();
-  
+  const navigate = useNavigate();
+  const unreadFriendRequests = useFriendStore((s) => s.unreadFriendRequestCount);
+
+  const selfPresence = usePresenceStore((s) => s.selfPresence);
+  const setSelfPresence = usePresenceStore((s) => s.setSelfPresence);
+  const setUserStatus = usePresenceStore((s) => s.setUserStatus);
+
+  const [isStatusMenuOpen, setIsStatusMenuOpen] = useState(false);
+  const [statusSaving, setStatusSaving] = useState(false);
+
   // Responsive sidebar state
   const [isOpen, setIsOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
-  
+
   // Desktop collapse state (persists across navigation)
   const [isCollapsed, setIsCollapsed] = useState(() => {
     const saved = localStorage.getItem("sidebarCollapsed");
     return saved ? JSON.parse(saved) : false;
   });
+
+  const effectiveStatus: PresenceStatus = selfPresence?.effectiveStatus ?? "OFFLINE";
+
+  const handleStatusChange = async (nextStatus: PresenceStatus) => {
+    try {
+      setStatusSaving(true);
+      const nextPresence = await updateMyPresenceApi({ mode: "MANUAL", status: nextStatus });
+      setSelfPresence(nextPresence);
+      if (userId) {
+        setUserStatus(userId, nextPresence.effectiveStatus);
+      }
+      setIsStatusMenuOpen(false);
+    } catch (err) {
+      console.error("Failed to update presence", err);
+    } finally {
+      setStatusSaving(false);
+    }
+  };
 
   // Detect viewport changes
   useEffect(() => {
@@ -43,6 +81,7 @@ const Sidebar = () => {
   useEffect(() => {
     if (isMobile) {
       setIsOpen(false);
+      setIsStatusMenuOpen(false);
     }
   }, [location.pathname, isMobile]);
 
@@ -53,6 +92,13 @@ const Sidebar = () => {
 
   const toggleSidebar = () => setIsOpen(!isOpen);
   const toggleCollapse = () => setIsCollapsed(!isCollapsed);
+
+  const openProfilePage = () => {
+    navigate("/settings");
+    if (isMobile) {
+      setIsOpen(false);
+    }
+  };
 
   // For desktop: collapsed width is icon-only (approx 80px)
   // For desktop: expanded width is full 256px
@@ -76,7 +122,10 @@ const Sidebar = () => {
       {isMobile && isOpen && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 z-30"
-          onClick={() => setIsOpen(false)}
+          onClick={() => {
+            setIsOpen(false);
+            setIsStatusMenuOpen(false);
+          }}
         />
       )}
 
@@ -107,22 +156,57 @@ const Sidebar = () => {
           <div className="p-4 border-b bg-gray-50">
             {currentUser ? (
               <div className="flex items-center gap-3">
-                <UserAvatar
-                  userId={currentUser.accountId}
-                  avatar={currentUser.avatarUrl}
-                  size={40}
-                />
+                <button
+                  onClick={openProfilePage}
+                  className="relative rounded-full"
+                  aria-label="Open profile"
+                >
+                  <UserAvatar
+                    userId={currentUser.accountId}
+                    avatar={currentUser.avatarUrl}
+                    size={40}
+                  />
+                  <span
+                    className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white ${statusDotClass[effectiveStatus]}`}
+                  />
+                </button>
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm truncate">
+                  <button
+                    onClick={openProfilePage}
+                    className="font-semibold text-sm truncate text-left hover:underline"
+                    title="Open profile"
+                  >
                     {currentUser.displayName || currentUser.username || "User"}
-                  </p>
+                  </button>
                   <p className="text-xs text-gray-500 truncate">
                     @{currentUser.username}
                   </p>
                 </div>
+                <button
+                  onClick={() => setIsStatusMenuOpen((prev) => !prev)}
+                  className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-100"
+                >
+                  Status
+                </button>
               </div>
             ) : (
               <div className="text-sm text-gray-500">Loading...</div>
+            )}
+
+            {isStatusMenuOpen && (
+              <div className="mt-3 rounded-lg border border-gray-200 bg-white p-2 shadow-sm">
+                {statusOptions.map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => void handleStatusChange(status)}
+                    disabled={statusSaving}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-left hover:bg-gray-100 disabled:opacity-60"
+                  >
+                    <span className={`h-2.5 w-2.5 rounded-full ${statusDotClass[status]}`} />
+                    {status}
+                  </button>
+                ))}
+              </div>
             )}
           </div>
         )}
@@ -131,20 +215,57 @@ const Sidebar = () => {
         {!isMobile && !isCollapsed && (
           <div className="p-4 border-b bg-gray-50">
             {currentUser ? (
-              <div className="flex items-center gap-3">
-                <UserAvatar
-                  userId={currentUser.accountId}
-                  avatar={currentUser.avatarUrl}
-                  size={40}
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm truncate">
-                    {currentUser.displayName || currentUser.username || "User"}
-                  </p>
-                  <p className="text-xs text-gray-500 truncate">
-                    @{currentUser.username}
-                  </p>
+              <div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={openProfilePage}
+                    className="relative rounded-full"
+                    aria-label="Open profile"
+                  >
+                    <UserAvatar
+                      userId={currentUser.accountId}
+                      avatar={currentUser.avatarUrl}
+                      size={40}
+                    />
+                    <span
+                      className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white ${statusDotClass[effectiveStatus]}`}
+                    />
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <button
+                      onClick={openProfilePage}
+                      className="font-semibold text-sm truncate text-left hover:underline"
+                      title="Open profile"
+                    >
+                      {currentUser.displayName || currentUser.username || "User"}
+                    </button>
+                    <p className="text-xs text-gray-500 truncate">
+                      @{currentUser.username}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setIsStatusMenuOpen((prev) => !prev)}
+                    className="rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-100"
+                  >
+                    Status
+                  </button>
                 </div>
+
+                {isStatusMenuOpen && (
+                  <div className="mt-3 rounded-lg border border-gray-200 bg-white p-2 shadow-sm">
+                    {statusOptions.map((status) => (
+                      <button
+                        key={status}
+                        onClick={() => void handleStatusChange(status)}
+                        disabled={statusSaving}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-left hover:bg-gray-100 disabled:opacity-60"
+                      >
+                        <span className={`h-2.5 w-2.5 rounded-full ${statusDotClass[status]}`} />
+                        {status}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-sm text-gray-500">Loading...</div>
@@ -156,11 +277,20 @@ const Sidebar = () => {
         {!isMobile && isCollapsed && (
           <div className="p-2 border-b bg-gray-50 flex justify-center">
             {currentUser ? (
-              <UserAvatar
-                userId={currentUser.accountId}
-                avatar={currentUser.avatarUrl}
-                size={40}
-              />
+              <button
+                onClick={openProfilePage}
+                className="relative rounded-full"
+                aria-label="Open profile"
+              >
+                <UserAvatar
+                  userId={currentUser.accountId}
+                  avatar={currentUser.avatarUrl}
+                  size={40}
+                />
+                <span
+                  className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white ${statusDotClass[effectiveStatus]}`}
+                />
+              </button>
             ) : (
               <div className="w-10 h-10 bg-gray-300 rounded-full" />
             )}
@@ -187,7 +317,19 @@ const Sidebar = () => {
               }
               title={isCollapsed ? item.label : undefined}
             >
-              {isCollapsed ? item.label[0].toUpperCase() : item.label}
+              <span className="relative flex items-center justify-center gap-2">
+                <span>{isCollapsed ? item.label[0].toUpperCase() : item.label}</span>
+                {item.to === "/friends" && unreadFriendRequests > 0 && !isCollapsed && (
+                  <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                    {unreadFriendRequests > 99 ? "99+" : unreadFriendRequests}
+                  </span>
+                )}
+                {item.to === "/friends" && unreadFriendRequests > 0 && isCollapsed && (
+                  <span className="absolute -right-2 -top-2 inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                    {unreadFriendRequests > 99 ? "99+" : unreadFriendRequests}
+                  </span>
+                )}
+              </span>
             </NavLink>
           ))}
         </nav>

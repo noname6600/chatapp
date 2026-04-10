@@ -18,7 +18,6 @@ interface MemberRaw {
 
 export default function RoomMembersSidebar({ roomId }: Props) {
   const [membersRaw, setMembersRaw] = useState<MemberRaw[]>([]);
-  const [open, setOpen] = useState(true);
 
   const userStatusesSnapshot = usePresenceStore((s) => s.userStatuses);
   const fetchUsers = useUserStore((s) => s.fetchUsers);
@@ -50,53 +49,46 @@ export default function RoomMembersSidebar({ roomId }: Props) {
   );
 
   return (
-    <>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="absolute right-2 top-2 z-10 text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded"
-      >
-        {open ? "Hide" : "Show"} Users
-      </button>
+    <div className="h-full flex flex-col bg-white">
+      <div className="px-3 py-2.5 border-b font-semibold text-sm text-gray-700">Members</div>
 
-      {open && (
-        <div className="w-56 border-l bg-white flex flex-col">
-          <div className="p-3 border-b font-semibold text-sm">Members</div>
+      <div className="flex-1 overflow-y-auto px-2 py-3 space-y-4">
+        {owners.length > 0 && (
+          <Group title="Owner">
+            {owners.map((m) => (
+              <MemberRow key={m.userId} {...m} roomId={roomId} status={getStatus(m.userId)} />
+            ))}
+          </Group>
+        )}
 
-          <div className="flex-1 overflow-y-auto p-3 space-y-4">
-            {owners.length > 0 && (
-              <Group title="OWNER">
-                {owners.map((m) => (
-                  <MemberRow key={m.userId} {...m} roomId={roomId} status={getStatus(m.userId)} />
-                ))}
-              </Group>
-            )}
+        {onlineMembers.length > 0 && (
+          <Group title="Online">
+            {onlineMembers.map((m) => (
+              <MemberRow key={m.userId} {...m} roomId={roomId} status={getStatus(m.userId)} />
+            ))}
+          </Group>
+        )}
 
-            {onlineMembers.length > 0 && (
-              <Group title="ONLINE">
-                {onlineMembers.map((m) => (
-                  <MemberRow key={m.userId} {...m} roomId={roomId} status={getStatus(m.userId)} />
-                ))}
-              </Group>
-            )}
+        {awayMembers.length > 0 && (
+          <Group title="Away">
+            {awayMembers.map((m) => (
+              <MemberRow key={m.userId} {...m} roomId={roomId} status={getStatus(m.userId)} />
+            ))}
+          </Group>
+        )}
 
-            {awayMembers.length > 0 && (
-              <Group title="AWAY">
-                {awayMembers.map((m) => (
-                  <MemberRow key={m.userId} {...m} roomId={roomId} status={getStatus(m.userId)} />
-                ))}
-              </Group>
-            )}
+        {offlineMembers.length > 0 && (
+          <Group title="Offline">
+            {offlineMembers.map((m) => (
+              <MemberRow key={m.userId} {...m} roomId={roomId} status={getStatus(m.userId)} />
+            ))}
+          </Group>
+        )}
 
-            {offlineMembers.length > 0 && (
-              <Group title="OFFLINE">
-                {offlineMembers.map((m) => (
-                  <MemberRow key={m.userId} {...m} roomId={roomId} status={getStatus(m.userId)} />
-                ))}
-              </Group>
-            )}
-          </div>
-        </div>
-      )}
+        {membersRaw.length === 0 && (
+          <div className="text-xs text-gray-400 text-center py-6">No members</div>
+        )}
+      </div>
 
       <style>
         {`
@@ -112,7 +104,7 @@ export default function RoomMembersSidebar({ roomId }: Props) {
         }
       `}
       </style>
-    </>
+    </div>
   );
 }
 
@@ -125,8 +117,8 @@ function Group({
 }) {
   return (
     <div>
-      <div className="text-xs font-semibold text-gray-500 mb-2">{title}</div>
-      <div className="space-y-2">{children}</div>
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5 px-1">{title}</div>
+      <div className="space-y-0.5">{children}</div>
     </div>
   );
 }
@@ -146,31 +138,27 @@ function MemberRow({
   const typing = usePresenceStore((s) => !!s.typingByRoom[roomId]?.[userId]);
 
   return (
-    <div className="flex items-center gap-2 text-sm">
-      {/* 🟢 AVATAR */}
-      <UserAvatar userId={userId} avatar={user?.avatarUrl} size={24} />
+    <div className="flex items-center gap-2 px-1 py-1 rounded-md hover:bg-gray-50 transition-colors">
+      <div className="relative flex-shrink-0">
+        <UserAvatar userId={userId} avatar={user?.avatarUrl} size={28} />
+        <div className="absolute -bottom-0.5 -right-0.5">
+          <OnlineDot userId={userId} status={status} />
+        </div>
+      </div>
 
-      {/* 🟢 USERNAME */}
       <Username userId={userId}>
-        <span className="truncate flex items-center gap-1">
+        <span className="text-sm truncate flex items-center gap-1 text-gray-700">
           {user?.displayName || user?.username || "Loading..."}
 
           {role === "OWNER" && (
-            <span className="text-yellow-500 text-xs">👑</span>
+            <span className="text-yellow-500 text-xs leading-none">👑</span>
           )}
 
           {typing && (
-            <span className="typing-dots text-xs text-gray-500">...</span>
+            <span className="typing-dots text-xs text-gray-400" />
           )}
         </span>
       </Username>
-
-      <div className="ml-auto flex items-center gap-2">
-        <span className="text-[11px] uppercase tracking-wide text-gray-400">
-          {status}
-        </span>
-        <OnlineDot userId={userId} status={status} />
-      </div>
     </div>
   );
 }

@@ -6,6 +6,7 @@ export type MessageType =
 export type MessageBlockType =
   | "TEXT"
   | "ASSET"
+  | "ROOM_INVITE"
 
 export type AttachmentType =
   | "IMAGE"
@@ -39,6 +40,14 @@ export interface MessageBlock {
   type: MessageBlockType
   text?: string
   attachment?: Attachment
+  roomInvite?: RoomInviteBlock
+}
+
+export interface RoomInviteBlock {
+  roomId: string
+  roomName?: string
+  roomAvatarUrl?: string
+  memberCount?: number
 }
 
 

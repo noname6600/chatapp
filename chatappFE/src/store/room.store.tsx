@@ -32,6 +32,10 @@ const toTimestamp = (value: string | null | undefined): number => {
   return Number.isNaN(parsed) ? 0 : parsed
 }
 
+const getRoomLatestTimestamp = (room: Room): number => {
+  return toTimestamp(room.latestMessageAt ?? room.lastMessage?.createdAt ?? null)
+}
+
 const isRoomMuted = (roomId: string): boolean => {
   try {
     const raw = localStorage.getItem(ROOM_MUTE_STORAGE_KEY)
@@ -57,7 +61,7 @@ interface RoomContextType {
 const RoomContext = createContext<RoomContextType | undefined>(undefined)
 
 export function RoomProvider({ children }: { children: React.ReactNode }) {
-  const { userId } = useAuth()
+  const { accessToken, userId } = useAuth()
   const users = useUserStore((state) => state.users)
   const usersRef = useRef(users)
   usersRef.current = users
@@ -68,6 +72,7 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
   const roomsByIdRef = useRef<Record<string, Room>>({})
   roomsByIdRef.current = roomsById
   const sortDebounceRef = useRef<number | null>(null)
+  const missingRoomReconcileTimeoutRef = useRef<number | null>(null)
   const subscribedRoomIdsRef = useRef<Set<string>>(new Set())
 
   // Track processed MESSAGE_SENT events to prevent duplicate unread increments.
@@ -96,6 +101,14 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
   usePopulateUserCache(userId, roomsById, roomsLoaded)
 
   const loadRooms = useCallback(async () => {
+    if (!accessToken || !userId) {
+      setRoomsById({})
+      setRoomOrder([])
+      setRoomsLoaded(false)
+      processedMessagesRef.current = {}
+      return
+    }
+
     const rooms = await getMyRooms()
 
     const map: Record<string, Room> = {}
@@ -112,10 +125,12 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
 
     // Reset processed messages tracking on refresh/load to ensure fresh reconciliation.
     processedMessagesRef.current = {}
-  }, [userId])
+  }, [accessToken, userId])
 
   useEffect(() => {
-    loadRooms()
+    void loadRooms().catch((error) => {
+      console.error("Failed to load rooms:", error)
+    })
 
     return () => {
       if (sortDebounceRef.current != null) {
@@ -220,13 +235,23 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
         for (const freshRoom of freshRooms) {
           const existing = prev[freshRoom.id]
           if (existing) {
+            const existingLatestTs = getRoomLatestTimestamp(existing)
+            const freshLatestTs = getRoomLatestTimestamp(freshRoom)
+            const shouldApplyFreshPreview = freshLatestTs >= existingLatestTs
+
             // Replace stale values with backend snapshot (not additive).
             updated[freshRoom.id] = {
               ...existing,
-              latestMessageAt: freshRoom.latestMessageAt ?? freshRoom.lastMessage?.createdAt ?? existing.latestMessageAt,
+              latestMessageAt: shouldApplyFreshPreview
+                ? freshRoom.latestMessageAt ?? freshRoom.lastMessage?.createdAt ?? existing.latestMessageAt
+                : existing.latestMessageAt,
               unreadCount: freshRoom.unreadCount ?? 0,
-              lastMessage: freshRoom.lastMessage ?? existing.lastMessage,
+              lastMessage: shouldApplyFreshPreview
+                ? freshRoom.lastMessage ?? existing.lastMessage
+                : existing.lastMessage,
             }
+          } else {
+            updated[freshRoom.id] = normalizeRoomForList(freshRoom, userId, usersRef.current)
           }
         }
 
@@ -242,6 +267,17 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  const scheduleMissingRoomReconcile = useCallback(() => {
+    if (missingRoomReconcileTimeoutRef.current != null) {
+      return
+    }
+
+    missingRoomReconcileTimeoutRef.current = window.setTimeout(() => {
+      missingRoomReconcileTimeoutRef.current = null
+      void reconcileRoomState()
+    }, 120)
+  }, [reconcileRoomState])
+
   const buildPreview = (msg: ChatMessage): string => {
     if (msg.deleted) return "[Message deleted]"
 
@@ -250,6 +286,11 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
         .map((block) => {
           if (block.type === "TEXT") {
             return block.text?.trim() ?? ""
+          }
+
+          if (block.type === "ROOM_INVITE") {
+            const roomName = block.roomInvite?.roomName?.trim()
+            return roomName ? `[Group Invite: ${roomName}]` : "[Group Invite]"
           }
 
           switch (block.attachment?.type) {
@@ -339,6 +380,14 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
 
       const msg = event.payload
 
+      // First-message edge case: incoming message can target a room not yet in local
+      // list state (for example, first-ever DM). Trigger a debounced reconciliation so
+      // the new room appears without requiring manual page refresh.
+      if (!roomsByIdRef.current[msg.roomId]) {
+        scheduleMissingRoomReconcile()
+        return
+      }
+
       // Deterministic merge: skip if this message was already processed.
       const processedSet = getProcessedMessages(msg.roomId)
       if (processedSet.has(msg.messageId)) {
@@ -400,7 +449,7 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
 
       scheduleSortRoomOrder()
     })
-  }, [getProcessedMessages, scheduleSortRoomOrder, userId, users])
+  }, [getProcessedMessages, scheduleMissingRoomReconcile, scheduleSortRoomOrder, userId, users])
 
   // Reconcile room state when websocket reconnects.
   useEffect(() => {
@@ -415,6 +464,14 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
       unsubscribe()
     }
   }, [reconcileRoomState])
+
+  useEffect(() => {
+    return () => {
+      if (missingRoomReconcileTimeoutRef.current != null) {
+        clearTimeout(missingRoomReconcileTimeoutRef.current)
+      }
+    }
+  }, [])
 
   return (
     <RoomContext.Provider

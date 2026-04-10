@@ -3,6 +3,14 @@ import { AuthProvider } from "./store/auth.store"
 import { ChatProvider } from "./store/chat.store"
 import { NotificationProvider } from "./store/notification.store"
 import { RoomProvider } from "./store/room.store"
+import { useFriendshipInitialization } from "./store/friendship.provider"
+
+function AppContent() {
+  // Initialize friendship socket and load unread count
+  useFriendshipInitialization()
+
+  return <AppRoutes />
+}
 
 function App() {
 
@@ -16,7 +24,7 @@ function App() {
 
           <RoomProvider>
 
-            <AppRoutes />
+            <AppContent />
 
           </RoomProvider>
 

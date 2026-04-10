@@ -9,7 +9,7 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          jwk-set-uri: http://localhost:8081/.well-known/jwks.json
+          jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8081/.well-known/jwks.json}
 
 management:
   endpoints:
@@ -20,7 +20,7 @@ management:
 common:
   security:
     cors:
-      allowed-origins: "http://localhost:5173,http://localhost:5174,http://localhost:3000"
+      allowed-origins: "${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost:3000}"
       allowed-methods: "*"
       allowed-headers: "*"
 

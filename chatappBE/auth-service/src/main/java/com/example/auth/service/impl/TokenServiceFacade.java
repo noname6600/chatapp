@@ -9,9 +9,11 @@ import com.example.common.web.exception.BusinessException;
 import com.example.common.web.exception.ErrorCode;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -20,6 +22,7 @@ import java.util.UUID;
 @Service
 @Transactional
 @RequiredArgsConstructor
+@Slf4j
 public class TokenServiceFacade implements ITokenServiceFacade {
 
     private final RefreshTokenRepository refreshRepo;
@@ -38,11 +41,7 @@ public class TokenServiceFacade implements ITokenServiceFacade {
         String accessToken = tokenService.generateAccessToken(accountId);
         String refreshToken = createRefreshToken(accountId);
 
-        return new AuthResponse(
-                accessToken,
-                refreshToken,
-                accessExpMs / 1000
-        );
+        return buildAuthResponse(accountId, accessToken, refreshToken);
     }
 
     public AuthResponse refresh(String rawRefreshToken) {
@@ -115,5 +114,21 @@ public class TokenServiceFacade implements ITokenServiceFacade {
 
     public int cleanup() {
         return refreshRepo.deleteExpiredOrRevoked(Instant.now(clock));
+    }
+
+    private AuthResponse buildAuthResponse(UUID accountId, String accessToken, String refreshToken) {
+        if (!StringUtils.hasText(accessToken) || !StringUtils.hasText(refreshToken)) {
+            log.error("auth_contract_violation reason=missing_refresh_token_on_success accountId={} hasAccessToken={} hasRefreshToken={}",
+                    accountId,
+                    StringUtils.hasText(accessToken),
+                    StringUtils.hasText(refreshToken));
+            throw new IllegalStateException("Auth success payload missing required token fields");
+        }
+
+        return new AuthResponse(
+                accessToken,
+                refreshToken,
+                accessExpMs / 1000
+        );
     }
 }

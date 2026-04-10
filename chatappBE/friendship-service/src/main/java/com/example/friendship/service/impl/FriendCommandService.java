@@ -2,6 +2,9 @@ package com.example.friendship.service.impl;
 
 import com.example.common.integration.friendship.FriendshipEventType;
 import com.example.common.integration.friendship.FriendRequestEvent;
+import com.example.common.web.response.ApiResponse;
+import com.example.friendship.client.UserClient;
+import com.example.friendship.dto.UserProfileResponse;
 import com.example.common.web.exception.BusinessException;
 import com.example.common.web.exception.ErrorCode;
 import com.example.friendship.entity.Friendship;
@@ -9,6 +12,7 @@ import com.example.friendship.enums.FriendshipStatus;
 import com.example.friendship.kafka.FriendshipEventProducer;
 import com.example.friendship.repository.FriendshipRepository;
 import com.example.friendship.service.IFriendCommandService;
+import feign.FeignException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -23,6 +27,7 @@ public class FriendCommandService implements IFriendCommandService {
 
     private final FriendshipRepository repository;
     private final FriendshipEventProducer producer;
+    private final UserClient userClient;
 
     private UUID low(UUID a, UUID b) { return a.compareTo(b) < 0 ? a : b; }
     private UUID high(UUID a, UUID b) { return a.compareTo(b) < 0 ? b : a; }
@@ -36,13 +41,33 @@ public class FriendCommandService implements IFriendCommandService {
         if (sender.equals(receiver))
             throw new BusinessException(ErrorCode.BAD_REQUEST, "Cannot friend yourself");
 
-        repository.findBetweenUsers(sender, receiver).ifPresent(f -> {
+        var existing = repository.findBetweenUsers(sender, receiver);
+        if (existing.isPresent()) {
+            Friendship f = existing.get();
             switch (f.getStatus()) {
                 case ACCEPTED -> throw new BusinessException(ErrorCode.BAD_REQUEST, "Already friends");
-                case PENDING -> throw new BusinessException(ErrorCode.BAD_REQUEST, "Request already pending");
+                case PENDING -> {
+                    // If the other person already sent a request to us, auto-accept it
+                    if (!f.getActionUserId().equals(sender)) {
+                        f.setStatus(FriendshipStatus.ACCEPTED);
+                        f.setActionUserId(sender);
+                        f.setUpdatedAt(Instant.now());
+                        producer.publish(FriendshipEventType.FRIEND_REQUEST_ACCEPTED, f);
+                        producer.publishFriendRequestEvent(
+                            sender,
+                            receiver,
+                            f.getId(),
+                            FriendRequestEvent.Type.ACCEPTED
+                        );
+                        return;
+                    }
+                    // Otherwise it's our own duplicate request
+                    throw new BusinessException(ErrorCode.BAD_REQUEST, "Request already pending");
+                }
                 case BLOCKED -> throw new BusinessException(ErrorCode.FORBIDDEN, "User is blocked");
             }
-        });
+            return;
+        }
 
         Friendship f = Friendship.builder()
                 .userLow(low(sender, receiver))
@@ -62,6 +87,25 @@ public class FriendCommandService implements IFriendCommandService {
             f.getId(),
             FriendRequestEvent.Type.SENT
         );
+    }
+
+    @Override
+    public void sendRequestByUsername(UUID sender, String username) {
+        if (username == null || username.isBlank()) {
+            return;
+        }
+
+        try {
+            ApiResponse<UserProfileResponse> response = userClient.searchByUsername(username.trim());
+            UserProfileResponse target = response.getData();
+            if (target == null || target.getAccountId() == null || sender.equals(target.getAccountId())) {
+                return;
+            }
+
+            sendRequest(sender, target.getAccountId());
+        } catch (FeignException.NotFound ignored) {
+            // Keep username probing response generic: missing users are a no-op.
+        }
     }
 
     public void accept(UUID me, UUID other) {

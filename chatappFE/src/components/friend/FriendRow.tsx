@@ -11,6 +11,7 @@ interface Props {
   onDecline?: (id: string) => void;
   onCancel?: (id: string) => void;
   onChat?: (id: string) => void;
+  isChatLaunching?: boolean;
 }
 
 export function FriendRow({
@@ -21,26 +22,48 @@ export function FriendRow({
   onDecline,
   onCancel,
   onChat,
+  isChatLaunching = false,
 }: Props) {
   const user = useUserStore((s) => s.users[userId]);
   const status = usePresenceStore((s) => s.getUserStatus(userId));
+  const isFriendVariant = variant === "friend";
+  const canOpenChat = isFriendVariant && Boolean(onChat) && !isChatLaunching;
+
+  const handleOpenChat = () => {
+    if (!canOpenChat) return;
+    onChat?.(userId);
+  };
 
   if (!user) return null;
 
   return (
     <div
+      role={isFriendVariant ? "button" : undefined}
+      tabIndex={isFriendVariant ? 0 : undefined}
+      onClick={handleOpenChat}
+      onKeyDown={(event) => {
+        if (!canOpenChat) return;
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onChat?.(userId);
+        }
+      }}
       className="
-        flex items-center
+        flex items-center justify-between
         w-full
-        p-3
-        rounded
-        bg-gray-100 hover:bg-gray-200
-        transition
+        p-3.5
+        rounded-xl border border-gray-200
+        bg-white
+        transition-all
         gap-3
+        hover:border-gray-300 hover:shadow-sm
+        focus:outline-none focus:ring-2 focus:ring-blue-500/40
+        cursor-default
       "
+      data-testid={`friend-row-${variant}-${userId}`}
     >
       {/* Avatar with status ring */}
-      <div className="relative w-10 h-10 rounded-full bg-gray-300 flex-shrink-0 overflow-hidden">
+      <div className="relative w-11 h-11 rounded-full bg-gray-300 flex-shrink-0 overflow-hidden">
         {user.avatarUrl ? (
           <img
             src={user.avatarUrl}
@@ -61,7 +84,7 @@ export function FriendRow({
 
       {/* Content */}
       <div className="flex-1 min-w-0">
-        <div className="font-medium truncate">{user.displayName}</div>
+        <div className="font-medium text-gray-900 truncate">{user.displayName}</div>
 
         {variant === "pending" ? (
           <div className="text-sm text-gray-500 truncate">
@@ -76,25 +99,29 @@ export function FriendRow({
       </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
         {variant === "pending" && (
           <>
             {onAccept && (
-              <IconButton title="Accept" onClick={() => onAccept(userId)}>
+              <IconButton title="Accept" ariaLabel="Accept request" onClick={() => onAccept(userId)}>
                 ✅
               </IconButton>
             )}
 
             {onDecline && (
-              <IconButton title="Decline" onClick={() => onDecline(userId)}>
+              <IconButton title="Decline" ariaLabel="Decline request" onClick={() => onDecline(userId)}>
                 ❌
               </IconButton>
             )}
 
             {onCancel && (
               <button
-                onClick={() => onCancel(userId)}
-                className="px-3 py-1 text-sm rounded hover:bg-gray-300"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onCancel(userId);
+                }}
+                className="px-3 py-1 text-sm rounded-lg border border-gray-200 hover:bg-gray-100"
+                aria-label="Cancel request"
               >
                 Cancel
               </button>
@@ -104,12 +131,15 @@ export function FriendRow({
 
         {variant === "friend" && (
           <>
-            {/* Chat trước */}
-            <IconButton title="Chat" onClick={() => onChat?.(userId)}>
-              💬
+            <IconButton
+              title="Chat"
+              ariaLabel="Open chat"
+              disabled={isChatLaunching}
+              onClick={() => onChat?.(userId)}
+            >
+              {isChatLaunching ? "…" : "💬"}
             </IconButton>
 
-            {/* More sau */}
             {onRemove && <MoreMenu onRemove={() => onRemove(userId)} />}
           </>
         )}
@@ -122,20 +152,30 @@ function IconButton({
   children,
   onClick,
   title,
+  ariaLabel,
+  disabled = false,
 }: {
   children: React.ReactNode;
   onClick: () => void;
   title?: string;
+  ariaLabel?: string;
+  disabled?: boolean;
 }) {
   return (
     <button
       title={title}
-      onClick={onClick}
+      aria-label={ariaLabel}
+      disabled={disabled}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
       className="
         w-9 h-9
         flex items-center justify-center
-        rounded
-        hover:bg-gray-300
+        rounded-lg border border-gray-200
+        hover:bg-gray-100
+        disabled:cursor-not-allowed disabled:opacity-60
         transition
         text-lg
       "

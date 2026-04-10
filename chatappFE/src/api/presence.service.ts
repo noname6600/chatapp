@@ -11,7 +11,7 @@ import type {
 
 export const getMyPresenceApi = async (): Promise<PresenceSelfState> => {
   try {
-    const res = await presenceApi.get<ApiResponse<PresenceSelfState>>("/presence/me")
+    const res = await presenceApi.get<ApiResponse<PresenceSelfState>>("/me")
     return unwrap(res)
   } catch (error) {
     throw new Error(extractErrorMessage(error))
@@ -23,7 +23,7 @@ export const updateMyPresenceApi = async (
 ): Promise<PresenceSelfState> => {
   try {
     const res = await presenceApi.put<ApiResponse<PresenceSelfState>>(
-      "/presence/me/status",
+      "/me/status",
       payload
     )
 
@@ -35,7 +35,7 @@ export const updateMyPresenceApi = async (
 
 export const getGlobalPresenceApi = async (): Promise<PresenceUserState[]> => {
   try {
-    const res = await presenceApi.get<ApiResponse<PresenceUserState[]>>("/presence/global")
+    const res = await presenceApi.get<ApiResponse<PresenceUserState[]>>("/global")
     return unwrap(res)
   } catch (error) {
     throw new Error(extractErrorMessage(error))
@@ -45,7 +45,7 @@ export const getGlobalPresenceApi = async (): Promise<PresenceUserState[]> => {
 export const getRoomPresenceApi = async (roomId: string): Promise<PresenceUserState[]> => {
   try {
     const res = await presenceApi.get<ApiResponse<PresenceUserState[]>>(
-      `/presence/room/${roomId}`
+      `/room/${roomId}`
     )
     return unwrap(res)
   } catch (error) {

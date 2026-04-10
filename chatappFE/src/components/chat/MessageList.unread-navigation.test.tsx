@@ -290,4 +290,60 @@ describe("MessageList unread navigation behavior", () => {
     expect(mocks.batchScrollToBottom).not.toHaveBeenCalled()
   })
 
+  it("does not show behind-latest overflow text when newestSeq is MAX_SAFE_INTEGER (defensive guard)", async () => {
+    // Simulate state that could occur without the store fix: optimistic placeholder
+    // with synthetic MAX_SAFE_INTEGER seq still in the window while hasNewer is true.
+    roomState["room-1"].unreadCount = 0
+    windowMetaState["room-1"] = {
+      oldestSeq: 1,
+      newestSeq: Number.MAX_SAFE_INTEGER,
+      latestSeq: 5,
+      hasOlder: false,
+      hasNewer: true,
+    }
+
+    render(<MessageList roomId="room-1" />)
+
+    await waitFor(() => {
+      expect(screen.queryByText(/behind latest/i)).toBeNull()
+    })
+  })
+
+  it("does not show behind-latest overflow text when effectiveLatestSeq is MAX_SAFE_INTEGER", async () => {
+    roomState["room-1"].unreadCount = 0
+    windowMetaState["room-1"] = {
+      oldestSeq: 1,
+      newestSeq: 5,
+      latestSeq: Number.MAX_SAFE_INTEGER,
+      hasOlder: false,
+      hasNewer: true,
+    }
+
+    render(<MessageList roomId="room-1" />)
+
+    await waitFor(() => {
+      expect(screen.queryByText(/behind latest/i)).toBeNull()
+    })
+  })
+
+  it("shows no top indicator for sender after image send when hasNewer is false", async () => {
+    // After the store fix: optimistic send does not advance latestSeq,
+    // so newestSeq ends up > latestSeq and hasNewer resolves to false.
+    roomState["room-1"].unreadCount = 0
+    windowMetaState["room-1"] = {
+      oldestSeq: 1,
+      newestSeq: 5,
+      latestSeq: 5,
+      hasOlder: false,
+      hasNewer: false,
+    }
+
+    render(<MessageList roomId="room-1" />)
+
+    await waitFor(() => {
+      expect(screen.queryByText(/behind latest/i)).toBeNull()
+      expect(screen.queryByText(/new message/i)).toBeNull()
+    })
+  })
+
 })

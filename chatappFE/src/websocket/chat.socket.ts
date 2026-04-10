@@ -1,6 +1,7 @@
 import type { ChatMessage } from "../types/message"
 import { ChatEventType } from "../constants/chatEvents"
 import { normalizeReactions } from "../utils/reactionState"
+import { getWsEndpoint } from "../config/ws.config"
 
 let socket: WebSocket | null = null
 let reconnectTimeout: number | null = null
@@ -11,7 +12,7 @@ const openHandlers = new Set<() => void>()
 
 const subscribedRooms = new Set<string>()
 
-const WS_URL = "ws://localhost:8083/ws/chat"
+const WS_URL = getWsEndpoint("CHAT")
 const RECONNECT_DELAY = 3000
 
 const logSendFlow = (event: string, payload: Record<string, unknown>) => {

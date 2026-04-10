@@ -1,6 +1,6 @@
 plugins {
 	id 'java'
-	id 'org.springframework.boot' version '4.0.1'
+	id 'org.springframework.boot' version '3.5.6'
 	id 'io.spring.dependency-management' version '1.1.7'
 }
 
@@ -24,6 +24,16 @@ repositories {
 	mavenCentral()
 }
 
+ext {
+    springCloudVersion = '2025.0.1'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+    }
+}
+
 dependencies {
     implementation project(':common:common-web')
     implementation project(':common:common-kafka')
@@ -38,9 +48,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
     implementation 'com.nimbusds:nimbus-jose-jwt'
-    implementation 'org.springframework.cloud:spring-cloud-starter-openfeign:5.0.1'
+    implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.14'
-    implementation 'org.springframework.boot:spring-boot-starter-kafka'
+    implementation 'org.springframework.kafka:spring-kafka'
     implementation 'com.cloudinary:cloudinary-http44:1.39.0'
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 

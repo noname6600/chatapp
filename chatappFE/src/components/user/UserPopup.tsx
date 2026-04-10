@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useUserOverlay } from "../../store/userOverlay.store";
 import { useUserStore } from "../../store/user.store";
 import { useFriendStore } from "../../store/friend.store";
 import { useAuth } from "../../store/auth.store";
 import { useChat } from "../../store/chat.store";
+import { useRooms } from "../../store/room.store";
 
 import {
   sendFriendRequestApi,
@@ -12,6 +14,9 @@ import {
 } from "../../api/friend.service";
 
 import { startPrivateChatApi } from "../../api/room.service";
+import { getUserByIdApi } from "../../api/user.service";
+import { resolveProfilePresentation } from "../../utils/profilePresentation";
+import ProfileIdentityCard from "../profile/ProfileIdentityCard";
 
 type FriendshipStatus =
   | "NONE"
@@ -23,13 +28,16 @@ type FriendshipStatus =
 
 export default function UserPopup() {
   const { userId, rect, source, close } = useUserOverlay();
+  const navigate = useNavigate();
   const { userId: myId } = useAuth();
   const { setActiveRoom, sendMessage } = useChat();
+  const { roomsById } = useRooms();
 
   const user = useUserStore((s) =>
     userId ? s.users[userId] : undefined
   );
   const fetchUsers = useUserStore((s) => s.fetchUsers);
+  const updateUserLocal = useUserStore((s) => s.updateUserLocal);
 
   const status = useFriendStore((s) =>
     userId ? (s.map[userId] as FriendshipStatus | undefined) : undefined
@@ -43,15 +51,21 @@ export default function UserPopup() {
   const [hoverFriend, setHoverFriend] = useState(false);
   const [hoverMore, setHoverMore] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [hoverInviteToGroup, setHoverInviteToGroup] = useState(false);
   const [showRemove, setShowRemove] = useState(false);
   const [dmText, setDmText] = useState("");
 
   const isSelf = userId === myId;
   const isPending = status === "REQUEST_SENT";
+  const presentation = resolveProfilePresentation(user ?? {}, { fallbackAbout: false });
+  const inviteableGroups = Object.values(roomsById)
+    .filter((room) => room.type === "GROUP")
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   /* ================= RESET WHEN SWITCH USER ================= */
   useEffect(() => {
     setMenuOpen(false);
+    setHoverInviteToGroup(false);
     setShowRemove(false);
     setDmText("");
   }, [userId]);
@@ -63,6 +77,29 @@ export default function UserPopup() {
     if (!user) fetchUsers([userId]);
     if (!status && !isSelf) resolve(userId);
   }, [userId, user, status, fetchUsers, resolve, isSelf]);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    // Bulk user fetches can omit profile fields like about/background; hydrate on-demand.
+    if (user?.aboutMe != null && user?.backgroundColor != null) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const profile = await getUserByIdApi(userId);
+        if (!cancelled) {
+          updateUserLocal(profile);
+        }
+      } catch {
+        // Keep existing cached user if detail hydration fails.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, user?.aboutMe, user?.backgroundColor, updateUserLocal]);
 
   /* ================= CLICK OUTSIDE ================= */
   useEffect(() => {
@@ -173,153 +210,199 @@ export default function UserPopup() {
 
       await sendMessage(room.id, trimmed);
 
+      navigate("/chat");
+
       setDmText("");
       close();
     });
   };
 
-  return (
-    <div
-      ref={popupRef}
-      style={style}
-      className="
-        bg-white rounded-2xl shadow-xl border border-gray-200
-        animate-in fade-in zoom-in-95
-      "
-    >
-      {/* HEADER */}
-      <div
-        className="h-20 rounded-t-2xl"
-        style={{
-          background:
-            user?.backgroundColor ||
-            "linear-gradient(to right, #6366f1, #a855f7)",
-        }}
-      />
+  const openProfileSettings = () => {
+    navigate("/settings");
+    close();
+  };
 
-      <div className="px-4 pb-4">
-        {/* AVATAR + ACTIONS */}
-        <div className="-mt-10 flex items-end gap-3">
-          <img
-            src={user?.avatarUrl || "/default-avatar.png"}
-            className="w-20 h-20 rounded-full border-4 border-white object-cover shadow"
-            draggable={false}
-          />
+  const sendGroupInvite = (groupRoomId: string) => {
+    if (!userId || isSelf) {
+      return;
+    }
 
-          <div className="ml-auto flex items-center gap-2">
-            {/* FRIEND BUTTON */}
+    const targetGroup = roomsById[groupRoomId];
+    if (!targetGroup || targetGroup.type !== "GROUP") {
+      return;
+    }
+
+    void runAsync(async () => {
+      const room = await startPrivateChatApi(userId);
+
+      window.dispatchEvent(new Event("rooms:reload"));
+
+      await setActiveRoom(room.id);
+      await sendMessage(room.id, "", [], null, [
+        {
+          type: "ROOM_INVITE",
+          roomInvite: {
+            roomId: targetGroup.id,
+            roomName: targetGroup.name,
+            roomAvatarUrl: targetGroup.avatarUrl ?? undefined,
+          },
+        },
+      ]);
+
+      navigate("/chat");
+      setMenuOpen(false);
+      close();
+    });
+  };
+
+  const topActions = (
+    <>
+      {!isSelf && (
+        <div className="relative">
+          <button
+            disabled={loading || isPending}
+            onClick={handleFriendClick}
+            onMouseEnter={() => setHoverFriend(true)}
+            onMouseLeave={() => setHoverFriend(false)}
+            className="w-9 h-9 rounded-lg border text-lg hover:bg-gray-100 transition"
+            aria-label="Friend actions"
+          >
+            {status === "FRIENDS" ? "✔" : "➕"}
+          </button>
+
+          {hoverFriend && <Tooltip>Friend</Tooltip>}
+
+          {showRemove && (
+            <div className="absolute right-0 top-11 z-20 w-40 rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+              <MenuItem
+                danger
+                onClick={() =>
+                  runAsync(async () => {
+                    await unfriendApi(userId);
+                    setStatus(userId, "NONE");
+                    setShowRemove(false);
+                  })
+                }
+              >
+                Unfriend
+              </MenuItem>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="relative">
+        <button
+          onClick={() => {
+            setMenuOpen((v) => !v);
+            setShowRemove(false);
+          }}
+          onMouseEnter={() => setHoverMore(true)}
+          onMouseLeave={() => setHoverMore(false)}
+          className="w-9 h-9 rounded-lg border text-lg hover:bg-gray-100 transition"
+          aria-label="More actions"
+        >
+          ⋯
+        </button>
+
+        {hoverMore && <Tooltip>More</Tooltip>}
+
+        {menuOpen && (
+          <div className="absolute right-0 top-11 z-20 w-44 rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+            <MenuItem>View full profile</MenuItem>
             {!isSelf && (
-              <div className="relative">
-                <button
-                  disabled={loading || isPending}
-                  onClick={handleFriendClick}
-                  onMouseEnter={() => setHoverFriend(true)}
-                  onMouseLeave={() => setHoverFriend(false)}
-                  className="
-                    w-9 h-9 rounded-lg border text-lg
-                    hover:bg-gray-100 transition
-                  "
-                >
-                  {status === "FRIENDS" ? "✔" : "➕"}
-                </button>
-
-                {hoverFriend && <Tooltip>Friend</Tooltip>}
-
-                {showRemove && (
-                  <div className="absolute left-11 top-0 w-36 bg-white border rounded-xl shadow-lg py-1">
-                    <MenuItem
-                      danger
-                      onClick={() =>
-                        runAsync(async () => {
-                          await unfriendApi(userId);
-                          setStatus(userId, "NONE");
-                          setShowRemove(false);
-                        })
-                      }
-                    >
-                      Unfriend
-                    </MenuItem>
+              <div
+                className="relative"
+                onMouseEnter={() => setHoverInviteToGroup(true)}
+                onMouseLeave={() => setHoverInviteToGroup(false)}
+              >
+                <MenuItem>Invite to group</MenuItem>
+                {hoverInviteToGroup && (
+                  <div className="absolute right-full top-0 mr-2 max-h-56 w-56 overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+                    {inviteableGroups.length === 0 ? (
+                      <div className="px-3 py-2 text-xs text-gray-500">No group available</div>
+                    ) : (
+                      inviteableGroups.map((room) => (
+                        <button
+                          key={room.id}
+                          type="button"
+                          onClick={() => sendGroupInvite(room.id)}
+                          className="w-full truncate px-3 py-2 text-left text-sm text-gray-700 transition hover:bg-gray-50"
+                        >
+                          {room.name}
+                        </button>
+                      ))
+                    )}
                   </div>
                 )}
               </div>
             )}
-
-            {/* MORE BUTTON */}
-            <div className="relative">
-              <button
-                onClick={() => {
-                  setMenuOpen((v) => !v);
-                  setShowRemove(false);
-                }}
-                onMouseEnter={() => setHoverMore(true)}
-                onMouseLeave={() => setHoverMore(false)}
-                className="
-                  w-9 h-9 rounded-lg border text-lg
-                  hover:bg-gray-100 transition
-                "
+            {!isSelf && (
+              <MenuItem
+                danger
+                onClick={() =>
+                  runAsync(async () => {
+                    await blockUserApi(userId);
+                    setStatus(userId, "BLOCKED_BY_ME");
+                    close();
+                  })
+                }
               >
-                ⋯
-              </button>
-
-              {hoverMore && <Tooltip>More</Tooltip>}
-
-              {menuOpen && (
-                <div className="absolute left-11 top-0 w-44 bg-white border rounded-xl shadow-lg py-1">
-                  <MenuItem>View full profile</MenuItem>
-                  {!isSelf && <MenuItem>Invite to server</MenuItem>}
-                  {!isSelf && (
-                    <MenuItem
-                      danger
-                      onClick={() =>
-                        runAsync(async () => {
-                          await blockUserApi(userId);
-                          setStatus(userId, "BLOCKED_BY_ME");
-                          close();
-                        })
-                      }
-                    >
-                      Block
-                    </MenuItem>
-                  )}
-                </div>
-              )}
-            </div>
+                Block
+              </MenuItem>
+            )}
           </div>
-        </div>
-
-        {/* USER INFO */}
-        <div className="mt-3">
-          <div className="text-lg font-semibold">
-            {user?.displayName || "Loading..."}
-          </div>
-          <div className="text-sm text-gray-500">
-            @{user?.username || "..."}
-          </div>
-
-          {user?.aboutMe && (
-            <div className="mt-2 text-sm text-gray-600">
-              {user.aboutMe}
-            </div>
-          )}
-        </div>
-
-        {/* MINI DM INPUT */}
-        <div className="mt-4">
-          {isSelf ? (
-            <button className="w-full py-2 rounded-xl bg-indigo-600 text-white text-sm hover:bg-indigo-500 transition">
-              Edit Profile
-            </button>
-          ) : (
-            <input
-              value={dmText}
-              onChange={(e) => setDmText(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && startMiniDM()}
-              placeholder="Send a message..."
-              className="w-full px-3 py-2 text-sm border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-          )}
-        </div>
+        )}
       </div>
+    </>
+  );
+
+  return (
+    <div
+      ref={popupRef}
+      style={style}
+      className="animate-in fade-in zoom-in-95"
+    >
+      <ProfileIdentityCard
+        presentation={presentation}
+        className="shadow-xl overflow-visible"
+        topActions={topActions}
+      >
+        {isSelf ? (
+          <button
+            onClick={openProfileSettings}
+            className="w-full rounded-xl bg-indigo-600 py-2 text-sm font-medium text-white hover:bg-indigo-500 transition"
+          >
+            Go to Profile Settings
+          </button>
+        ) : (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <input
+                value={dmText}
+                onChange={(e) => setDmText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void startMiniDM();
+                  }
+                }}
+                placeholder="Send a message..."
+                className="w-full rounded-xl border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <button
+                type="button"
+                aria-label="Insert emoji"
+                onClick={() => setDmText((prev) => `${prev}🙂`)}
+                className="h-10 w-10 rounded-xl border text-lg hover:bg-gray-100 transition"
+              >
+                🙂
+              </button>
+            </div>
+            <p className="text-xs text-gray-500">Press Enter to jump into full chat.</p>
+          </div>
+        )}
+      </ProfileIdentityCard>
     </div>
   );
 }

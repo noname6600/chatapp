@@ -54,6 +54,14 @@ public interface FriendshipRepository extends JpaRepository<Friendship, UUID> {
             OR (f.userLow = :u2 AND f.userHigh = :u1))
     """)
     boolean existsBlockBetween(UUID u1, UUID u2);
+
+    @Query("""
+        SELECT COUNT(f) FROM Friendship f
+        WHERE f.status = 'PENDING'
+          AND (f.userLow = :userId OR f.userHigh = :userId)
+          AND f.actionUserId != :userId
+    """)
+    long countUnreadFriendRequests(UUID userId);
 }
 
 

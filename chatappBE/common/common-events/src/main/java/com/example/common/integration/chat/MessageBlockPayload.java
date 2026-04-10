@@ -17,14 +17,18 @@ public final class MessageBlockPayload {
 
     private final AttachmentPayload attachment;
 
+    private final RoomInvitePayload roomInvite;
+
     @JsonCreator
     public MessageBlockPayload(
             @JsonProperty("type") String type,
             @JsonProperty("text") String text,
-            @JsonProperty("attachment") AttachmentPayload attachment
+            @JsonProperty("attachment") AttachmentPayload attachment,
+            @JsonProperty("roomInvite") RoomInvitePayload roomInvite
     ) {
         this.type = type;
         this.text = text;
         this.attachment = attachment;
+        this.roomInvite = roomInvite;
     }
 }

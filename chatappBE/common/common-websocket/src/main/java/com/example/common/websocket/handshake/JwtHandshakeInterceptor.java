@@ -19,10 +19,16 @@ public class JwtHandshakeInterceptor
 
     @Override
     public UUID resolveUserId(String token) {
-
-        Jwt jwt = jwtDecoder.decode(token);
-
-        return UUID.fromString(jwt.getSubject());
+        try {
+            log.info("[JWT-DECODE] 🔄 Decoding JWT token...");
+            Jwt jwt = jwtDecoder.decode(token);
+            UUID userId = UUID.fromString(jwt.getSubject());
+            log.info("[JWT-DECODE] ✅ Token decoded successfully - userId={}", userId);
+            return userId;
+        } catch (Exception e) {
+            log.error("[JWT-DECODE] ❌ Token decode failed - {} - {}", e.getClass().getSimpleName(), e.getMessage());
+            throw e;
+        }
     }
 }
 

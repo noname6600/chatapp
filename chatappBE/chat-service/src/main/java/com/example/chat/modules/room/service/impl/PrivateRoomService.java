@@ -88,6 +88,9 @@ public class PrivateRoomService implements IPrivateRoomService {
             UserBasicProfile user1 = map.get(u1);
             UserBasicProfile user2 = map.get(u2);
 
+            validateRequiredProfile(user1, u1);
+            validateRequiredProfile(user2, u2);
+
             Room room = Room.builder()
                     .type(RoomType.PRIVATE)
                     .createdBy(u1)
@@ -141,6 +144,16 @@ public class PrivateRoomService implements IPrivateRoomService {
             return buildRoom(room);
         }
     }
+
+        private void validateRequiredProfile(UserBasicProfile profile, UUID requestedUserId) {
+                if (profile == null
+                                || profile.getAccountId() == null
+                                || profile.getDisplayName() == null
+                                || profile.getAvatarUrl() == null) {
+                        log.warn("Invalid user profile for private chat startup. requestedUserId={}", requestedUserId);
+                        throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "Not found users");
+                }
+        }
 
     private RoomMember member(
             UUID roomId,

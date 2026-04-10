@@ -25,4 +25,7 @@ public class MessageBlockRequest {
 
     @Valid
     private AttachmentRequest attachment;
+
+    @Valid
+    private RoomInviteRequest roomInvite;
 }

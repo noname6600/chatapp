@@ -1,6 +1,6 @@
 import { userApi } from "./user.api"
 import { unwrap } from "../utils/unwrap"
-import { extractErrorMessage } from "../utils/error"
+import { extractErrorCode, extractErrorMessage, extractErrorStatus } from "../utils/error"
 import {
   confirmUploadApi,
   prepareUploadApi,
@@ -28,21 +28,27 @@ const normalizeBulkProfile = (raw: UserProfile | Record<string, unknown>): UserP
 }
 
 // =========================
-// Các hàm GET
+// GET
 // =========================
 
 export const getMyProfileApi = async (): Promise<UserProfile> => {
   try {
-    const res = await userApi.get<ApiResponse<UserProfile>>("/users/me")
+    const res = await userApi.get<ApiResponse<UserProfile>>("/me")
     return unwrap(res)
   } catch (error) {
-    throw new Error(extractErrorMessage(error))
+    const wrapped = new Error(extractErrorMessage(error)) as Error & {
+      code?: string
+      status?: number
+    }
+    wrapped.code = extractErrorCode(error) ?? undefined
+    wrapped.status = extractErrorStatus(error) ?? undefined
+    throw wrapped
   }
 }
 
 export const getUserByIdApi = async (id: string): Promise<UserProfile> => {
   try {
-    const res = await userApi.get<ApiResponse<UserProfile>>(`/users/${id}`)
+    const res = await userApi.get<ApiResponse<UserProfile>>(`/${id}`)
     return unwrap(res)
   } catch (error) {
     throw new Error(extractErrorMessage(error))
@@ -55,9 +61,11 @@ export const getUsersBulkApi = async (ids: string[]): Promise<UserProfile[]> => 
       console.log("[mention-debug] getUsersBulkApi request", { ids, count: ids.length })
     }
 
-    const res = await userApi.post<ApiResponse<UserProfile[]>>("/users/bulk", ids)
+    const res = await userApi.post<ApiResponse<UserProfile[]>>("/bulk", ids)
 
-    const data = unwrap(res).map((item) => normalizeBulkProfile(item as UserProfile | Record<string, unknown>))
+    const data = unwrap(res).map((item) =>
+      normalizeBulkProfile(item as UserProfile | Record<string, unknown>)
+    )
 
     if (MENTION_DEBUG) {
       data.forEach((u) => {
@@ -73,15 +81,32 @@ export const getUsersBulkApi = async (ids: string[]): Promise<UserProfile[]> => 
   }
 }
 
+export const searchUserByUsernameApi = async (
+  username: string
+): Promise<UserProfile | null> => {
+  try {
+    const res = await userApi.get<ApiResponse<UserProfile>>(
+      `/search?username=${encodeURIComponent(username)}`
+    )
+    return unwrap(res)
+  } catch (error: unknown) {
+    const status = (error as { response?: { status?: number } })?.response?.status
+    if (status === 404) {
+      return null
+    }
+    throw new Error(extractErrorMessage(error))
+  }
+}
+
 // =========================
-// Các hàm PATCH / POST
+// PATCH / POST
 // =========================
 
 export const updateMyProfileApi = async (
   payload: UpdateProfileRequest
 ): Promise<void> => {
   try {
-    const res = await userApi.patch<ApiResponse<null>>("/users/me", payload)
+    const res = await userApi.patch<ApiResponse<null>>("/me", payload)
     unwrap(res)
   } catch (error) {
     throw new Error(extractErrorMessage(error))
@@ -109,7 +134,7 @@ export const uploadAvatarApi = async (file: File): Promise<string> => {
     })
 
     const res = await userApi.post<ApiResponse<{ avatarUrl: string }>>(
-      "/users/me/avatar",
+      "/me/avatar",
       {
         publicId: confirmed.publicId,
         secureUrl: confirmed.secureUrl,

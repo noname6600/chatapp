@@ -59,6 +59,19 @@ export const joinRoomByCodeApi = async (
   }
 }
 
+export const joinRoomByInviteApi = async (
+  roomId: string
+): Promise<void> => {
+  try {
+    const res = await chatApi.post<ApiResponse<void>>(
+      `/rooms/${roomId}/join`
+    )
+    unwrap(res)
+  } catch (error) {
+    throw new Error(extractErrorMessage(error))
+  }
+}
+
 // =========================
 // UPDATE ROOM NAME
 // =========================

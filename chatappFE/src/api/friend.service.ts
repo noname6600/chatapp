@@ -16,6 +16,15 @@ export const sendFriendRequestApi = async (id: string): Promise<void> => {
   }
 }
 
+export const sendFriendRequestByUsernameApi = async (username: string): Promise<void> => {
+  try {
+    const res = await friendApi.post<ApiResponse<null>>("/friends/request/username", { username })
+    unwrap(res)
+  } catch (error) {
+    throw new Error(extractErrorMessage(error))
+  }
+}
+
 export const acceptFriendApi = async (id: string): Promise<void> => {
   try {
     const res = await friendApi.post<ApiResponse<null>>(`/friends/accept/${id}`)
@@ -124,6 +133,15 @@ export const getBlockedByMeApi = async (): Promise<string[]> => {
 export const getBlockedMeApi = async (): Promise<string[]> => {
   try {
     const res = await friendApi.get<ApiResponse<string[]>>("/friends/blocks/by-others")
+    return unwrap(res)
+  } catch (error) {
+    throw new Error(extractErrorMessage(error))
+  }
+}
+
+export const getUnreadFriendRequestCountApi = async (): Promise<{ unreadCount: number }> => {
+  try {
+    const res = await friendApi.get<ApiResponse<{ unreadCount: number }>>("/friends/unread-count")
     return unwrap(res)
   } catch (error) {
     throw new Error(extractErrorMessage(error))

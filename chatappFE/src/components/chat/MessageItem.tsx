@@ -86,7 +86,7 @@ const renderContentWithMentions = (
 
     chunks.push(
       mentionUserId ? (
-        <Username key={`mention-${tokenIndex}`} userId={mentionUserId}>
+        <Username key={`mention-${tokenIndex}`} userId={mentionUserId} source="MENTION">
           {mentionNode}
         </Username>
       ) : (
@@ -398,7 +398,7 @@ export default function MessageItem({
       )}
 
       {/* Right Column - User info and content */}
-      <div className="flex flex-col min-w-0 flex-1">
+      <div className={`flex flex-col min-w-0 flex-1 transition-opacity duration-200 ${m.deliveryStatus === "pending" ? "opacity-60" : ""}`}>
         <MessageHeader
           show={showUserInfo}
           userId={m.senderId}
@@ -406,6 +406,12 @@ export default function MessageItem({
             users[m.senderId]?.displayName || users[m.senderId]?.username || "Unknown"
           }
           createdAt={m.createdAt}
+          deliveryStatus={m.deliveryStatus}
+          onRetry={() => void retryMessage(m.roomId, m.messageId)}
+          onDelete={() => {
+            setDeleting(m.messageId, m.content || "");
+            onShowDeleteDialog?.();
+          }}
         />
 
         {isEditing ? (
@@ -456,34 +462,6 @@ export default function MessageItem({
           />
         )}
 
-        {m.deliveryStatus === "pending" && (
-          <div className="mt-0.5 text-xs text-amber-600">Sending...</div>
-        )}
-
-        {m.deliveryStatus === "failed" && (
-          <div className="mt-0.5 flex items-center gap-2 text-xs text-red-600">
-            <span>Failed to send</span>
-            <button
-              type="button"
-              onClick={() => void retryMessage(m.roomId, m.messageId)}
-              className="rounded px-1.5 py-0.5 border border-red-200 hover:bg-red-50"
-            >
-              Retry
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setDeleting(m.messageId, m.content || "");
-                onShowDeleteDialog?.();
-              }}
-              className="rounded px-1.5 py-0.5 border border-red-200 hover:bg-red-50 text-red-600 hover:text-red-700"
-              title="Delete failed message"
-            >
-              Delete
-            </button>
-          </div>
-        )}
-
         {/* Attachments */}
         {!hasStructuredBlocks && <AttachmentDisplay attachments={m.attachments} />}
 
@@ -531,25 +509,84 @@ function MessageHeader({
   userId,
   displayName,
   createdAt,
+  deliveryStatus,
+  onRetry,
+  onDelete,
 }: {
   show: boolean;
   userId: string;
   displayName: string;
   createdAt: string;
+  deliveryStatus?: string;
+  onRetry?: () => void;
+  onDelete?: () => void;
 }) {
-  if (!show) return null;
+  if (!show) {
+    // For grouped messages (header hidden), only show failed state (not pending —
+    // pending uses opacity on the wrapper and adds no height).
+    if (deliveryStatus !== "failed") return null;
+    return (
+      <div className="flex flex-wrap items-center gap-1 mb-0">
+        <span className="flex flex-wrap items-center gap-1 text-xs text-red-500">
+          <span className="whitespace-nowrap">Failed to send</span>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="rounded px-1.5 py-0.5 border border-red-200 hover:bg-red-50 whitespace-nowrap"
+          >
+            Retry
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            className="rounded px-1.5 py-0.5 border border-red-200 hover:bg-red-50 text-red-500 hover:text-red-700 whitespace-nowrap"
+            title="Delete failed message"
+          >
+            Delete
+          </button>
+        </span>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex items-baseline gap-2 mb-0">
+    <div className="flex flex-wrap items-baseline gap-2 mb-0">
       <Username userId={userId}>
         <span className="font-semibold text-sm text-gray-900">{displayName}</span>
       </Username>
+      {/* Pending: amber timestamp — same space as normal, zero height change */}
       <span
-        className="text-xs text-gray-400 whitespace-nowrap"
+        className={`text-xs whitespace-nowrap ${
+          deliveryStatus === "pending"
+            ? "text-amber-400"
+            : deliveryStatus === "failed"
+              ? "text-red-400"
+              : "text-gray-400"
+        }`}
         title={new Date(createdAt).toLocaleString()}
       >
         {formatMessageTimestamp(createdAt)}
       </span>
+      {deliveryStatus === "failed" && (
+        <span className="flex flex-wrap items-center gap-1 text-xs text-red-500">
+          <span className="whitespace-nowrap">Failed to send</span>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="rounded px-1.5 py-0.5 border border-red-200 hover:bg-red-50 whitespace-nowrap"
+          >
+            Retry
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            className="rounded px-1.5 py-0.5 border border-red-200 hover:bg-red-50 text-red-500 hover:text-red-700 whitespace-nowrap"
+            title="Delete failed message"
+          >
+            Delete
+          </button>
+        </span>
+      )}
     </div>
   );
 }

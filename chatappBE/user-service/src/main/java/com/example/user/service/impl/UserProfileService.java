@@ -33,6 +33,9 @@ public class UserProfileService implements IUserProfileService {
     private static final Pattern HEX_COLOR =
             Pattern.compile("^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$");
 
+        private static final Pattern USERNAME_PATTERN =
+            Pattern.compile("^[a-zA-Z0-9.,_]{3,30}$");
+
     private static final long AVATAR_MAX_BYTES = 5L * 1024 * 1024;
 
     private final UserProfileRepository repo;
@@ -62,9 +65,14 @@ public class UserProfileService implements IUserProfileService {
         return getProfile(targetId);
     }
 
+    @Override
+    public boolean existsByAccountId(UUID accountId) {
+        return repo.existsById(accountId);
+    }
+
     private UserProfileResponse getProfile(UUID id) {
 
-        UserProfileResponse cached = profileCache.get(id, UserProfileResponse.class);
+        UserProfileResponse cached = safeGetProfileFromCache(id);
         if (cached != null) {
             return cached;
         }
@@ -76,9 +84,36 @@ public class UserProfileService implements IUserProfileService {
 
         UserProfileResponse response = toResponse(profile);
 
-        profileCache.put(id, response, PROFILE_TTL);
+        safePutProfileToCache(id, response);
 
         return response;
+    }
+
+    private UserProfileResponse safeGetProfileFromCache(UUID accountId) {
+        try {
+            return profileCache.get(accountId, UserProfileResponse.class);
+        } catch (RuntimeException ex) {
+            log.warn(
+                    "[USER-PROFILE-CACHE] operation=cache_get_failed accountId={} errorType={} message={}",
+                    accountId,
+                    ex.getClass().getSimpleName(),
+                    ex.getMessage()
+            );
+            return null;
+        }
+    }
+
+    private void safePutProfileToCache(UUID accountId, UserProfileResponse response) {
+        try {
+            profileCache.put(accountId, response, PROFILE_TTL);
+        } catch (RuntimeException ex) {
+            log.warn(
+                    "[USER-PROFILE-CACHE] operation=cache_put_failed accountId={} errorType={} message={}",
+                    accountId,
+                    ex.getClass().getSimpleName(),
+                    ex.getMessage()
+            );
+        }
     }
 
     @Override
@@ -95,7 +130,18 @@ public class UserProfileService implements IUserProfileService {
 
             if (!newUsername.isEmpty() && !newUsername.equals(profile.getUsername())) {
 
-                if (repo.existsByUsername(newUsername)) {
+                if (!USERNAME_PATTERN.matcher(newUsername).matches()) {
+                    throw new BusinessException(
+                            ErrorCode.VALIDATION_ERROR,
+                            "Username must be 3-30 chars and only include letters, numbers, dot(.), underscore(_), comma(,)"
+                    );
+                }
+
+                boolean takenByAnother = repo.findByUsernameIgnoreCase(newUsername)
+                        .filter(existing -> !existing.getAccountId().equals(accountId))
+                        .isPresent();
+
+                if (takenByAnother) {
                     throw new BusinessException(ErrorCode.CONFLICT, "Username already taken");
                 }
 
@@ -171,6 +217,13 @@ public class UserProfileService implements IUserProfileService {
         return profiles.stream()
             .map(this::toBasicResponse)
             .toList();
+    }
+
+    @Override
+    public UserBasicProfile searchByUsername(String username) {
+        UserProfile profile = repo.findByUsernameIgnoreCase(username)
+                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "User not found"));
+        return toBasicResponse(profile);
     }
 
     private UploadAssetMetadata toUploadAssetMetadata(AvatarMetadataRequest request) {

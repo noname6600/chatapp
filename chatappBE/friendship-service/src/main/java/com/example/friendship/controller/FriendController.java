@@ -2,9 +2,16 @@ package com.example.friendship.controller;
 
 import com.example.common.web.controller.BaseController;
 import com.example.common.web.response.ApiResponse;
+import com.example.friendship.dto.SendFriendRequestByUsernameRequest;
+import com.example.friendship.dto.UnreadCountResponse;
 import com.example.friendship.enums.FriendshipStatus;
 import com.example.friendship.service.IFriendCommandService;
 import com.example.friendship.service.IFriendQueryService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -22,7 +29,16 @@ public class FriendController extends BaseController {
     private final IFriendQueryService queryService;
 
 
-    @PostMapping("/request/{userId}")
+    @PostMapping("/request/username")
+    public ResponseEntity<ApiResponse<Void>> sendRequestByUsername(
+            @AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody SendFriendRequestByUsernameRequest request
+    ) {
+        commandService.sendRequestByUsername(currentUserId(jwt), request.getUsername().trim());
+        return ok();
+    }
+
+    @PostMapping("/request/{userId:[0-9a-fA-F\\-]{36}}")
     public ResponseEntity<ApiResponse<Void>> sendRequest(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID userId
@@ -128,6 +144,24 @@ public class FriendController extends BaseController {
     ) {
         FriendshipStatus status = queryService.getStatus(currentUserId(jwt), userId);
         return ok(status != null ? status.name() : "NONE");
+    }
+
+    @GetMapping("/unread-count")
+        @Operation(summary = "Get unread friend request count")
+        @ApiResponses(value = {
+                @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "200",
+                description = "Unread friend request count returned successfully",
+                content = @Content(schema = @Schema(implementation = UnreadCountResponse.class))
+            )
+        })
+    public ResponseEntity<ApiResponse<UnreadCountResponse>> getUnreadCount(
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        long unreadCount = queryService.getUnreadFriendRequestCount(currentUserId(jwt));
+        return ok(UnreadCountResponse.builder()
+                .unreadCount(unreadCount)
+                .build());
     }
 }
 

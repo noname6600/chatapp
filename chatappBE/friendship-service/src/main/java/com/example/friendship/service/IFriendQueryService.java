@@ -12,4 +12,5 @@ public interface IFriendQueryService {
     List<UUID> getBlockedByMe(UUID userId);
     List<UUID> getBlockedMe(UUID userId);
     FriendshipStatus getStatus(UUID user1, UUID user2);
+    long getUnreadFriendRequestCount(UUID userId);
 }

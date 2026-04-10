@@ -65,7 +65,7 @@ export const filterMentionSuggestions = (
 
   const suggestions = Object.values(usersById)
     .map<RankedCandidate | null>((user) => {
-      if (!user) return null
+      if (!user || !user.accountId) return null
       if (hasRoomScope && !candidateSet.has(user.accountId)) return null
       if (!hasQuery && currentUserId && user.accountId === currentUserId) return null
 

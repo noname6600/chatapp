@@ -96,14 +96,23 @@ export const sendMessageApi = async (
     const normalizedBlocks: MessageBlock[] | undefined =
       payload.blocks && payload.blocks.length > 0
         ? payload.blocks
-            .filter((block) => block.type === "ASSET" ? Boolean(block.attachment) : Boolean(block.text?.trim()))
+            .filter((block) => {
+              if (block.type === "ASSET") {
+                return Boolean(block.attachment)
+              }
+              if (block.type === "ROOM_INVITE") {
+                return Boolean(block.roomInvite?.roomId)
+              }
+              return Boolean(block.text?.trim())
+            })
             .map((block) =>
               block.type === "TEXT"
                 ? {
                     type: "TEXT",
                     text: block.text ?? "",
                   }
-                : {
+                : block.type === "ASSET"
+                ? {
                     type: "ASSET",
                     attachment: block.attachment
                       ? {
@@ -115,6 +124,17 @@ export const sendMessageApi = async (
                           width: block.attachment.width,
                           height: block.attachment.height,
                           duration: block.attachment.duration,
+                        }
+                      : undefined,
+                  }
+                : {
+                    type: "ROOM_INVITE",
+                    roomInvite: block.roomInvite
+                      ? {
+                          roomId: block.roomInvite.roomId,
+                          roomName: block.roomInvite.roomName,
+                          roomAvatarUrl: block.roomInvite.roomAvatarUrl,
+                          memberCount: block.roomInvite.memberCount,
                         }
                       : undefined,
                   }

@@ -57,5 +57,6 @@ class RoomMuteControllerTest {
         assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().getData().isMuted()).isTrue();
+        verify(roomMuteSettingService).isMuted(userId, roomId);
     }
 }

@@ -261,12 +261,17 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       oldestSeqByRoom.current[msg.roomId] = trimmed[0]?.seq ?? null;
       newestSeqByRoom.current[msg.roomId] = trimmed.at(-1)?.seq ?? null;
 
-      const incomingLatest = msg.seq ?? null;
-      const currentLatest = latestSeqByRoom.current[msg.roomId] ?? null;
-      latestSeqByRoom.current[msg.roomId] =
-        currentLatest == null || (incomingLatest != null && incomingLatest > currentLatest)
-          ? incomingLatest
-          : currentLatest;
+      // Only server-confirmed messages are authoritative for latestSeq.
+      // Optimistic placeholders use Number.MAX_SAFE_INTEGER as a temp ordering
+      // sentinel and must not poison the behind-latest or unread calculations.
+      if (!isOptimisticTemp) {
+        const incomingLatest = msg.seq ?? null;
+        const currentLatest = latestSeqByRoom.current[msg.roomId] ?? null;
+        latestSeqByRoom.current[msg.roomId] =
+          currentLatest == null || (incomingLatest != null && incomingLatest > currentLatest)
+            ? incomingLatest
+            : currentLatest;
+      }
 
       const newest = newestSeqByRoom.current[msg.roomId];
       const latest = latestSeqByRoom.current[msg.roomId];
@@ -468,7 +473,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         upsertMessageRef.current(event.payload);
 
         // =========== AUTO-SCROLL WHEN AT BOTTOM (Task 2.1) ===========
+        // Skip scroll for own messages confirmed via WS — the optimistic insert
+        // already triggered a scroll when the message was added. Scrolling again
+        // here causes a visible double-jump. Only scroll for messages from others.
+        const isOwnMessageConfirmation = Boolean(event.payload.clientMessageId);
         if (
+          !isOwnMessageConfirmation &&
           isFeatureEnabled("enableAutoScrollOnNewMessage") &&
           activeRoomIdRef.current === roomId
         ) {

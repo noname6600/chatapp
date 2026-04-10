@@ -1,5 +1,7 @@
 package com.example.auth.service;
 
+import java.util.UUID;
+
 public interface IPasswordService {
-    void changePassword(String accountId, String oldPass, String newPass);
+    void changePassword(UUID accountId, String oldPass, String newPass);
 }

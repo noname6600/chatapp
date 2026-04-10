@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { MessageSquarePlus } from "lucide-react";
+import { ChevronDown, ChevronRight, MessageSquarePlus } from "lucide-react";
 import { useChat } from "../../store/chat.store";
 import { useRooms } from "../../store/room.store";
 import { getSplitRoomSections } from "../../utils/roomListIntegrity";
@@ -9,6 +9,8 @@ import PrivateRoomItem from "./PrivateRoomItem";
 
 export default function RoomList() {
   const [showConversationModal, setShowConversationModal] = useState(false);
+  const [groupsOpen, setGroupsOpen] = useState(true);
+  const [dmsOpen, setDmsOpen] = useState(true);
   const { activeRoomId, setActiveRoom } = useChat();
   const { roomsById, roomOrder } = useRooms();
 
@@ -27,15 +29,17 @@ export default function RoomList() {
   const hasNoRooms = groupRoomIds.length === 0 && privateRoomIds.length === 0;
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-white">
       {/* Find or Start Conversation Button */}
-      <button
-        onClick={() => setShowConversationModal(true)}
-        className="m-3 flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg font-medium hover:from-blue-600 hover:to-blue-700 transition shadow-md"
-      >
-        <MessageSquarePlus size={18} />
-        Find or start a conversation
-      </button>
+      <div className="px-3 pt-3 pb-2">
+        <button
+          onClick={() => setShowConversationModal(true)}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-medium text-sm hover:from-blue-600 hover:to-blue-700 transition-all shadow-sm hover:shadow-md"
+        >
+          <MessageSquarePlus size={16} />
+          Find or start a conversation
+        </button>
+      </div>
 
       {/* Empty State */}
       {hasNoRooms && (
@@ -51,53 +55,95 @@ export default function RoomList() {
 
       {/* Rooms List */}
       {!hasNoRooms && (
-        <div className="flex-1 overflow-visible flex border-t">
-          {groupRoomIds.length > 0 && (
-            <div className="flex flex-col items-center gap-2 p-3 border-r bg-gray-50 overflow-y-auto overflow-x-hidden relative z-10">
-              {groupRoomIds.map((roomId) => {
-                const room = roomsById[roomId];
-                if (!room) return null;
+        <div className="flex-1 overflow-hidden flex flex-col border-t border-gray-100">
 
-                return (
-                  <GroupRoomItem
-                    key={roomId}
-                    room={room}
-                    isActive={activeRoomId === roomId}
-                    onClick={() => handleRoomClick(roomId)}
-                  />
-                );
-              })}
+          {/* Groups Section */}
+          {groupRoomIds.length > 0 && (
+            <div className="flex flex-col border-b border-gray-100">
+              {/* Groups Header */}
+              <button
+                onClick={() => setGroupsOpen((o) => !o)}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider hover:bg-gray-50 transition-colors w-full text-left select-none"
+              >
+                {groupsOpen ? (
+                  <ChevronDown size={13} className="text-gray-400 flex-shrink-0" />
+                ) : (
+                  <ChevronRight size={13} className="text-gray-400 flex-shrink-0" />
+                )}
+                <span>Groups</span>
+                <span className="ml-auto text-gray-400 font-normal normal-case tracking-normal">
+                  {groupRoomIds.length}
+                </span>
+              </button>
+
+              {/* Groups Content */}
+              {groupsOpen && (
+                <div className="flex flex-col overflow-y-auto">
+                  {groupRoomIds.map((roomId) => {
+                    const room = roomsById[roomId];
+                    if (!room) return null;
+                    return (
+                      <GroupRoomItem
+                        key={roomId}
+                        room={room}
+                        isActive={activeRoomId === roomId}
+                        onClick={() => handleRoomClick(roomId)}
+                      />
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
-          <div className="flex-1 flex flex-col overflow-y-auto">
-            {privateRoomIds.length > 0 ? (
-              privateRoomIds.map((roomId) => {
-                const room = roomsById[roomId];
-                if (!room) return null;
+          {/* Direct Messages Section */}
+          <div className="flex flex-col flex-1 min-h-0">
+            {/* DMs Header */}
+            <button
+              onClick={() => setDmsOpen((o) => !o)}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider hover:bg-gray-50 transition-colors w-full text-left select-none flex-shrink-0"
+            >
+              {dmsOpen ? (
+                <ChevronDown size={13} className="text-gray-400 flex-shrink-0" />
+              ) : (
+                <ChevronRight size={13} className="text-gray-400 flex-shrink-0" />
+              )}
+              <span>Direct Messages</span>
+              <span className="ml-auto text-gray-400 font-normal normal-case tracking-normal">
+                {privateRoomIds.length}
+              </span>
+            </button>
 
-                return (
-                  <PrivateRoomItem
-                    key={roomId}
-                    room={room}
-                    isActive={activeRoomId === roomId}
-                    onClick={() => handleRoomClick(roomId)}
-                  />
-                );
-              })
-            ) : (
-              <div className="flex-1 flex items-center justify-center px-4 py-8 text-center">
-                <div className="space-y-2">
-                  <p className="text-gray-500 text-sm">
-                    No private messages yet.
-                  </p>
-                  <p className="text-gray-400 text-xs">
-                    Use the button above to start a conversation!
-                  </p>
-                </div>
+            {/* DMs Content */}
+            {dmsOpen && (
+              <div className="flex-1 overflow-y-auto">
+                {privateRoomIds.length > 0 ? (
+                  privateRoomIds.map((roomId) => {
+                    const room = roomsById[roomId];
+                    if (!room) return null;
+                    return (
+                      <PrivateRoomItem
+                        key={roomId}
+                        room={room}
+                        isActive={activeRoomId === roomId}
+                        onClick={() => handleRoomClick(roomId)}
+                      />
+                    );
+                  })
+                ) : (
+                  <div className="flex items-center justify-center px-4 py-8 text-center">
+                    <div className="space-y-1">
+                      <p className="text-gray-400 text-sm">No direct messages yet.</p>
+                      <p className="text-gray-300 text-xs">
+                        Use the button above to start a conversation!
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
+
         </div>
       )}
 

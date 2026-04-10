@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Users, Settings, LogOut } from "lucide-react";
+import { ChevronDown, Users, Settings, LogOut, PanelRightClose, PanelRightOpen } from "lucide-react";
 import type { Room } from "../../types/room";
 
 interface RoomHeaderProps {
@@ -8,6 +8,8 @@ interface RoomHeaderProps {
   onInvite?: () => void;
   onSettings?: () => void;
   onLeave?: () => void;
+  membersOpen?: boolean;
+  onToggleMembers?: () => void;
 }
 
 export default function RoomHeader({
@@ -16,6 +18,8 @@ export default function RoomHeader({
   onInvite,
   onSettings,
   onLeave,
+  membersOpen,
+  onToggleMembers,
 }: RoomHeaderProps) {
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -95,12 +99,23 @@ export default function RoomHeader({
         <div className="font-semibold text-gray-900">{displayName}</div>
       )}
 
-      {/* Right: Room Avatar */}
-      <img
-        src={room.avatarUrl || "/default-avatar.png"}
-        alt={displayName}
-        className="w-8 h-8 rounded-full object-cover"
-      />
+      {/* Right: Avatar + Members Toggle */}
+      <div className="flex items-center gap-2">
+        {onToggleMembers && (
+          <button
+            onClick={onToggleMembers}
+            className="p-1.5 rounded-lg text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors"
+            title={membersOpen ? "Hide members" : "Show members"}
+          >
+            {membersOpen ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}
+          </button>
+        )}
+        <img
+          src={room.avatarUrl || "/default-avatar.png"}
+          alt={displayName}
+          className="w-8 h-8 rounded-full object-cover"
+        />
+      </div>
     </div>
   );
 }

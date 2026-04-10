@@ -9,15 +9,26 @@ export const createBaseApi = (baseURL: string): AxiosInstance => {
     timeout: 10000
   })
 
+  const emitAuthLogout = () => {
+    window.dispatchEvent(new Event("auth:logout"))
+  }
+
   // refresh logic
   const refreshAuthLogic = async (failedRequest: any) => {
     const refreshToken = localStorage.getItem("refresh_token")
 
     if (!refreshToken) {
-      return Promise.reject("No refresh token")
+      emitAuthLogout()
+      return Promise.reject(new Error("Session expired"))
     }
 
-    const tokens = await refreshTokenApi(refreshToken)
+    let tokens
+    try {
+      tokens = await refreshTokenApi(refreshToken)
+    } catch (error) {
+      emitAuthLogout()
+      return Promise.reject(error)
+    }
 
     localStorage.setItem("access_token", tokens.accessToken)
     localStorage.setItem("refresh_token", tokens.refreshToken)
@@ -26,8 +37,17 @@ export const createBaseApi = (baseURL: string): AxiosInstance => {
       "Bearer " + tokens.accessToken
   }
 
-  // refresh interceptor
-  createAuthRefreshInterceptor(api, refreshAuthLogic)
+  // refresh interceptor — skip token refresh for auth endpoints that intentionally return 401
+  createAuthRefreshInterceptor(api, refreshAuthLogic, {
+    shouldRefresh: (error) => {
+      const url = error?.config?.url ?? ""
+      const responseCode = error?.response?.data?.error?.code ?? error?.response?.data?.code
+      if (responseCode === "INCOMPLETE_ACCOUNT") {
+        return false
+      }
+      return !url.includes("/login") && !url.includes("/register") && !url.includes("/refresh")
+    }
+  })
 
   // request interceptor
   api.interceptors.request.use((config) => {

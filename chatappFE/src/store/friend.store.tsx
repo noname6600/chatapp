@@ -10,18 +10,42 @@ import type { FriendStatus } from "../types/friend";
 
 export interface FriendState {
   map: Record<string, FriendStatus>;
+  unreadFriendRequestCount: number;
   resolve: (userId: string) => Promise<void>;
   setStatus: (userId: string, status: FriendStatus) => void;
+  setUnreadCount: (count: number) => void;
+  incrementUnreadFriendRequestCount: () => void;
+  decrementUnreadFriendRequestCount: () => void;
   clear: () => void;
 }
 
 export const useFriendStore = create<FriendState>((set, get) => ({
   map: {},
+  unreadFriendRequestCount: 0,
 
-  clear: () => set({ map: {} }),
+  clear: () => set({ map: {}, unreadFriendRequestCount: 0 }),
 
   setStatus: (userId, status) =>
     set((s) => ({ map: { ...s.map, [userId]: status } })),
+
+  setUnreadCount: (count) => {
+    console.log("[friend.store] setUnreadCount:", count);
+    set({ unreadFriendRequestCount: count });
+  },
+
+  incrementUnreadFriendRequestCount: () => {
+    const current = get().unreadFriendRequestCount;
+    const next = Math.max(0, current + 1);
+    console.log("[friend.store] incrementUnreadFriendRequestCount:", current, "→", next);
+    set({ unreadFriendRequestCount: next });
+  },
+
+  decrementUnreadFriendRequestCount: () => {
+    const current = get().unreadFriendRequestCount;
+    const next = Math.max(0, current - 1);
+    console.log("[friend.store] decrementUnreadFriendRequestCount:", current, "→", next);
+    set({ unreadFriendRequestCount: next });
+  },
 
   resolve: async (userId: string) => {
     const existing = get().map[userId];

@@ -84,3 +84,58 @@ export default defineConfig([
 - `src/components/chat/EditedIndicator.tsx`
 - `src/components/chat/MessageItem.tsx`
 - `src/components/chat/MessageBlocks.tsx`
+
+## Friendship Realtime Events
+
+The frontend listens to friendship websocket messages from the friendship service and updates friend-request UI state in realtime.
+
+Supported friendship websocket message types:
+
+- `FRIEND_REQUEST_RECEIVED`: increments the unread friend-request badge and inserts the requester into the pending list.
+- `FRIEND_REQUEST_ACCEPTED`: reconciles badge state and promotes the relationship to `FRIENDS` in the UI.
+- `FRIEND_REQUEST_DECLINED`: removes the pending request from local UI state.
+- `FRIEND_REQUEST_CANCELLED`: removes the cancelled request from local UI state.
+- `FRIEND_STATUS_CHANGED`: reconciles friendship status changes such as unfriend/block flows.
+
+Related files:
+
+- `src/websocket/friendship.socket.ts`
+- `src/store/friendship.provider.tsx`
+- `src/components/FriendRequestBadge.tsx`
+- `src/pages/FriendsPage.tsx`
+
+## Deployment Environment Guide
+
+Frontend runtime is designed to work behind gateway ingress and should use environment-based URLs.
+
+### Local Mode Defaults
+
+Use `chatappFE/.env.local`:
+
+- `VITE_API_URL=http://localhost:8080/api/v1`
+- `VITE_WS_URL=ws://localhost:8080`
+
+This routes REST and WebSocket traffic through gateway in local mode.
+
+### VPS Production Defaults
+
+Use `chatappFE/.env.production`:
+
+- `VITE_API_URL=https://api.chatweb.nani.id.vn/api/v1`
+- `VITE_WS_URL=wss://api.chatweb.nani.id.vn`
+
+Domain mapping:
+
+- Frontend domain: `https://chatweb.nani.id.vn`
+- API and WebSocket ingress: `https://api.chatweb.nani.id.vn`
+
+### One-Command VPS Startup
+
+The full stack (backend, frontend, nginx) is started from backend compose:
+
+```bash
+cd chatappBE
+docker compose --env-file .env.production -f docker-compose.yml up -d --build
+```
+
+See `chatappBE/DEPLOY.md` for preflight, verification, troubleshooting, and rollback.

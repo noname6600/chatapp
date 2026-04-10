@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Search, X, Copy, Check } from "lucide-react";
 import { useUserStore } from "../../store/user.store";
-import { inviteMemberApi, getRoomCode } from "../../api/room.service";
+import { getRoomCode, getRoomMembers } from "../../api/room.service";
 import type { Room } from "../../types/room";
 import {
   shouldApplyRoomCodeResponse,
@@ -12,12 +12,14 @@ interface InviteMembersModalProps {
   isOpen: boolean;
   room: Room;
   onClose: () => void;
+  onInviteUser: (userId: string) => Promise<void>;
 }
 
 export default function InviteMembersModal({
   isOpen,
   room,
   onClose,
+  onInviteUser,
 }: InviteMembersModalProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [invitingUserId, setInvitingUserId] = useState<string | null>(null);
@@ -26,12 +28,28 @@ export default function InviteMembersModal({
     Record<string, string>
   >({});
   const [loadingRoomCode, setLoadingRoomCode] = useState(false);
+  const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
+  const [roomMemberIds, setRoomMemberIds] = useState<string[]>([]);
+  const [inviteSuccessByUserId, setInviteSuccessByUserId] = useState<Record<string, boolean>>({});
   const searchInputRef = useRef<HTMLInputElement>(null);
   const roomCodeRequestToken = useRef(0);
 
+  const fetchUsers = useUserStore((s) => s.fetchUsers);
   const users = useUserStore((s) => s.users);
   const roomCode = roomCodesByRoom[room.id] ?? null;
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    setSearchQuery("");
+    setError(null);
+    setCopyError(null);
+    setCopiedCode(false);
+  }, [isOpen, room.id]);
 
   // Load room code on open
   useEffect(() => {
@@ -78,19 +96,72 @@ export default function InviteMembersModal({
     loadCode();
   }, [isOpen, room.id, roomCode]);
 
-  // Filter users - friends or users in same group
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    let alive = true;
+
+    const loadCandidates = async () => {
+      try {
+        setLoadingCandidates(true);
+        setError(null);
+
+        const members = await getRoomMembers(room.id);
+        if (!alive) {
+          return;
+        }
+
+        const ids = members.map((member) => member.userId);
+        setRoomMemberIds(ids);
+        void fetchUsers(ids);
+      } catch (err) {
+        if (!alive) {
+          return;
+        }
+        setError(err instanceof Error ? err.message : "Failed to load invite candidates");
+      } finally {
+        if (alive) {
+          setLoadingCandidates(false);
+        }
+      }
+    };
+
+    void loadCandidates();
+
+    return () => {
+      alive = false;
+    };
+  }, [fetchUsers, isOpen, room.id]);
+
+  // Filter users from cache and exclude current room members.
   const filteredUsers = useMemo(() => {
-    if (!searchQuery.startsWith("@")) return [];
+    const query = searchQuery.trim().replace(/^@/, "").toLowerCase();
+    const memberSet = new Set(roomMemberIds);
 
-    const query = searchQuery.slice(1).toLowerCase();
-    if (!query) return [];
+    const base = Object.values(users).filter((user) => {
+      if (!user.accountId) return false;
+      if (memberSet.has(user.accountId)) return false;
+      return true;
+    });
 
-    return Object.values(users).filter(
-      (user) =>
-        (user.displayName.toLowerCase().startsWith(query) ||
-          user.username.toLowerCase().startsWith(query))
+    const matched = query
+      ? base.filter((user) => {
+          const displayName = user.displayName?.toLowerCase() ?? "";
+          const username = user.username?.toLowerCase() ?? "";
+          return displayName.includes(query) || username.includes(query);
+        })
+      : base;
+
+    return matched.sort((a, b) =>
+      (a.displayName || a.username || "").localeCompare(
+        b.displayName || b.username || "",
+        undefined,
+        { sensitivity: "base" }
+      )
     );
-  }, [searchQuery, users]);
+  }, [roomMemberIds, searchQuery, users]);
 
   const handleInviteUser = useCallback(
     async (userId: string) => {
@@ -98,24 +169,34 @@ export default function InviteMembersModal({
       setError(null);
 
       try {
-        await inviteMemberApi(room.id, userId);
-        setSearchQuery("");
+        await onInviteUser(userId);
+        setInviteSuccessByUserId((prev) => ({
+          ...prev,
+          [userId]: true,
+        }));
       } catch (err) {
         setError(
-          err instanceof Error ? err.message : "Failed to invite member"
+          err instanceof Error ? err.message : "Failed to send invite card"
         );
       } finally {
         setInvitingUserId(null);
       }
     },
-    [room.id]
+    [onInviteUser]
   );
 
-  const copyRoomCode = useCallback(() => {
-    if (roomCode) {
-      navigator.clipboard.writeText(roomCode);
+  const copyRoomCode = useCallback(async () => {
+    if (!roomCode) {
+      return;
+    }
+
+    try {
+      setCopyError(null);
+      await navigator.clipboard.writeText(roomCode);
       setCopiedCode(true);
       setTimeout(() => setCopiedCode(false), 2000);
+    } catch {
+      setCopyError("Unable to copy room code");
     }
   }, [roomCode]);
 
@@ -161,7 +242,7 @@ export default function InviteMembersModal({
                   <input
                     ref={searchInputRef}
                     type="text"
-                    placeholder="Type @ to mention a member..."
+                    placeholder="Search by name or @username..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full pl-8 pr-3 py-2 bg-gray-100 text-sm rounded border border-gray-200 focus:border-blue-500 focus:outline-none"
@@ -179,55 +260,62 @@ export default function InviteMembersModal({
               </div>
 
               {/* User Suggestions */}
-              {searchQuery.startsWith("@") && (
-                <div className="border border-gray-200 rounded bg-gray-50">
-                  {filteredUsers.length === 0 ? (
-                    <div className="p-3 text-sm text-gray-500 text-center">
-                      {searchQuery.length > 1
-                        ? "No members found"
-                        : "Start typing..."}
-                    </div>
-                  ) : (
-                    filteredUsers.map((user) => (
-                      <div
-                        key={user.accountId}
-                        className="flex items-center justify-between px-3 py-2 hover:bg-white transition border-b last:border-b-0"
-                      >
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <img
-                            src={user.avatarUrl || "/default-avatar.png"}
-                            alt={user.displayName}
-                            className="w-8 h-8 rounded-full flex-shrink-0 object-cover"
-                          />
-                          <div className="flex-1 min-w-0">
+              <div className="border border-gray-200 rounded bg-gray-50">
+                {loadingCandidates ? (
+                  <div className="p-3 text-sm text-gray-500 text-center">Loading candidates...</div>
+                ) : filteredUsers.length === 0 ? (
+                  <div className="p-3 text-sm text-gray-500 text-center">No eligible users found</div>
+                ) : (
+                  filteredUsers.map((user) => (
+                    <div
+                      key={user.accountId}
+                      className="flex items-center justify-between px-3 py-2 hover:bg-white transition border-b last:border-b-0"
+                    >
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <img
+                          src={user.avatarUrl || "/default-avatar.png"}
+                          alt={user.displayName}
+                          className="w-8 h-8 rounded-full flex-shrink-0 object-cover"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 min-w-0">
                             <div className="text-sm font-medium text-gray-900 truncate">
                               {user.displayName}
                             </div>
-                            <div className="text-xs text-gray-500">
-                              @{user.username}
-                            </div>
+                            <div className="text-xs text-gray-500 truncate">@{user.username}</div>
+                          </div>
+                          <div className="text-xs text-gray-500 truncate">
+                            {user.aboutMe?.trim() || "No about text"}
                           </div>
                         </div>
-
-                        <button
-                          onClick={() => handleInviteUser(user.accountId)}
-                          disabled={invitingUserId === user.accountId}
-                          className="ml-2 px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition flex-shrink-0"
-                        >
-                          {invitingUserId === user.accountId
-                            ? "Inviting..."
-                            : "Invite"}
-                        </button>
                       </div>
-                    ))
-                  )}
-                </div>
-              )}
+
+                      <button
+                        onClick={() => handleInviteUser(user.accountId)}
+                        disabled={invitingUserId === user.accountId}
+                        className="ml-2 px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition flex-shrink-0"
+                      >
+                        {invitingUserId === user.accountId
+                          ? "Sending..."
+                          : inviteSuccessByUserId[user.accountId]
+                          ? "Sent"
+                          : "Invite"}
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
 
               {/* Error Message */}
               {error && (
                 <div className="p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
                   {error}
+                </div>
+              )}
+
+              {copyError && (
+                <div className="p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                  {copyError}
                 </div>
               )}
             </div>
@@ -245,8 +333,9 @@ export default function InviteMembersModal({
                   className="flex-1 px-3 py-2 bg-gray-100 text-sm rounded border border-gray-200 font-mono"
                 />
                 <button
-                  onClick={copyRoomCode}
+                  onClick={() => void copyRoomCode()}
                   disabled={!roomCode}
+                  aria-label="Copy room code"
                   className="px-3 py-2 bg-gray-100 text-gray-900 rounded border border-gray-200 hover:bg-gray-200 transition flex items-center gap-2 disabled:opacity-50"
                 >
                   {copiedCode ? (

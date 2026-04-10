@@ -1,0 +1,263 @@
+ChatApp Backend - Local Hybrid Runbook (Low-Lag Mode)
+
+Purpose
+- Run only infrastructure in Docker (PostgreSQL, Redis, Zookeeper, Kafka).
+- Run backend services natively with Gradle bootRun for lower local lag and faster debug cycles.
+
+Infrastructure coverage (includes service databases)
+- Local hybrid now runs a dedicated PostgreSQL container per DB-backed service:
+  - auth-db -> auth_service (auth-service)
+  - user-db -> user_service (user-service)
+  - chat-db -> chat_service (chat-service)
+  - friendship-db -> friendship_service (friendship-service)
+  - notification-db -> notification_service (notification-service)
+- Each DB container is initialized with its own service-scoped user/password.
+
+Database execution model (important)
+- There are five PostgreSQL containers in local hybrid (one per DB-backed service).
+- Isolation is enforced by container boundary plus service-scoped DB credentials.
+- There is no shared app Postgres container in this local compose mode.
+
+Scope Rules
+- In hybrid mode, DO NOT run backend application containers from docker-compose.local.yml.
+- Use Docker only for infrastructure services.
+
+Working Directory
+- Run all commands from chatappBE unless stated otherwise.
+
+Preflight
+1) Required tools
+- docker --version
+- docker compose version
+- Java 21+ and Gradle wrapper available
+
+2) Required files
+- .env.local exists and contains local values
+- .env.local includes service-scoped DB variables (`*_DATABASE_NAME`, `*_DATABASE_USER`, `*_DATABASE_PASSWORD`)
+
+3) Recommended shell split
+- Terminal 1: Docker infrastructure
+- Terminal 2: auth-service
+- Terminal 3+: remaining services
+
+Infra + DB CLI Quick Commands (Copy/Paste)
+Run from chatappBE root.
+
+1) Start infra only (all DB containers + Redis + Zookeeper + Kafka)
+docker compose --env-file .env.local -f docker-compose.local.yml up -d auth-db user-db chat-db friendship-db notification-db redis zookeeper kafka
+
+2) Start each infra service individually (optional)
+- docker compose --env-file .env.local -f docker-compose.local.yml up -d auth-db
+- docker compose --env-file .env.local -f docker-compose.local.yml up -d user-db
+- docker compose --env-file .env.local -f docker-compose.local.yml up -d chat-db
+- docker compose --env-file .env.local -f docker-compose.local.yml up -d friendship-db
+- docker compose --env-file .env.local -f docker-compose.local.yml up -d notification-db
+- docker compose --env-file .env.local -f docker-compose.local.yml up -d redis
+- docker compose --env-file .env.local -f docker-compose.local.yml up -d zookeeper
+- docker compose --env-file .env.local -f docker-compose.local.yml up -d kafka
+
+3) Check infra container status
+docker compose --env-file .env.local -f docker-compose.local.yml ps auth-db user-db chat-db friendship-db notification-db redis zookeeper kafka
+
+4) Verify each DB container is ready
+docker compose --env-file .env.local -f docker-compose.local.yml exec auth-db pg_isready -U ${AUTH_DATABASE_USER:-auth_user}
+docker compose --env-file .env.local -f docker-compose.local.yml exec user-db pg_isready -U ${USER_DATABASE_USER:-user_user}
+docker compose --env-file .env.local -f docker-compose.local.yml exec chat-db pg_isready -U ${CHAT_DATABASE_USER:-chat_user}
+docker compose --env-file .env.local -f docker-compose.local.yml exec friendship-db pg_isready -U ${FRIENDSHIP_DATABASE_USER:-friendship_user}
+docker compose --env-file .env.local -f docker-compose.local.yml exec notification-db pg_isready -U ${NOTIFICATION_DATABASE_USER:-notification_user}
+
+5) Verify DB role-to-DB mapping (isolation check)
+- docker compose --env-file .env.local -f docker-compose.local.yml exec auth-db psql -U ${AUTH_DATABASE_USER:-auth_user} -d ${AUTH_DATABASE_NAME:-auth_service} -c "select current_user, current_database();"
+- docker compose --env-file .env.local -f docker-compose.local.yml exec user-db psql -U ${USER_DATABASE_USER:-user_user} -d ${USER_DATABASE_NAME:-user_service} -c "select current_user, current_database();"
+- docker compose --env-file .env.local -f docker-compose.local.yml exec chat-db psql -U ${CHAT_DATABASE_USER:-chat_user} -d ${CHAT_DATABASE_NAME:-chat_service} -c "select current_user, current_database();"
+- docker compose --env-file .env.local -f docker-compose.local.yml exec friendship-db psql -U ${FRIENDSHIP_DATABASE_USER:-friendship_user} -d ${FRIENDSHIP_DATABASE_NAME:-friendship_service} -c "select current_user, current_database();"
+- docker compose --env-file .env.local -f docker-compose.local.yml exec notification-db psql -U ${NOTIFICATION_DATABASE_USER:-notification_user} -d ${NOTIFICATION_DATABASE_NAME:-notification_service} -c "select current_user, current_database();"
+
+6) Verify Redis and Kafka
+docker compose --env-file .env.local -f docker-compose.local.yml exec redis redis-cli ping
+docker compose --env-file .env.local -f docker-compose.local.yml exec kafka kafka-topics --bootstrap-server kafka:9092 --list
+
+7) Stop infra only
+docker compose --env-file .env.local -f docker-compose.local.yml stop auth-db user-db chat-db friendship-db notification-db redis zookeeper kafka
+
+8) Full infra shutdown (containers + network)
+docker compose --env-file .env.local -f docker-compose.local.yml down
+
+Infrastructure Startup (Docker Only)
+1) Start infrastructure services
+PowerShell:
+docker compose --env-file .env.local -f docker-compose.local.yml up -d auth-db user-db chat-db friendship-db notification-db redis zookeeper kafka
+
+2) Check infrastructure status
+docker compose --env-file .env.local -f docker-compose.local.yml ps auth-db user-db chat-db friendship-db notification-db redis zookeeper kafka
+
+Infrastructure Verification Commands
+Note: You will see five PostgreSQL containers (auth-db, user-db, chat-db, friendship-db, notification-db).
+
+1) PostgreSQL readiness (all DB containers)
+docker compose --env-file .env.local -f docker-compose.local.yml exec auth-db pg_isready -U ${AUTH_DATABASE_USER:-auth_user}
+docker compose --env-file .env.local -f docker-compose.local.yml exec user-db pg_isready -U ${USER_DATABASE_USER:-user_user}
+docker compose --env-file .env.local -f docker-compose.local.yml exec chat-db pg_isready -U ${CHAT_DATABASE_USER:-chat_user}
+docker compose --env-file .env.local -f docker-compose.local.yml exec friendship-db pg_isready -U ${FRIENDSHIP_DATABASE_USER:-friendship_user}
+docker compose --env-file .env.local -f docker-compose.local.yml exec notification-db pg_isready -U ${NOTIFICATION_DATABASE_USER:-notification_user}
+
+1.1) Verify each database exists in its own container
+- docker compose --env-file .env.local -f docker-compose.local.yml exec auth-db psql -U ${AUTH_DATABASE_USER:-auth_user} -d ${AUTH_DATABASE_NAME:-auth_service} -c "select current_database();"
+- docker compose --env-file .env.local -f docker-compose.local.yml exec user-db psql -U ${USER_DATABASE_USER:-user_user} -d ${USER_DATABASE_NAME:-user_service} -c "select current_database();"
+- docker compose --env-file .env.local -f docker-compose.local.yml exec chat-db psql -U ${CHAT_DATABASE_USER:-chat_user} -d ${CHAT_DATABASE_NAME:-chat_service} -c "select current_database();"
+- docker compose --env-file .env.local -f docker-compose.local.yml exec friendship-db psql -U ${FRIENDSHIP_DATABASE_USER:-friendship_user} -d ${FRIENDSHIP_DATABASE_NAME:-friendship_service} -c "select current_database();"
+- docker compose --env-file .env.local -f docker-compose.local.yml exec notification-db psql -U ${NOTIFICATION_DATABASE_USER:-notification_user} -d ${NOTIFICATION_DATABASE_NAME:-notification_service} -c "select current_database();"
+
+2) Redis ping
+docker compose --env-file .env.local -f docker-compose.local.yml exec redis redis-cli ping
+
+3) Kafka reachability
+docker compose --env-file .env.local -f docker-compose.local.yml exec kafka kafka-topics --bootstrap-server kafka:9092 --list
+
+Native Service Startup Commands (Gradle bootRun)
+Native startup now uses checked-in `application-local.yaml` files for each backend service.
+- You do not need to preload `.env.local` into cmd for native `bootRun`.
+- `.env.local` is still required for the Docker infra commands above.
+
+Use Windows cmd from chatappBE root:
+1) Open a cmd window
+2) Move to backend root
+cd /d d:\Work\PET\chatappPET\chatapp\chatappBE
+
+3) Start a service with one-line local profile args (recommended for cmd)
+gradlew.bat :auth-service:bootRun --args=--spring.profiles.active=local
+gradlew.bat :user-service:bootRun --args=--spring.profiles.active=local
+gradlew.bat :chat-service:bootRun --args=--spring.profiles.active=local
+gradlew.bat :presence-service:bootRun --args=--spring.profiles.active=local
+gradlew.bat :friendship-service:bootRun --args=--spring.profiles.active=local
+gradlew.bat :notification-service:bootRun --args=--spring.profiles.active=local
+gradlew.bat :upload-service:bootRun --args=--spring.profiles.active=local
+gradlew.bat :gateway-service:bootRun --args=--spring.profiles.active=local
+
+Alternative per-session style:
+set SPRING_PROFILES_ACTIVE=local
+gradlew.bat :auth-service:bootRun
+
+Multi-Service Startup (Recommended)
+Use the convenience scripts to open all services in separate windows with one command.
+IMPORTANT: Docker infra must be running first (see "Infrastructure Startup" section).
+
+From PowerShell (chatappBE root):
+  .\scripts\start-services-local.ps1             # starts all 8 services
+  .\scripts\start-services-local.ps1 -Auth -Gateway  # starts only auth + gateway
+  .\scripts\start-services-local.ps1 -Auth -User -Chat -Gateway  # starts a custom subset
+
+From cmd (chatappBE root):
+  scripts\start-services-local.bat               # starts all 8 services
+  scripts\start-services-local.bat -Auth -Gateway
+
+Available service switches: -Auth -User -Chat -Presence -Friendship -Notification -Upload -Gateway
+
+If PowerShell execution policy blocks the script:
+  powershell -ExecutionPolicy Bypass -File scripts\start-services-local.ps1
+
+Recommended Startup Sequence
+1) Start infrastructure (auth-db, user-db, chat-db, friendship-db, notification-db, redis, zookeeper, kafka)
+2) Run `.\scripts\start-services-local.ps1` (or `scripts\start-services-local.bat` in cmd) to open all services in separate windows
+3) (Alternative) Open a separate cmd window per service, `cd /d d:\Work\PET\chatappPET\chatapp\chatappBE`, then use the one-liner below
+4) Start gateway-service last if starting manually
+
+Local Profile Notes
+- Checked-in `application-local.yaml` files now provide local DB ports, Kafka `localhost:29092`, Redis `localhost:6379`, localhost service URLs, and local auth/upload values needed for native startup.
+- If you need different local credentials or third-party values, edit the service-specific `application-local.yaml` file or override the same property with an environment variable.
+- Native service startup no longer requires a shell step to parse `.env.local`.
+
+Gateway Health Verification
+Prerequisite: `gateway-service` is running via `gradlew.bat :gateway-service:bootRun --args=--spring.profiles.active=local`.
+- curl http://localhost:8080/actuator/health
+
+If curl is not available in PowerShell:
+- Invoke-WebRequest http://localhost:8080/actuator/health
+
+Expected result when gateway is running: HTTP 200 with `UP` status payload.
+Expected result when gateway is not running yet: connection error.
+
+Stop, Restart, and Cleanup
+1) Stop infrastructure containers
+docker compose --env-file .env.local -f docker-compose.local.yml stop auth-db user-db chat-db friendship-db notification-db redis zookeeper kafka
+
+2) Remove infrastructure containers (keep volumes)
+docker compose --env-file .env.local -f docker-compose.local.yml rm -f auth-db user-db chat-db friendship-db notification-db redis zookeeper kafka
+
+3) Full infra shutdown (including network)
+docker compose --env-file .env.local -f docker-compose.local.yml down
+
+4) Stop conflicting app containers if accidentally started
+docker compose --env-file .env.local -f docker-compose.local.yml stop auth-service user-service chat-service presence-service friendship-service notification-service upload-service gateway-service
+
+5) Kill stale Java listeners on service ports (PowerShell)
+$ports = 8080,8081,8082,8083,8084,8085,8086,8088
+foreach ($p in $ports) {
+  $pids = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue |
+    Select-Object -ExpandProperty OwningProcess -Unique
+  foreach ($pid in $pids) {
+    Stop-Process -Id $pid -Force
+  }
+}
+
+.env.local Caveats
+- MAIL_USERNAME and MAIL_PASSWORD defaults are provided in `auth-service/application-local.yaml` for local development; override if needed.
+- GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET defaults are provided in `auth-service/application-local.yaml` for local development; override if needed.
+- CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET defaults are provided in local profiles for upload/user/chat flows; override if needed.
+- FRONTEND_URL should be http://localhost:5173 for local browser flow.
+- DB-backed services use service-scoped credentials (`*_DATABASE_USER` and `*_DATABASE_PASSWORD`) and dedicated DB containers in local compose.
+- presence-service and upload-service are intentionally out of scope for PostgreSQL credentials in this change.
+- If any required value is missing, the related service may fail on startup.
+
+Troubleshooting (cmd)
+- `'gradlew.bat' is not recognized`: you are not in `chatappBE`; run `cd /d d:\Work\PET\chatappPET\chatapp\chatappBE`.
+- `Could not resolve placeholder ...`: add or override the missing key in service `application-local.yaml`, or set it inline in cmd before bootRun.
+- `Unknown command-line option '--spring.profiles.active'`: in cmd, use `--args=--spring.profiles.active=local` (without nested quotes).
+- `Connection refused` to Postgres/Redis/Kafka: start infra first with docker compose local commands from this runbook.
+
+Troubleshooting: Gateway Startup Failures
+Common issue: Gateway fails to start with `Failed to generate bean name for imported class` or `Could not find class ...` errors.
+- Root cause: Spring Cloud Commons version mismatch with backend Spring Boot version.
+- Solution: All services now run on Spring Boot **3.5.6** (was 4.0.1). This ensures Spring Cloud Gateway artifacts are compatible.
+- If you see class-resolution bootstrap errors for Spring Cloud auto-config classes:
+  1. Verify you are using the current backend code (pull latest changes).
+  2. Check that all service `build.gradle` files use Spring Boot 3.5.6 plugin (no longer 4.0.1).
+  3. Re-run `.\gradlew.bat :gateway-service:bootRun --args=--spring.profiles.active=local`.
+- If command syntax is the issue (e.g., "Unknown command-line option"), check `Troubleshooting (cmd)` section above.
+
+Auth + Gateway Local Startup Verification
+To verify auth-service and gateway-service are running correctly before full multi-service launch:
+1) Ensure Docker infra is running (see "Infrastructure Startup" section).
+2) Terminal 1: `.\gradlew.bat :auth-service:bootRun --args=--spring.profiles.active=local`
+   - Expected: Auth service starts on port 8081.
+   - Verify: `curl http://localhost:8081/actuator/health` or `Invoke-WebRequest http://localhost:8081/actuator/health` in PowerShell.
+3) Terminal 2: `.\gradlew.bat :gateway-service:bootRun --args=--spring.profiles.active=local`
+   - Expected: Gateway service starts on port 8080.
+   - Verify: `curl http://localhost:8080/actuator/health` or PowerShell equivalent.
+   - Expected payload: `{"status":"UP", ...}` (HTTP 200 with UP status).
+4) If both are UP, multi-service startup via scripts is ready: `.\scripts\start-services-local.ps1 -Auth -Gateway`.
+
+Notes
+- This runbook targets local development mode only.
+- VPS production mode remains in DEPLOY.md and docker-compose.yml.
+
+Auth Provisioning Rollout / Rollback Notes (Login Error + Incomplete Account)
+Rollout steps
+1) Deploy backend modules that include `INCOMPLETE_ACCOUNT` and deterministic invalid-credentials messaging:
+  - common/common-web
+  - auth-service
+2) Deploy frontend changes that:
+  - parse nested backend error envelopes (`error.code`, `error.message`)
+  - await login bootstrap before navigating
+  - retry user profile bootstrap briefly before controlled logout
+3) Verify in local/staging:
+  - Wrong password shows "Invalid credentials"
+  - First-login/profile-lag shows "Account setup incomplete. Please try again in a few seconds."
+  - No refresh-loop behavior for `INCOMPLETE_ACCOUNT`
+
+Rollback steps
+1) Revert frontend first if users report unexpected login bootstrap errors.
+2) Revert auth-service/common-web together if backend clients are not yet compatible with `INCOMPLETE_ACCOUNT` code.
+3) After rollback, confirm:
+  - auth login/register endpoints return previous behavior
+  - frontend login remains functional with generic auth error messages

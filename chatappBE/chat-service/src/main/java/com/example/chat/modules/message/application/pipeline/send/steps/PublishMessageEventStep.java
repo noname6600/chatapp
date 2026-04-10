@@ -8,10 +8,13 @@ import com.example.chat.modules.message.domain.service.IMessagePreviewService;
 import com.example.chat.modules.room.service.IRoomService;
 import com.example.common.core.pipeline.PipelineStep;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class PublishMessageEventStep
@@ -48,11 +51,26 @@ public class PublishMessageEventStep
                 savedMessage.getSeq()
         );
 
-        eventPublisher.publishMessageCreated(
-                savedMessage,
-                persistedAttachments,
-                context.getMentionedUsers()
-        );
+        // Kafka publish is best-effort: fire async so broker unavailability
+        // never blocks the send response. The message is already persisted.
+        final ChatMessage msg = savedMessage;
+        final List<ChatAttachment> attachments = persistedAttachments;
+        final List<java.util.UUID> mentions = context.getMentionedUsers();
+        CompletableFuture.runAsync(() -> {
+            try {
+                eventPublisher.publishMessageCreated(msg, attachments, mentions);
+            } catch (Exception e) {
+                log.warn("Failed to publish message event for messageId={}: {}",
+                        msg.getId(), e.getMessage());
+            }
+        });
+    }
+
+    @Override
+    public long timeoutMs() {
+        // Only updateLastMessage (fast DB write) runs in the pipeline timeout window.
+        // Kafka publish is async-fire-and-forget above, so keep timeout short.
+        return 10_000;
     }
 
     @Override

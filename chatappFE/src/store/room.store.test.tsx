@@ -23,7 +23,7 @@ vi.mock("../api/room.service", () => ({
 }))
 
 vi.mock("./auth.store", () => ({
-  useAuth: () => ({ userId: "me" }),
+  useAuth: () => ({ userId: "me", accessToken: "test-token" }),
 }))
 
 vi.mock("./user.store", () => ({
@@ -312,5 +312,218 @@ describe("room.store", () => {
     await waitFor(() => {
       expect(harness.store.roomsById["room-a"]?.unreadCount).toBe(0)
     })
+  })
+
+  it("updates background room preview and unread in the same realtime event", async () => {
+    const harness = await renderRoomProvider()
+
+    await waitFor(() => {
+      expect(harness.store.roomsById["room-b"]?.unreadCount).toBe(0)
+    })
+
+    await act(async () => {
+      chatEventHandler?.({
+        type: ChatEventType.MESSAGE_SENT,
+        payload: {
+          messageId: "msg-invite",
+          roomId: "room-b",
+          senderId: "u2",
+          type: "MIXED",
+          content: "",
+          blocks: [
+            {
+              type: "ROOM_INVITE",
+              roomInvite: {
+                roomId: "group-1",
+                roomName: "Engineering",
+              },
+            },
+          ],
+          attachments: [],
+          createdAt: "2026-03-26T11:12:00.000Z",
+        },
+      })
+    })
+
+    await waitFor(() => {
+      const room = harness.store.roomsById["room-b"]
+      expect(room?.unreadCount).toBe(1)
+      expect(room?.latestMessageAt).toBe("2026-03-26T11:12:00.000Z")
+      expect(room?.lastMessage?.content).toBe("[Group Invite: Engineering]")
+      expect(room?.lastMessage?.id).toBe("msg-invite")
+    })
+  })
+
+  it("keeps websocket preview when reconnect snapshot is older", async () => {
+    const harness = await renderRoomProvider()
+
+    await waitFor(() => {
+      expect(harness.store.roomsById["room-a"]?.latestMessageAt).toBe("2026-03-26T10:00:00.000Z")
+    })
+
+    await act(async () => {
+      chatEventHandler?.({
+        type: ChatEventType.MESSAGE_SENT,
+        payload: {
+          messageId: "msg-live-new",
+          roomId: "room-a",
+          senderId: "u2",
+          type: "TEXT",
+          content: "live message",
+          attachments: [],
+          createdAt: "2026-03-26T11:20:00.000Z",
+        },
+      })
+    })
+
+    expect(harness.store.roomsById["room-a"]?.latestMessageAt).toBe("2026-03-26T11:20:00.000Z")
+    expect(harness.store.roomsById["room-a"]?.lastMessage?.content).toBe("live message")
+
+    mocks.getMyRooms.mockResolvedValueOnce([
+      makeRoom({
+        id: "room-a",
+        name: "Room A",
+        unreadCount: 0,
+        latestMessageAt: "2026-03-26T10:00:00.000Z",
+        lastMessage: {
+          id: "msg-old",
+          senderId: "u1",
+          content: "old snapshot",
+          createdAt: "2026-03-26T10:00:00.000Z",
+        },
+      }),
+      makeRoom({
+        id: "room-b",
+        name: "Room B",
+        unreadCount: 0,
+        latestMessageAt: "2026-03-26T09:00:00.000Z",
+        lastMessage: {
+          id: "msg-b",
+          senderId: "u2",
+          content: "b",
+          createdAt: "2026-03-26T09:00:00.000Z",
+        },
+      }),
+    ])
+
+    await act(async () => {
+      socketOpenHandler?.()
+    })
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 140))
+    })
+
+    expect(harness.store.roomsById["room-a"]?.latestMessageAt).toBe("2026-03-26T11:20:00.000Z")
+    expect(harness.store.roomsById["room-a"]?.lastMessage?.id).toBe("msg-live-new")
+    expect(harness.store.roomsById["room-a"]?.lastMessage?.content).toBe("live message")
+    expect(harness.store.roomsById["room-a"]?.unreadCount).toBe(0)
+  })
+
+  it("keeps deterministic room ordering when timestamps are equal", async () => {
+    const harness = await renderRoomProvider()
+
+    await waitFor(() => {
+      expect(harness.store.roomOrder).toEqual(["room-a", "room-b"])
+    })
+
+    vi.useFakeTimers()
+
+    await act(async () => {
+      chatEventHandler?.({
+        type: ChatEventType.MESSAGE_SENT,
+        payload: {
+          messageId: "msg-same-ts",
+          roomId: "room-b",
+          senderId: "u2",
+          type: "TEXT",
+          content: "same ts",
+          attachments: [],
+          createdAt: "2026-03-26T10:00:00.000Z",
+        },
+      })
+    })
+
+    await act(async () => {
+      vi.advanceTimersByTime(301)
+    })
+
+    expect(harness.store.roomOrder).toEqual(["room-a", "room-b"])
+    vi.useRealTimers()
+  })
+
+  it("reconciles unknown room on first incoming message so it appears without refresh", async () => {
+    const harness = await renderRoomProvider()
+
+    await waitFor(() => {
+      expect(harness.store.roomsById["room-c"]).toBeUndefined()
+    })
+
+    mocks.getMyRooms.mockResolvedValueOnce([
+      makeRoom({
+        id: "room-a",
+        name: "Room A",
+        unreadCount: 0,
+        latestMessageAt: "2026-03-26T10:00:00.000Z",
+        lastMessage: {
+          id: "msg-a",
+          senderId: "u1",
+          content: "a",
+          createdAt: "2026-03-26T10:00:00.000Z",
+        },
+      }),
+      makeRoom({
+        id: "room-b",
+        name: "Room B",
+        unreadCount: 0,
+        latestMessageAt: "2026-03-26T09:00:00.000Z",
+        lastMessage: {
+          id: "msg-b",
+          senderId: "u2",
+          content: "b",
+          createdAt: "2026-03-26T09:00:00.000Z",
+        },
+      }),
+      makeRoom({
+        id: "room-c",
+        type: "PRIVATE",
+        name: "New Chat",
+        unreadCount: 1,
+        latestMessageAt: "2026-03-26T11:35:00.000Z",
+        lastMessage: {
+          id: "msg-c-1",
+          senderId: "u3",
+          content: "hello first time",
+          createdAt: "2026-03-26T11:35:00.000Z",
+        },
+      }),
+    ])
+
+    await act(async () => {
+      chatEventHandler?.({
+        type: ChatEventType.MESSAGE_SENT,
+        payload: {
+          messageId: "msg-c-1",
+          roomId: "room-c",
+          senderId: "u3",
+          type: "TEXT",
+          content: "hello first time",
+          attachments: [],
+          createdAt: "2026-03-26T11:35:00.000Z",
+        },
+      })
+    })
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 180))
+    })
+
+    await waitFor(() => {
+      expect(harness.store.roomsById["room-c"]).toBeDefined()
+      expect(harness.store.roomsById["room-c"]?.unreadCount).toBe(1)
+      expect(harness.store.roomsById["room-c"]?.lastMessage?.content).toBe("hello first time")
+    })
+
+    expect(mocks.subscribeRoom).toHaveBeenCalledWith("room-c")
   })
 })

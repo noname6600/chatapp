@@ -12,16 +12,23 @@ import com.example.chat.modules.message.application.pipeline.edit.EditMessageCon
 import com.example.chat.modules.message.application.pipeline.edit.EditMessagePipeline;
 import com.example.chat.modules.message.application.pipeline.send.SendMessageContext;
 import com.example.chat.modules.message.application.pipeline.send.SendMessagePipeline;
+import com.example.chat.modules.message.domain.enums.MessageBlockType;
 import com.example.chat.modules.message.domain.entity.ChatAttachment;
 import com.example.chat.modules.message.domain.entity.ChatMessage;
 import com.example.chat.modules.message.domain.repository.ChatAttachmentRepository;
 import com.example.chat.modules.message.domain.repository.ChatMessageRepository;
+import com.example.chat.modules.room.entity.Room;
+import com.example.chat.modules.room.enums.RoomType;
 import com.example.chat.modules.room.repository.RoomMemberRepository;
+import com.example.chat.modules.room.repository.RoomRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import com.example.common.web.exception.BusinessException;
+import com.example.common.web.exception.ErrorCode;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -38,6 +45,7 @@ public class MessageCommandService
     private final ChatMessageRepository messageRepository;
     private final ChatAttachmentRepository attachmentRepository;
         private final RoomMemberRepository roomMemberRepository;
+        private final RoomRepository roomRepository;
 
     @Override
     public MessageResponse sendMessage(
@@ -45,6 +53,7 @@ public class MessageCommandService
     ) {
 
         request.setMentionedUserIds(filterMentionedUsers(request));
+        validateInviteBlocks(request);
 
         String clientMessageId = request.getClientMessageId();
         if (clientMessageId != null) {
@@ -80,6 +89,51 @@ public class MessageCommandService
                 Collections.emptyList()
         );
     }
+
+        private void validateInviteBlocks(SendMessageRequest request) {
+                if (request.getBlocks() == null || request.getBlocks().isEmpty()) {
+                        return;
+                }
+
+                UUID senderId = request.getSenderId();
+
+                request.getBlocks().stream()
+                                .filter(Objects::nonNull)
+                                .filter(block -> block.getType() == MessageBlockType.ROOM_INVITE)
+                                .forEach(block -> {
+                                        if (block.getRoomInvite() == null || block.getRoomInvite().getRoomId() == null) {
+                                                throw new BusinessException(
+                                                                ErrorCode.VALIDATION_ERROR,
+                                                                "ROOM_INVITE block requires roomId"
+                                                );
+                                        }
+
+                                        UUID inviteRoomId = block.getRoomInvite().getRoomId();
+                                        Room room = roomRepository.findById(inviteRoomId)
+                                                        .orElseThrow(() -> new BusinessException(
+                                                                        ErrorCode.RESOURCE_NOT_FOUND,
+                                                                        "Invite room not found"
+                                                        ));
+
+                                        if (room.getType() != RoomType.GROUP) {
+                                                throw new BusinessException(
+                                                                ErrorCode.BAD_REQUEST,
+                                                                "Only group rooms can be invited"
+                                                );
+                                        }
+
+                                        if (!roomMemberRepository.existsByRoomIdAndUserId(inviteRoomId, senderId)) {
+                                                throw new BusinessException(
+                                                                ErrorCode.FORBIDDEN,
+                                                                "You cannot invite others to a room you are not a member of"
+                                                );
+                                        }
+
+                                        block.getRoomInvite().setRoomName(room.getName());
+                                        block.getRoomInvite().setRoomAvatarUrl(room.getAvatarUrl());
+                                        block.getRoomInvite().setMemberCount((int) roomMemberRepository.countByRoomId(inviteRoomId));
+                                });
+        }
 
         private List<UUID> filterMentionedUsers(SendMessageRequest request) {
                 List<UUID> mentioned = request.getMentionedUserIds();

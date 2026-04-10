@@ -1,1 +1,12 @@
 rootProject.name = 'demo'
+
+include 'common:common-events'
+include 'common:common-kafka'
+include 'common:common-web'
+include 'common:common-websocket'
+
+project(':common').projectDir = file('../common')
+project(':common:common-events').projectDir = file('../common/common-events')
+project(':common:common-kafka').projectDir = file('../common/common-kafka')
+project(':common:common-web').projectDir = file('../common/common-web')
+project(':common:common-websocket').projectDir = file('../common/common-websocket')

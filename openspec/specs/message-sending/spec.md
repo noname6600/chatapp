@@ -31,15 +31,19 @@ The system SHALL send a message when the user presses Enter key in the message i
 - **THEN** it remains in `pending` state until a server-confirmed message with matching `clientMessageId` is observed
 
 ### Requirement: Unconfirmed optimistic sends SHALL transition to failed with retry option
-The system SHALL transition pending optimistic messages to `failed` when confirmation does not arrive before the configured timeout, SHALL display failure state in the message list, and SHALL provide a retry action.
+The system SHALL transition pending optimistic messages to `failed` when confirmation does not arrive before the configured timeout, SHALL display failure state inline on the same line as the message timestamp (not below the message body), and SHALL provide retry and delete actions on that same line.
 
 #### Scenario: Pending optimistic send times out and becomes failed
 - **WHEN** pending optimistic message exceeds the configured confirmation timeout without correlated server message
 - **THEN** the message transitions to `failed`
 
-#### Scenario: Failed optimistic message exposes retry
+#### Scenario: Failed optimistic message exposes retry inline
 - **WHEN** message is in `failed` state
-- **THEN** UI shows a retry action for that message
+- **THEN** UI shows a "Failed to send" label with Retry and Delete actions on the same horizontal line as the message timestamp, not in a separate block below the message content
+
+#### Scenario: Sending status renders on the timestamp line
+- **WHEN** message is in `pending` state
+- **THEN** UI shows a "Sending…" indicator on the same horizontal line as the message timestamp and the message body height does not change compared to a confirmed message
 
 #### Scenario: Retry keeps idempotency safety
 - **WHEN** user retries a failed optimistic message
@@ -93,11 +97,15 @@ Unread count updates triggered by message-sent events SHALL exclude the sender a
 - **THEN** other room members receive unread increment according to existing unread rules
 
 ### Requirement: Sent messages update unread count for other users in real-time
-When a message is successfully sent and broadcast via WebSocket, other users in the same room SHALL see the unread message count increment immediately (if they have the message list open).
+When a message is successfully sent and broadcast via WebSocket, other users in the same room SHALL see the unread message count increment immediately (if they have the message list open and have not muted the room).
 
 #### Scenario: Unread count increments for recipient when message is sent
 - **WHEN** User A sends a message to a room
 - **THEN** the NewMessageEvent is broadcast via WebSocket, User B's room store increments unreadCount (if User B has not marked the room read)
+
+#### Scenario: Muted recipient room does not increment unread count
+- **WHEN** User A sends a message to a room and User B has muted that room
+- **THEN** User B's room unread count and notification bell do not increment for that event
 
 #### Scenario: Unread count update reaches all connected clients
 - **WHEN** a message is sent and broadcast
@@ -110,6 +118,17 @@ When a message is successfully sent and broadcast via WebSocket, other users in 
 #### Scenario: Sender and receiver converge on refresh after mixed send flow
 - **WHEN** one user sends early messages, another user joins and sends additional messages, and both users refresh
 - **THEN** both users render the same persisted latest message set with no missing tail message
+
+### Requirement: Message send payload SHALL include mention metadata
+The client SHALL include `mentionedUserIds[]` in the message create request when `@username` tokens are detected in the message body.
+
+#### Scenario: Message with mentions includes mentionedUserIds
+- **WHEN** user types a message with one or more valid `@username` tokens and sends
+- **THEN** the outbound `POST /api/v1/messages` request body includes `mentionedUserIds` array containing the resolved userIds
+
+#### Scenario: Message without mentions sends empty or absent mentionedUserIds
+- **WHEN** user sends a plain text message with no `@` tokens
+- **THEN** the request body either omits `mentionedUserIds` or sends an empty array; message is sent normally
 
 ### Requirement: Message send supports ordered mixed-content payloads
 The system SHALL accept an ordered message-body payload so one sent message can preserve interleaved text, media, and embed content.
@@ -152,4 +171,51 @@ The system SHALL apply row-level highlight only for messages that mention the cu
 - **WHEN** message content contains mention(s) that do not target the currently signed-in user
 - **THEN** only mention token spans are highlighted
 - **AND** the message row background remains unhighlighted for mention reason alone
+
+### Requirement: Optimistic message confirmation SHALL update the existing entry in-place
+The system SHALL update the optimistic placeholder message's `messageId`, `seq`, and server-confirmed fields in-place within the store when a `MESSAGE_SENT` event correlates via `clientMessageId`, without the React list component unmounting and remounting. The React list MUST use a key derived from `clientMessageId` (when present) rather than `messageId`, so that the DOM node survives the `messageId` swap from the optimistic value to the server-assigned value. Messages from other users (where `clientMessageId` is absent) MUST continue to use `messageId` as the list key.
+
+#### Scenario: Server confirmation merges into existing placeholder position
+- **WHEN** a `MESSAGE_SENT` event arrives with a `clientMessageId` matching an existing optimistic placeholder
+- **THEN** the store replaces the placeholder entry with the server-confirmed message and the React component for that message row is updated in place without unmounting
+
+#### Scenario: No unmount occurs during confirmation
+- **WHEN** an optimistic message transitions from `"pending"` to `"sent"` via server confirmation
+- **THEN** the DOM node for that message row is not destroyed and recreated; only its rendered content updates
+
+#### Scenario: Confirmed message uses server messageId as stable identifier
+- **WHEN** the reconciliation completes
+- **THEN** the entry's `messageId` equals the server-assigned ID and `deliveryStatus` is `"sent"`
+
+#### Scenario: Messages from other users use messageId as list key
+- **WHEN** a real-time message arrives from another user with no `clientMessageId`
+- **THEN** the message is rendered in the list using `messageId` as its React key, unchanged from current behavior
+
+#### Scenario: Retry does not cause key collision
+- **WHEN** user retries a failed message
+- **THEN** the retry reuses the same `clientMessageId` and the list key remains stable — no duplicate-key warning occurs
+
+### Requirement: Message sending SHALL accept room invite card payloads
+The system SHALL accept a room invite card message payload in the standard message send flow and persist enough room context for recipients to join from the rendered card.
+
+#### Scenario: Invite card payload is submitted
+- **WHEN** the client submits a message send request with invite-card payload type for a room
+- **THEN** chat-service validates the payload as invite-card content
+- **AND** the message is persisted and delivered using existing message dispatch behavior
+
+### Requirement: Invite card payload SHALL preserve room join context
+Invite-card message content SHALL include canonical room identifiers needed for join action handling, including roomId and join code or equivalent join token.
+
+#### Scenario: Invite card rendered by recipient
+- **WHEN** a recipient loads or receives an invite card message
+- **THEN** the rendered card contains room context needed to trigger join flow
+- **AND** join action uses the same authorization and room-join rules as other join entrypoints
+
+### Requirement: Invalid invite card payload SHALL fail with message validation error
+The system SHALL reject invite-card message sends when required room context fields are missing or malformed.
+
+#### Scenario: Missing room context in invite card payload
+- **WHEN** a message send request includes invite-card type but omits required room join context
+- **THEN** the send request fails with existing bad-request validation semantics
+- **AND** no invite card message is persisted
 

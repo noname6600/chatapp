@@ -18,12 +18,16 @@ export function MoreMenu({ onRemove }: { onRemove: () => void }) {
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => setOpen(!open)}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen(!open);
+        }}
+        aria-label="More actions"
         className="
           w-9 h-9
           flex items-center justify-center
-          rounded
-          hover:bg-gray-300
+          rounded-lg border border-gray-200
+          hover:bg-gray-100
           transition
           text-lg
         "
@@ -32,14 +36,15 @@ export function MoreMenu({ onRemove }: { onRemove: () => void }) {
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-1 bg-white shadow rounded min-w-max z-10">
+        <div className="absolute right-0 z-20 mt-1 min-w-[11rem] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
           <button
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               onRemove();
               setOpen(false);
             }}
             className="
-              block px-4 py-2
+              block w-full px-4 py-2 text-left
               text-red-500
               hover:bg-gray-100
               whitespace-nowrap

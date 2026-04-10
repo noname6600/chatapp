@@ -21,16 +21,20 @@ export const useUserStore = create<UserState>()(
       lastFetchedMap: {},
 
       updateUserLocal: (profile: UserProfile) =>
-        set((state) => ({
-          users: {
-            ...state.users,
-            [profile.accountId]: profile,
-          },
-          lastFetchedMap: {
-            ...state.lastFetchedMap,
-            [profile.accountId]: Date.now(),
-          },
-        })),
+        set((state) => {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { undefined: _phantom, ...cleanUsers } = state.users as Record<string, UserProfile>;
+          return {
+            users: {
+              ...cleanUsers,
+              [profile.accountId]: profile,
+            },
+            lastFetchedMap: {
+              ...state.lastFetchedMap,
+              [profile.accountId]: Date.now(),
+            },
+          };
+        }),
 
       fetchUsers: async (ids: string[]) => {
         if (!ids.length) {

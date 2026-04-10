@@ -20,6 +20,10 @@ The unread message banner SHALL include a prominent "Jump to Latest" button that
 - **WHEN** new messages are being streamed and user clicks "Jump to Latest"
 - **THEN** the button scrolls to the message that is currently the last in the list at the time of click
 
+#### Scenario: Distance-aware affordance appears when far from latest
+- **WHEN** user is significantly above newest messages (for example, around 100-message gap)
+- **THEN** top newest-jump affordance remains visible until user returns near live tail
+
 ### Requirement: Jump button accessibility
 The "Jump to Latest" button SHALL be keyboard and screen reader accessible.
 

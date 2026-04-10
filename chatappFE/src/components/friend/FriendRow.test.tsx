@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it, vi } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 
 import { FriendRow } from "./FriendRow"
 
@@ -31,6 +31,10 @@ vi.mock("../../store/user.store", () => ({
 }))
 
 describe("FriendRow", () => {
+  afterEach(() => {
+    cleanup()
+  })
+
   beforeEach(() => {
     presenceState.getUserStatus.mockReset()
   })
@@ -45,5 +49,51 @@ describe("FriendRow", () => {
     rerender(<FriendRow userId="friend" variant="friend" />)
 
     expect(screen.getByText("Offline")).toBeTruthy()
+  })
+
+  it("opens chat when friend row surface is clicked", () => {
+    presenceState.getUserStatus.mockReturnValue("ONLINE")
+    const onChat = vi.fn()
+
+    render(<FriendRow userId="friend" variant="friend" onChat={onChat} />)
+
+    fireEvent.click(screen.getByTestId("friend-row-friend-friend"))
+
+    expect(onChat).toHaveBeenCalledWith("friend")
+  })
+
+  it("does not open chat when clicking secondary actions", () => {
+    presenceState.getUserStatus.mockReturnValue("ONLINE")
+    const onChat = vi.fn()
+    const onRemove = vi.fn()
+
+    render(<FriendRow userId="friend" variant="friend" onChat={onChat} onRemove={onRemove} />)
+
+    fireEvent.click(screen.getByLabelText("More actions"))
+    fireEvent.click(screen.getByText("Remove Friend"))
+
+    expect(onRemove).toHaveBeenCalledTimes(1)
+    expect(onChat).not.toHaveBeenCalled()
+  })
+
+  it("keeps pending actions button-driven", () => {
+    presenceState.getUserStatus.mockReturnValue("ONLINE")
+    const onAccept = vi.fn()
+    const onDecline = vi.fn()
+
+    render(
+      <FriendRow
+        userId="friend"
+        variant="pending"
+        onAccept={onAccept}
+        onDecline={onDecline}
+      />
+    )
+
+    fireEvent.click(screen.getByLabelText("Accept request"))
+    fireEvent.click(screen.getByLabelText("Decline request"))
+
+    expect(onAccept).toHaveBeenCalledWith("friend")
+    expect(onDecline).toHaveBeenCalledWith("friend")
   })
 })

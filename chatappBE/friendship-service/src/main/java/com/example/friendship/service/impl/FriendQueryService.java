@@ -61,5 +61,9 @@ public class FriendQueryService implements IFriendQueryService {
                 .map(Friendship::getStatus)
                 .orElse(null);
     }
+
+    public long getUnreadFriendRequestCount(UUID userId) {
+        return repository.countUnreadFriendRequests(userId);
+    }
 }
 

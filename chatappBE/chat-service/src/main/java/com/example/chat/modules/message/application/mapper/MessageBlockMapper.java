@@ -2,13 +2,16 @@ package com.example.chat.modules.message.application.mapper;
 
 import com.example.chat.modules.message.application.dto.request.AttachmentRequest;
 import com.example.chat.modules.message.application.dto.request.MessageBlockRequest;
+import com.example.chat.modules.message.application.dto.request.RoomInviteRequest;
 import com.example.chat.modules.message.application.dto.response.AttachmentResponse;
 import com.example.chat.modules.message.application.dto.response.MessageBlockResponse;
+import com.example.chat.modules.message.application.dto.response.RoomInviteResponse;
 import com.example.chat.modules.message.domain.enums.AttachmentType;
 import com.example.chat.modules.message.domain.enums.MessageBlockType;
 import com.example.chat.modules.message.domain.model.AttachmentDraft;
 import com.example.common.integration.chat.AttachmentPayload;
 import com.example.common.integration.chat.MessageBlockPayload;
+import com.example.common.integration.chat.RoomInvitePayload;
 import com.example.common.web.exception.BusinessException;
 import com.example.common.web.exception.ErrorCode;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -98,6 +101,7 @@ public class MessageBlockMapper {
                 .map(block -> switch (block.getType()) {
                     case TEXT -> block.getText() == null ? "" : block.getText().trim();
                     case ASSET -> labelForAttachment(block.getAttachment());
+                    case ROOM_INVITE -> labelForInvite(block.getRoomInvite());
                 })
                 .filter(text -> text != null && !text.isBlank())
                 .collect(Collectors.joining(" "));
@@ -137,6 +141,7 @@ public class MessageBlockMapper {
         return switch (block.getType()) {
             case TEXT -> normalizeTextBlock(block);
             case ASSET -> normalizeAssetBlock(block);
+            case ROOM_INVITE -> normalizeRoomInviteBlock(block);
         };
     }
 
@@ -193,11 +198,46 @@ public class MessageBlockMapper {
                 .build();
     }
 
+            private MessageBlockRequest normalizeRoomInviteBlock(MessageBlockRequest block) {
+            if (block.getRoomInvite() == null || block.getRoomInvite().getRoomId() == null) {
+                throw new BusinessException(
+                    ErrorCode.VALIDATION_ERROR,
+                    "Room invite block requires roomId"
+                );
+            }
+
+            RoomInviteRequest roomInvite = block.getRoomInvite();
+
+            return MessageBlockRequest.builder()
+                .type(MessageBlockType.ROOM_INVITE)
+                .roomInvite(RoomInviteRequest.builder()
+                    .roomId(roomInvite.getRoomId())
+                    .roomName(roomInvite.getRoomName())
+                    .roomAvatarUrl(roomInvite.getRoomAvatarUrl())
+                    .memberCount(roomInvite.getMemberCount())
+                    .build())
+                .build();
+            }
+
     private MessageBlockResponse toResponse(MessageBlockRequest block) {
         return MessageBlockResponse.builder()
                 .type(block.getType())
                 .text(block.getText())
                 .attachment(toAttachmentResponse(block.getAttachment()))
+                .roomInvite(toRoomInviteResponse(block.getRoomInvite()))
+                .build();
+    }
+
+    private RoomInviteResponse toRoomInviteResponse(RoomInviteRequest roomInvite) {
+        if (roomInvite == null) {
+            return null;
+        }
+
+        return RoomInviteResponse.builder()
+                .roomId(roomInvite.getRoomId())
+                .roomName(roomInvite.getRoomName())
+                .roomAvatarUrl(roomInvite.getRoomAvatarUrl())
+                .memberCount(roomInvite.getMemberCount())
                 .build();
     }
 
@@ -223,6 +263,20 @@ public class MessageBlockMapper {
                 .type(block.getType().name())
                 .text(block.getText())
                 .attachment(toAttachmentPayload(block.getAttachment()))
+                .roomInvite(toRoomInvitePayload(block.getRoomInvite()))
+                .build();
+    }
+
+    private RoomInvitePayload toRoomInvitePayload(RoomInviteRequest roomInvite) {
+        if (roomInvite == null) {
+            return null;
+        }
+
+        return RoomInvitePayload.builder()
+                .roomId(roomInvite.getRoomId())
+                .roomName(roomInvite.getRoomName())
+                .roomAvatarUrl(roomInvite.getRoomAvatarUrl())
+                .memberCount(roomInvite.getMemberCount())
                 .build();
     }
 
@@ -261,6 +315,19 @@ public class MessageBlockMapper {
             case VIDEO -> "[Video]";
             case FILE -> "[File]";
         };
+    }
+
+    private String labelForInvite(RoomInviteRequest roomInvite) {
+        if (roomInvite == null) {
+            return "[Group Invite]";
+        }
+
+        String name = roomInvite.getRoomName();
+        if (name == null || name.isBlank()) {
+            return "[Group Invite]";
+        }
+
+        return "[Group Invite: " + name.trim() + "]";
     }
 
     private List<MessageBlockRequest> decodeBlocks(String blocksJson) {

@@ -13,6 +13,8 @@ public interface IRoomService {
 
     void joinByCode(UUID userId, String code);
 
+        void joinByInviteRoomId(UUID userId, UUID roomId);
+
     void leaveRoom(UUID roomId, UUID userId);
 
     RoomResponse renameRoom(UUID roomId, UUID userId, String newName);

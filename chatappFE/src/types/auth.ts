@@ -13,3 +13,13 @@ export interface RegisterRequest {
   username: string
   password: string
 }
+
+export interface ChangePasswordRequest {
+  currentPassword: string
+  newPassword: string
+}
+
+export interface EmailVerificationStatus {
+  email: string
+  verified: boolean
+}

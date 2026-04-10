@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { updateMyProfileApi, uploadAvatarApi } from "../../api/user.service";
+import { updateMyProfileApi, uploadAvatarApi, searchUserByUsernameApi } from "../../api/user.service";
 import { useUserStore } from "../../store/user.store";
 import { useAuth } from "../../store/auth.store";
 import type { ProfileDraft } from "../../types/profile";
@@ -11,7 +11,7 @@ interface Props {
 
 export default function ProfileEditor({ draft, setDraft }: Props) {
   const updateLocal = useUserStore((s) => s.updateUserLocal);
-  const { currentUser } = useAuth();
+  const { currentUser, refreshCurrentUser } = useAuth();
 
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -40,6 +40,23 @@ export default function ProfileEditor({ draft, setDraft }: Props) {
     setStatus(null); // reset message khi user edit
   };
 
+  const [fieldErrors, setFieldErrors] = useState<{ username?: string; displayName?: string }>({});
+
+  const validateUsername = (username: string): string | null => {
+    const normalized = username.trim();
+    if (!normalized) return "Username is required.";
+    if (normalized.length < 3 || normalized.length > 30) return "Username must be 3-30 characters.";
+    if (!/^[a-zA-Z0-9_]+$/.test(normalized)) return "Username can only contain letters, numbers, and underscores.";
+    return null;
+  };
+
+  const validateDisplayName = (displayName: string): string | null => {
+    const normalized = displayName.trim();
+    if (!normalized) return "Display name is required.";
+    if (normalized.length > 50) return "Display name cannot exceed 50 characters.";
+    return null;
+  };
+
   /** Dirty check */
   const isDirty = useMemo(() => {
     if (!initialRef.current) return false;
@@ -47,6 +64,7 @@ export default function ProfileEditor({ draft, setDraft }: Props) {
     const initial = initialRef.current;
 
     return (
+      draft.username !== initial.username ||
       draft.displayName !== initial.displayName ||
       draft.aboutMe !== initial.aboutMe ||
       draft.backgroundColor !== initial.backgroundColor ||
@@ -67,7 +85,9 @@ export default function ProfileEditor({ draft, setDraft }: Props) {
       const avatarUrl = await uploadAvatarApi(file);
 
       setDraft((d) => ({ ...d, avatarUrl }));
-      updateLocal({ ...draft, avatarUrl } as any);
+      if (currentUser) {
+        updateLocal({ ...currentUser, ...draft, avatarUrl });
+      }
 
       setStatus({
         type: "success",
@@ -89,14 +109,45 @@ export default function ProfileEditor({ draft, setDraft }: Props) {
     try {
       setSaving(true);
       setStatus(null);
+      setFieldErrors({});
+
+      const usernameError = validateUsername(draft.username);
+      const displayNameError = validateDisplayName(draft.displayName);
+      if (usernameError || displayNameError) {
+        setFieldErrors({ username: usernameError ?? undefined, displayName: displayNameError ?? undefined });
+        setStatus({ type: "error", message: "Please fix highlighted fields." });
+        return;
+      }
+
+      if (currentUser && draft.username.trim() !== currentUser.username) {
+        const existing = await searchUserByUsernameApi(draft.username.trim());
+        if (existing && existing.accountId !== currentUser.accountId) {
+          setFieldErrors({ username: "Username is already taken." });
+          setStatus({ type: "error", message: "Username is already in use." });
+          return;
+        }
+      }
 
       await updateMyProfileApi({
+        username: draft.username.trim(),
         displayName: draft.displayName,
         aboutMe: draft.aboutMe,
         backgroundColor: draft.backgroundColor,
       });
 
-      updateLocal(draft as any);
+      if (currentUser) {
+        updateLocal({
+          ...currentUser,
+          username: draft.username.trim(),
+          displayName: draft.displayName,
+          aboutMe: draft.aboutMe,
+          backgroundColor: draft.backgroundColor,
+          avatarUrl: draft.avatarUrl ?? currentUser.avatarUrl,
+        });
+      }
+
+      // Refresh auth context so sidebar and other surfaces see updated displayName/username
+      refreshCurrentUser();
 
       /** Update snapshot mới */
       initialRef.current = { ...draft };
@@ -123,6 +174,19 @@ export default function ProfileEditor({ draft, setDraft }: Props) {
   return (
     <div className="space-y-5">
 
+      {/* USERNAME */}
+      <Field label="Username">
+        <input
+          value={draft.username}
+          onChange={(e) => update("username", e.target.value)}
+          className={`${inputStyle} ${fieldErrors.username ? "border-red-500" : ""}`}
+          placeholder="Your username"
+        />
+        {fieldErrors.username && (
+          <div className="text-xs text-red-600 mt-1">{fieldErrors.username}</div>
+        )}
+      </Field>
+
       {/* DISPLAY NAME */}
       <Field label="Display Name">
         <input
@@ -131,6 +195,9 @@ export default function ProfileEditor({ draft, setDraft }: Props) {
           className={inputStyle}
           placeholder="Your display name"
         />
+        {fieldErrors.displayName && (
+          <div className="text-xs text-red-600 mt-1">{fieldErrors.displayName}</div>
+        )}
       </Field>
 
       {/* ABOUT ME */}

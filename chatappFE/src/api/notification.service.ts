@@ -1,4 +1,4 @@
-import { notificationApi } from "./notification.api"
+import { notificationApi, roomNotificationApi } from "./notification.api"
 import { unwrap } from "../utils/unwrap"
 import { extractErrorMessage } from "../utils/error"
 
@@ -11,7 +11,7 @@ import type {
 export const getNotificationsApi = async (): Promise<NotificationListResponse> => {
   try {
     const res = await notificationApi.get<ApiResponse<NotificationListResponse>>(
-      "/notifications"
+      ""
     )
     return unwrap(res)
   } catch (error) {
@@ -22,7 +22,7 @@ export const getNotificationsApi = async (): Promise<NotificationListResponse> =
 export const markNotificationReadApi = async (notificationId: string): Promise<void> => {
   try {
     const res = await notificationApi.post<ApiResponse<void>>(
-      `/notifications/${notificationId}/read`
+      `/${notificationId}/read`
     )
     if (res.data.success === false) {
       throw new Error(res.data.error?.message || "Failed to mark notification read")
@@ -35,7 +35,7 @@ export const markNotificationReadApi = async (notificationId: string): Promise<v
 export const markAllNotificationsReadApi = async (): Promise<void> => {
   try {
     const res = await notificationApi.post<ApiResponse<void>>(
-      "/notifications/read-all"
+      "/read-all"
     )
     if (res.data.success === false) {
       throw new Error(res.data.error?.message || "Failed to mark all notifications read")
@@ -47,7 +47,7 @@ export const markAllNotificationsReadApi = async (): Promise<void> => {
 
 export const getRoomMuteSettingsApi = async (roomId: string): Promise<RoomSettingsResponse> => {
   try {
-    const res = await notificationApi.get<ApiResponse<RoomSettingsResponse>>(
+    const res = await roomNotificationApi.get<ApiResponse<RoomSettingsResponse>>(
       `/rooms/${roomId}/settings`
     )
     return unwrap(res)
@@ -58,7 +58,7 @@ export const getRoomMuteSettingsApi = async (roomId: string): Promise<RoomSettin
 
 export const muteRoomApi = async (roomId: string): Promise<void> => {
   try {
-    const res = await notificationApi.post<ApiResponse<void>>(`/rooms/${roomId}/mute`)
+    const res = await roomNotificationApi.post<ApiResponse<void>>(`/rooms/${roomId}/mute`)
     if (res.data.success === false) {
       throw new Error(res.data.error?.message || "Failed to mute room")
     }
@@ -69,7 +69,7 @@ export const muteRoomApi = async (roomId: string): Promise<void> => {
 
 export const unmuteRoomApi = async (roomId: string): Promise<void> => {
   try {
-    const res = await notificationApi.delete<ApiResponse<void>>(`/rooms/${roomId}/mute`)
+    const res = await roomNotificationApi.delete<ApiResponse<void>>(`/rooms/${roomId}/mute`)
     if (res.data.success === false) {
       throw new Error(res.data.error?.message || "Failed to unmute room")
     }

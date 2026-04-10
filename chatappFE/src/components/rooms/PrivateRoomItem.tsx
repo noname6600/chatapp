@@ -14,36 +14,35 @@ export default function PrivateRoomItem({
   return (
     <div
       onClick={onClick}
-      className={`p-3 border-b cursor-pointer transition ${
+      className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors duration-100 ${
         isActive
-          ? "bg-blue-50 border-l-4 border-l-blue-500"
-          : "hover:bg-gray-50 border-b border-gray-100"
+          ? "bg-blue-50 border-l-2 border-l-blue-500"
+          : "border-l-2 border-l-transparent hover:bg-gray-50"
       }`}
     >
-      <div className="flex items-center gap-3">
-        {/* Avatar */}
+      {/* Avatar */}
+      <div className="relative flex-shrink-0">
         <img
           src={room.avatarUrl || "/default-avatar.png"}
           alt={room.name}
-          className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+          className="w-9 h-9 rounded-full object-cover"
         />
-
-        {/* Room Info */}
-        <div className="flex-1 min-w-0">
-          <div className="font-medium text-sm text-gray-900 truncate">
-            {room.name}
-          </div>
-          {room.lastMessage && (
-            <div className="text-xs text-gray-500 truncate mt-0.5">
-              {room.lastMessage.senderName}: {room.lastMessage.content}
-            </div>
-          )}
-        </div>
-
-        {/* Unread Badge */}
         {room.unreadCount > 0 && (
-          <div className="flex-shrink-0 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-semibold">
-            {room.unreadCount > 9 ? "9+" : room.unreadCount}
+          <div className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] leading-none rounded-full min-w-[15px] h-[15px] flex items-center justify-center font-bold px-1">
+            {room.unreadCount > 99 ? "99+" : room.unreadCount}
+          </div>
+        )}
+      </div>
+
+      {/* Room Info */}
+      <div className="flex-1 min-w-0">
+        <div className={`text-sm truncate font-medium ${isActive ? "text-blue-700" : "text-gray-800"}`}>
+          {room.name}
+        </div>
+        {room.lastMessage && (
+          <div className="text-xs text-gray-400 truncate mt-0.5 leading-tight">
+            <span className="font-medium text-gray-500">{room.lastMessage.senderName}:</span>{" "}
+            {room.lastMessage.content}
           </div>
         )}
       </div>

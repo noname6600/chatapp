@@ -3,6 +3,7 @@ import { create } from "zustand";
 export type OverlaySource =
   | "SIDEBAR"
   | "CHAT"
+  | "MENTION"
   | "UNKNOWN";
 
 interface OverlayState {

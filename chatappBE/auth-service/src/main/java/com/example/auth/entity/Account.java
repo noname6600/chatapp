@@ -18,7 +18,7 @@ import java.util.UUID;
                 @Index(name = "idx_account_email", columnList = "email")
         }
 )
-public class Account {
+public class  Account {
 
     @Id
     @GeneratedValue
@@ -33,6 +33,9 @@ public class Account {
     @Column(nullable = false)
     private boolean enabled;
 
+    @Column(name = "email_verified", nullable = false)
+    private boolean emailVerified;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -42,6 +45,7 @@ public class Account {
         if (!this.enabled) {
             this.enabled = true;
         }
+        this.emailVerified = false;
     }
 }
 

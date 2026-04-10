@@ -11,7 +11,9 @@ import java.util.UUID;
 public interface IUserProfileService {
     UserProfileResponse getSelf(UUID accountId);
     UserProfileResponse getOther(UUID targetId);
+    boolean existsByAccountId(UUID accountId);
     void updateProfile(UUID accountId, UpdateProfileRequest req);
     List<UserBasicProfile> getMany(List<UUID> ids);
+    UserBasicProfile searchByUsername(String username);
     AvatarUploadResponse applyAvatarMetadata(UUID accountId, AvatarMetadataRequest request);
 }

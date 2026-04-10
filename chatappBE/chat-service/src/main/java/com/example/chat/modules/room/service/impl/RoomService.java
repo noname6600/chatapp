@@ -81,6 +81,12 @@ public class RoomService implements IRoomService {
     public void joinByCode(UUID userId, String code) {
         UUID roomId = inviteCodeGenerator.decode(code);
 
+        joinByInviteRoomId(userId, roomId);
+    }
+
+    @Override
+    public void joinByInviteRoomId(UUID userId, UUID roomId) {
+
         Room room = roomRepo.findById(roomId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "Room not found"));
 

@@ -1,7 +1,12 @@
-import { Download, FileText, Image as ImageIcon, Video } from "lucide-react"
+import { Check, Copy, Download, FileText, Image as ImageIcon, Link2, Video } from "lucide-react"
+import { useState } from "react"
 import type { ReactNode } from "react"
+import { useNavigate } from "react-router-dom"
 
+import { joinRoomByInviteApi } from "../../api/room.service"
 import type { Attachment, MessageBlock } from "../../types/message"
+import { useChat } from "../../store/chat.store"
+import { useRooms } from "../../store/room.store"
 import Username from "../user/Username"
 
 interface MessageBlocksProps {
@@ -14,6 +19,10 @@ export function getRenderableBlocks(blocks: MessageBlock[] = []): MessageBlock[]
   return blocks.filter((block) => {
     if (block.type === "TEXT") {
       return Boolean(block.text?.trim())
+    }
+
+    if (block.type === "ROOM_INVITE") {
+      return Boolean(block.roomInvite?.roomId)
     }
 
     return Boolean(block.attachment)
@@ -182,6 +191,105 @@ function AssetBlock({ attachment }: { attachment: Attachment }) {
   )
 }
 
+function RoomInviteBlock({ block }: { block: MessageBlock }) {
+  const navigate = useNavigate()
+  const { loadRooms, roomsById } = useRooms()
+  const { setActiveRoom } = useChat()
+  const [joining, setJoining] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [joinError, setJoinError] = useState<string | null>(null)
+  const [joinUnavailable, setJoinUnavailable] = useState(false)
+
+  const roomInvite = block.roomInvite
+  if (!roomInvite) {
+    return null
+  }
+
+  const isJoined = Boolean(roomsById[roomInvite.roomId])
+  const inviteLink = `${window.location.origin}/chat?join=${roomInvite.roomId}`
+  const roomCode = roomInvite.roomId
+
+  const handleCopyInviteLink = async () => {
+    if (!navigator.clipboard) {
+      return
+    }
+
+    await navigator.clipboard.writeText(inviteLink)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1500)
+  }
+
+  const handleJoin = async () => {
+    if (joining || isJoined) return
+
+    try {
+      setJoining(true)
+      setJoinError(null)
+      setJoinUnavailable(false)
+      await joinRoomByInviteApi(roomInvite.roomId)
+      await loadRooms()
+      await setActiveRoom(roomInvite.roomId)
+      navigate("/chat")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to join this group"
+      setJoinError(message)
+
+      const lowered = message.toLowerCase()
+      if (
+        lowered.includes("not found") ||
+        lowered.includes("forbidden") ||
+        lowered.includes("cannot join") ||
+        lowered.includes("private")
+      ) {
+        setJoinUnavailable(true)
+      }
+    } finally {
+      setJoining(false)
+    }
+  }
+
+  return (
+    <div className="max-w-sm rounded-xl border border-blue-200 bg-blue-50/60 p-3">
+      <div className="text-xs font-semibold uppercase tracking-wide text-blue-600">Group Invite</div>
+      <div className="mt-1 text-sm font-medium text-gray-900">
+        {roomInvite.roomName?.trim() || "Unnamed room"}
+      </div>
+      <div className="mt-1 text-xs text-gray-600">
+        {roomInvite.memberCount != null ? `${roomInvite.memberCount} members` : "Use link or code to join"}
+      </div>
+      <div className="mt-2 rounded-lg border border-blue-100 bg-white/80 p-2 text-xs text-gray-600">
+        <div className="flex items-center gap-1 text-blue-700">
+          <Link2 size={12} />
+          <span className="truncate">{inviteLink}</span>
+        </div>
+        <div className="mt-1 font-mono text-[11px] text-gray-500">Code: {roomCode}</div>
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => void handleCopyInviteLink()}
+          className="rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50"
+          aria-label="Copy invite link"
+        >
+          <span className="inline-flex items-center gap-1">
+            {copied ? <Check size={12} /> : <Copy size={12} />}
+            {copied ? "Copied" : "Copy link"}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleJoin()}
+          disabled={joining || isJoined || joinUnavailable}
+          className="rounded-lg border border-blue-300 bg-white px-2.5 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isJoined ? "Joined" : joinUnavailable ? "Unavailable" : joining ? "Joining..." : "Join Group"}
+        </button>
+        {joinError && <span className="text-xs text-red-600">{joinError}</span>}
+      </div>
+    </div>
+  )
+}
+
 export default function MessageBlocks({
   blocks,
   resolveMentionLabel,
@@ -207,6 +315,14 @@ export default function MessageBlocks({
                 resolveMentionLabel,
                 resolveMentionUserId
               )}
+            </div>
+          )
+        }
+
+        if (block.type === "ROOM_INVITE") {
+          return (
+            <div key={`invite-${index}`}>
+              <RoomInviteBlock block={block} />
             </div>
           )
         }

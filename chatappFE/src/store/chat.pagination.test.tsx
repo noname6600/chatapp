@@ -458,6 +458,92 @@ describe("chat pagination behavior", () => {
     expect(harness.chat.messagesByRoom["room-1"].at(-1)?.seq).toBe(301)
   })
 
+  it("optimistic attachment send does not advance latestSeqByRoom", async () => {
+    mocks.getLatestMessages.mockResolvedValueOnce({
+      messages: range(1, 5),
+      hasMore: false,
+    })
+
+    const harness = await renderChatProvider()
+
+    await act(async () => {
+      await harness.chat.setActiveRoom("room-1")
+    })
+
+    // latestSeq is 5 after loading the initial window
+    expect(harness.chat.windowMetaByRoom["room-1"]?.latestSeq).toBe(5)
+
+    await act(async () => {
+      harness.chat.upsertMessage({
+        ...makeMessage(999, {
+          seq: Number.MAX_SAFE_INTEGER,
+          messageId: "temp-attach-1",
+          roomId: "room-1",
+          senderId: "me",
+          clientMessageId: "cid-attach-1",
+          type: "ATTACHMENT",
+        }),
+        deliveryStatus: "pending",
+      })
+    })
+
+    // Optimistic placeholder must NOT advance latestSeq beyond the last confirmed server seq
+    expect(harness.chat.windowMetaByRoom["room-1"]?.latestSeq).toBe(5)
+    // hasNewer must remain false — the optimistic tail doesn't mean we are behind
+    expect(harness.chat.windowMetaByRoom["room-1"]?.hasNewer).toBe(false)
+  })
+
+  it("latestSeqByRoom is correctly updated after server confirmation of attachment send", async () => {
+    mocks.getLatestMessages.mockResolvedValueOnce({
+      messages: range(1, 5),
+      hasMore: false,
+    })
+
+    const clientId = "cid-attach-2"
+
+    const harness = await renderChatProvider()
+
+    await act(async () => {
+      await harness.chat.setActiveRoom("room-1")
+    })
+
+    // Insert optimistic placeholder
+    await act(async () => {
+      harness.chat.upsertMessage({
+        ...makeMessage(999, {
+          seq: Number.MAX_SAFE_INTEGER,
+          messageId: "temp-attach-2",
+          roomId: "room-1",
+          senderId: "me",
+          clientMessageId: clientId,
+          type: "ATTACHMENT",
+        }),
+        deliveryStatus: "pending",
+      })
+    })
+
+    // Server confirms with real seq 6 — reconciliation should replace the temp
+    await act(async () => {
+      harness.chat.upsertMessage(
+        makeMessage(6, {
+          messageId: "server-6",
+          roomId: "room-1",
+          senderId: "me",
+          clientMessageId: clientId,
+          type: "ATTACHMENT",
+        })
+      )
+    })
+
+    // After reconciliation: temp removed, real seq 6 present
+    expect(harness.chat.messagesByRoom["room-1"].find((m) => m.messageId === "temp-attach-2")).toBeUndefined()
+    expect(harness.chat.messagesByRoom["room-1"].find((m) => m.messageId === "server-6")).toBeDefined()
+    // latestSeq should now reflect the confirmed server seq
+    expect(harness.chat.windowMetaByRoom["room-1"]?.latestSeq).toBe(6)
+    // hasNewer must still be false — we are at the latest after self-send
+    expect(harness.chat.windowMetaByRoom["room-1"]?.hasNewer).toBe(false)
+  })
+
   it("converges to full 1-10 history after send/join/send and refresh", async () => {
     mocks.getLatestMessages
       .mockResolvedValueOnce({

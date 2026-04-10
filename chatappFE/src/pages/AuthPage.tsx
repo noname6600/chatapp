@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { loginApi, registerApi } from "../api/auth.service";
 import { useAuth } from "../hooks/useAuth";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 
 type Mode = "login" | "register";
 
@@ -67,7 +67,7 @@ export default function AuthPage() {
           ? await loginApi({ username, password })
           : await registerApi({ username, password });
 
-      login(tokens.accessToken, tokens.refreshToken);
+      await login(tokens.accessToken, tokens.refreshToken);
 
       navigate("/chat");
 
@@ -151,6 +151,18 @@ export default function AuthPage() {
         >
           {mode === "login" ? "Login" : "Register"}
         </button>
+
+        {/* FORGOT PASSWORD */}
+        {mode === "login" && (
+          <div className="text-right mt-2">
+            <Link
+              to="/forgot-password"
+              className="text-sm text-indigo-600 hover:underline"
+            >
+              Forgot password?
+            </Link>
+          </div>
+        )}
 
         {/* DIVIDER */}
         <div className="text-center text-gray-400 my-4">OR</div>

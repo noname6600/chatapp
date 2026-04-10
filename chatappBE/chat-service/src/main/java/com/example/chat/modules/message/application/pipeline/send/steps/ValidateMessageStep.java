@@ -1,6 +1,8 @@
 package com.example.chat.modules.message.application.pipeline.send.steps;
 
+import com.example.chat.modules.message.application.dto.request.MessageBlockRequest;
 import com.example.chat.modules.message.application.dto.request.SendMessageRequest;
+import com.example.chat.modules.message.domain.enums.MessageBlockType;
 import com.example.chat.modules.message.application.pipeline.send.SendMessageContext;
 import com.example.common.core.pipeline.PipelineStep;
 import com.example.common.web.exception.BusinessException;
@@ -50,7 +52,11 @@ public class ValidateMessageStep
                 request.getAttachments() != null &&
                         !request.getAttachments().isEmpty();
 
-        if (!hasContent && !hasAttachments) {
+                boolean hasRenderableBlocks =
+                                request.getBlocks() != null &&
+                                                request.getBlocks().stream().anyMatch(this::isRenderableBlock);
+
+                if (!hasContent && !hasAttachments && !hasRenderableBlocks) {
             throw new BusinessException(
                     ErrorCode.VALIDATION_ERROR,
                     "Message must contain content or attachment"
@@ -60,4 +66,17 @@ public class ValidateMessageStep
         context.setRoomId(roomId);
         context.setSenderId(senderId);
     }
+
+        private boolean isRenderableBlock(MessageBlockRequest block) {
+                if (block == null || block.getType() == null) {
+                        return false;
+                }
+
+                return switch (block.getType()) {
+                        case TEXT -> block.getText() != null && !block.getText().isBlank();
+                        case ASSET -> block.getAttachment() != null;
+                        case ROOM_INVITE ->
+                                        block.getRoomInvite() != null && block.getRoomInvite().getRoomId() != null;
+                };
+        }
 }

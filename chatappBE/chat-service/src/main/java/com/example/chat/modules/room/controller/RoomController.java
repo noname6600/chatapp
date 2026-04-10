@@ -61,6 +61,25 @@ public class RoomController extends BaseController {
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
+        @PostMapping("/{roomId}/join")
+        public ResponseEntity<ApiResponse<Void>> joinByInviteRoomId(
+                        @AuthenticationPrincipal Jwt jwt,
+                        @PathVariable UUID roomId
+        ) {
+                roomService.joinByInviteRoomId(currentUserId(jwt), roomId);
+                return ResponseEntity.ok(ApiResponse.success(null));
+        }
+
+        @PostMapping("/{roomId}/invite")
+        public ResponseEntity<ApiResponse<Void>> joinByLegacyInviteRoute(
+                        @AuthenticationPrincipal Jwt jwt,
+                        @PathVariable UUID roomId,
+                        @RequestParam(required = false) UUID userId
+        ) {
+                roomService.joinByInviteRoomId(currentUserId(jwt), roomId);
+                return ResponseEntity.ok(ApiResponse.success(null));
+        }
+
     @GetMapping("/{roomId}/code")
     public ResponseEntity<ApiResponse<String>> getRoomCode(
             @AuthenticationPrincipal Jwt jwt,

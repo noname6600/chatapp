@@ -5,9 +5,11 @@ import MessageList from "../components/chat/MessageList";
 import MessageInput from "../components/chat/MessageInput";
 import RoomMembersSidebar from "../components/chat/RoomMembersSidebar";
 import TypingIndicator from "../components/presence/TypingIndicator";
-import InviteMembersModal from "../components/rooms/InviteMembersModal";
 import RoomSettingsModal from "../components/rooms/RoomSettingsModal";
 import LeaveGroupModal from "../components/rooms/LeaveGroupModal";
+import InviteMembersModal from "../components/rooms/InviteMembersModal";
+import { sendMessageApi } from "../api/chat.service";
+import { startPrivateChatApi } from "../api/room.service";
 
 import {
   onPresenceOpen,
@@ -20,14 +22,45 @@ import { useRooms } from "../store/room.store";
 import { useNotifications } from "../store/notification.store";
 
 export default function ChatPageLayout() {
-  const { activeRoomId, setActiveRoom } = useChat();
+  const { activeRoomId, setActiveRoom, upsertMessage } = useChat();
   const { roomsById, loadRooms } = useRooms();
   const { fetchRoomMute } = useNotifications();
-  const [showInviteModal, setShowInviteModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showLeaveModal, setShowLeaveModal] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showMembers, setShowMembers] = useState(true);
 
   const currentRoom = activeRoomId ? roomsById[activeRoomId] : null;
+
+  const handleSendInviteCard = async (targetUserId: string) => {
+    if (!currentRoom || currentRoom.type !== "GROUP") return;
+
+    const privateRoom = await startPrivateChatApi(targetUserId);
+
+    const message = await sendMessageApi({
+      roomId: privateRoom.id,
+      blocks: [
+        {
+          type: "ROOM_INVITE",
+          roomInvite: {
+            roomId: currentRoom.id,
+            roomName: currentRoom.name,
+            roomAvatarUrl: currentRoom.avatarUrl ?? undefined,
+          },
+        },
+      ],
+    });
+
+    if (activeRoomId === privateRoom.id) {
+      upsertMessage(message);
+    }
+
+    await loadRooms();
+  };
+
+  useEffect(() => {
+    setShowInviteModal(false);
+  }, [activeRoomId]);
 
   useEffect(() => {
     if (!activeRoomId) return;
@@ -74,6 +107,8 @@ export default function ChatPageLayout() {
               onInvite={() => setShowInviteModal(true)}
               onSettings={() => setShowSettingsModal(true)}
               onLeave={() => setShowLeaveModal(true)}
+              membersOpen={showMembers}
+              onToggleMembers={() => setShowMembers((v) => !v)}
             />
             <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
               <MessageList roomId={activeRoomId} />
@@ -84,8 +119,8 @@ export default function ChatPageLayout() {
         )}
       </div>
 
-      {activeRoomId && (
-        <div className="w-72 shrink-0 border-l bg-white overflow-hidden">
+      {activeRoomId && showMembers && (
+        <div className="w-60 shrink-0 border-l bg-white overflow-hidden">
           <RoomMembersSidebar roomId={activeRoomId} />
         </div>
       )}
@@ -93,11 +128,6 @@ export default function ChatPageLayout() {
       {/* Modals */}
       {currentRoom && (
         <>
-          <InviteMembersModal
-            isOpen={showInviteModal}
-            room={currentRoom}
-            onClose={() => setShowInviteModal(false)}
-          />
           <RoomSettingsModal
             isOpen={showSettingsModal}
             room={currentRoom}
@@ -108,6 +138,12 @@ export default function ChatPageLayout() {
             room={currentRoom}
             onClose={() => setShowLeaveModal(false)}
             onSuccess={handleLeaveSuccess}
+          />
+          <InviteMembersModal
+            isOpen={showInviteModal}
+            room={currentRoom}
+            onClose={() => setShowInviteModal(false)}
+            onInviteUser={handleSendInviteCard}
           />
         </>
       )}

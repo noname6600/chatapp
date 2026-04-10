@@ -6,7 +6,7 @@ spring:
     name: chat-service
 
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
 
     consumer:
       group-id: chat-service
@@ -24,8 +24,8 @@ spring:
 
   data:
     redis:
-      host: localhost
-      port: 6379
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
 
   servlet:
     multipart:
@@ -35,9 +35,9 @@ spring:
   # DATABASE (PostgreSQL)
   # ======================
   datasource:
-    url: ${MASTER_DATABASE_URL:jdbc:postgresql://localhost:5434/chat_service}
-    username: ${MASTER_DATABASE_USER:postgres}
-    password: ${MASTER_DATABASE_PWD:postgres}
+    url: ${CHAT_DATABASE_URL:jdbc:postgresql://localhost:5434/chat_service}
+    username: ${CHAT_DATABASE_USER:chat_user}
+    password: ${CHAT_DATABASE_PASSWORD:chat_password}
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -54,7 +54,7 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          jwk-set-uri: http://localhost:8081/.well-known/jwks.json
+          jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8081/.well-known/jwks.json}
 
 
 
@@ -72,19 +72,19 @@ management:
 common:
   security:
     cors:
-      allowed-origins: "http://localhost:5173,http://localhost:5174,http://localhost:3000"
+      allowed-origins: "${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost:3000}"
       allowed-methods: "*"
       allowed-headers: "*"
 
 
 cloudinary:
-  cloud-name: dblxoplvg
-  api-key: 877947325938691
-  api-secret: KfHivMv0wUQ9D-89rVx8Wu5U12w
+  cloud-name: ${CLOUDINARY_CLOUD_NAME:dblxoplvg}
+  api-key: ${CLOUDINARY_API_KEY:877947325938691}
+  api-secret: ${CLOUDINARY_API_SECRET:KfHivMv0wUQ9D-89rVx8Wu5U12w}
 
 services:
   user:
-    url: http://localhost:8082
+    url: ${SERVICES_USER_URL:http://localhost:8082}
 
 logging:
   pattern:

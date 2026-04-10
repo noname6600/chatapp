@@ -72,8 +72,14 @@ export default function MessageList({ roomId }: Props) {
     newestSeq != null &&
     firstUnreadSeq >= oldestSeq &&
     firstUnreadSeq <= newestSeq;
+  // Guard against synthetic seq values (e.g. Number.MAX_SAFE_INTEGER from optimistic
+  // placeholders) leaking into the behind-latest display label.
+  const isValidBoundedSeq = (v: number | null | undefined): v is number =>
+    v != null && Number.isFinite(v) && v < Number.MAX_SAFE_INTEGER;
   const distanceToLatest =
-    hasNewerInWindow && effectiveLatestSeq != null && newestSeq != null
+    hasNewerInWindow &&
+    isValidBoundedSeq(effectiveLatestSeq) &&
+    isValidBoundedSeq(newestSeq)
       ? Math.max(0, effectiveLatestSeq - newestSeq)
       : 0;
   const showDistanceIndicator = roomUnreadCount <= 0 && distanceToLatest >= 100;
@@ -101,6 +107,7 @@ export default function MessageList({ roomId }: Props) {
   const markReadSentRef = useRef<Record<string, boolean>>({});
   const autoPrefetchAttemptsRef = useRef<Record<string, number>>({});
   const autoPrefetchMessageCountRef = useRef<Record<string, number>>({});
+  const prevMessageCountByRoomRef = useRef<Record<string, number>>({});
   const jumpResolverInFlightRef = useRef<Record<string, boolean>>({});
 
   const [loadingOld, setLoadingOld] = useState(false);
@@ -351,6 +358,7 @@ export default function MessageList({ roomId }: Props) {
       firstUnreadAnchorDoneRef.current[roomId] = false;
       initialBottomAnchorDoneRef.current[roomId] = false;
       markReadSentRef.current[roomId] = false;
+      prevMessageCountByRoomRef.current[roomId] = 0;
 
       if (typeof setActiveRoom === "function") {
         chatDebug("room:init:setActiveRoom", { roomId, roomUnreadCount });
@@ -409,6 +417,10 @@ export default function MessageList({ roomId }: Props) {
     if (roomUnreadCount > 0) return;
     if (!messages.length) return;
 
+    const prevCount = prevMessageCountByRoomRef.current[roomId] ?? 0;
+    const countIncreased = messages.length > prevCount;
+    prevMessageCountByRoomRef.current[roomId] = messages.length;
+
     requestAnimationFrame(() => {
       // On first load of a room with no unread, force latest-position anchor.
       if (!initialBottomAnchorDoneRef.current[roomId]) {
@@ -423,6 +435,10 @@ export default function MessageList({ roomId }: Props) {
         initialBottomAnchorDoneRef.current[roomId] = true;
         return;
       }
+
+      // Only auto-scroll when a genuinely new message was added (count increased).
+      // Same-count updates are optimistic→confirmed reconciliations — no scroll needed.
+      if (!countIncreased) return;
 
       // After first load, keep bottom anchored if user was already pinned,
       // or if they just sent the newest message.
@@ -668,7 +684,7 @@ export default function MessageList({ roomId }: Props) {
 
         {groupedMessages.map((group) =>
           group.messages.map((m, indexInGroup) => (
-            <div key={m.messageId} data-message-seq={m.seq}>
+            <div key={m.clientMessageId ?? m.messageId} data-message-seq={m.seq}>
               {isBoundaryInWindow && firstUnreadSeq === m.seq && (
                 <div
                   ref={unreadDividerRef}

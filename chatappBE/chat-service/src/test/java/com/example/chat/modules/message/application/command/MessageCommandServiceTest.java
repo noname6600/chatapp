@@ -2,17 +2,25 @@ package com.example.chat.modules.message.application.command;
 
 import com.example.chat.modules.message.application.command.impl.MessageCommandService;
 import com.example.chat.modules.message.application.dto.request.SendMessageRequest;
+import com.example.chat.modules.message.application.dto.request.MessageBlockRequest;
+import com.example.chat.modules.message.application.dto.request.RoomInviteRequest;
 import com.example.chat.modules.message.application.dto.response.MessageResponse;
 import com.example.chat.modules.message.application.mapper.MessageMapper;
 import com.example.chat.modules.message.application.pipeline.delete.DeleteMessagePipeline;
 import com.example.chat.modules.message.application.pipeline.edit.EditMessagePipeline;
 import com.example.chat.modules.message.application.pipeline.send.SendMessageContext;
 import com.example.chat.modules.message.application.pipeline.send.SendMessagePipeline;
+import com.example.chat.modules.message.domain.enums.MessageBlockType;
 import com.example.chat.modules.message.domain.entity.ChatAttachment;
 import com.example.chat.modules.message.domain.entity.ChatMessage;
 import com.example.chat.modules.message.domain.repository.ChatAttachmentRepository;
 import com.example.chat.modules.message.domain.repository.ChatMessageRepository;
+import com.example.chat.modules.room.entity.Room;
+import com.example.chat.modules.room.enums.RoomType;
 import com.example.chat.modules.room.repository.RoomMemberRepository;
+import com.example.chat.modules.room.repository.RoomRepository;
+import com.example.common.web.exception.BusinessException;
+import com.example.common.web.exception.ErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,6 +34,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -47,6 +56,8 @@ class MessageCommandServiceTest {
     private ChatAttachmentRepository attachmentRepository;
         @Mock
         private RoomMemberRepository roomMemberRepository;
+        @Mock
+        private RoomRepository roomRepository;
 
     @InjectMocks
     private MessageCommandService service;
@@ -204,5 +215,113 @@ class MessageCommandServiceTest {
 
         verify(sendPipeline).execute(any());
         assertThat(request.getMentionedUserIds()).containsExactly(validMention);
+    }
+
+    @Test
+    void sendMessage_withRoomInvite_forNonMemberSender_throwsForbidden() {
+        UUID inviteRoomId = UUID.randomUUID();
+
+        when(roomRepository.findById(inviteRoomId))
+                .thenReturn(Optional.of(Room.builder().id(inviteRoomId).type(RoomType.GROUP).name("Dev Room").build()));
+        when(roomMemberRepository.existsByRoomIdAndUserId(inviteRoomId, senderId))
+                .thenReturn(false);
+
+        SendMessageRequest request = SendMessageRequest.builder()
+                .roomId(roomId)
+                .senderId(senderId)
+                .content("invite")
+                .clientMessageId(clientMessageId)
+                .blocks(List.of(MessageBlockRequest.builder()
+                        .type(MessageBlockType.ROOM_INVITE)
+                        .roomInvite(RoomInviteRequest.builder().roomId(inviteRoomId).build())
+                        .build()))
+                .build();
+
+        assertThatThrownBy(() -> service.sendMessage(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FORBIDDEN);
+
+        verifyNoInteractions(sendPipeline);
+    }
+
+    @Test
+    void sendMessage_withRoomInvite_forPrivateRoom_throwsBadRequest() {
+        UUID inviteRoomId = UUID.randomUUID();
+
+        when(roomRepository.findById(inviteRoomId))
+                .thenReturn(Optional.of(Room.builder().id(inviteRoomId).type(RoomType.PRIVATE).name("Private Room").build()));
+
+        SendMessageRequest request = SendMessageRequest.builder()
+                .roomId(roomId)
+                .senderId(senderId)
+                .content("invite")
+                .clientMessageId(clientMessageId)
+                .blocks(List.of(MessageBlockRequest.builder()
+                        .type(MessageBlockType.ROOM_INVITE)
+                        .roomInvite(RoomInviteRequest.builder().roomId(inviteRoomId).build())
+                        .build()))
+                .build();
+
+        assertThatThrownBy(() -> service.sendMessage(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.BAD_REQUEST);
+
+        verifyNoInteractions(sendPipeline);
+    }
+
+    @Test
+    void sendMessage_withRoomInvite_enrichesSnapshotMetadataBeforePipeline() {
+        UUID inviteRoomId = UUID.randomUUID();
+        Room inviteRoom = Room.builder()
+                .id(inviteRoomId)
+                .type(RoomType.GROUP)
+                .name("Design Guild")
+                .avatarUrl("https://example.com/room.png")
+                .build();
+
+        when(messageRepository.findByRoomIdAndClientMessageId(eq(roomId), eq(clientMessageId)))
+                .thenReturn(Optional.empty());
+        when(roomRepository.findById(inviteRoomId)).thenReturn(Optional.of(inviteRoom));
+        when(roomMemberRepository.existsByRoomIdAndUserId(inviteRoomId, senderId)).thenReturn(true);
+        when(roomMemberRepository.countByRoomId(inviteRoomId)).thenReturn(7L);
+
+        ChatMessage savedMessage = ChatMessage.builder()
+                .id(UUID.randomUUID())
+                .roomId(roomId)
+                .senderId(senderId)
+                .seq(3L)
+                .clientMessageId(clientMessageId)
+                .deleted(false)
+                .build();
+
+        when(sendPipeline.execute(any())).thenAnswer(invocation -> {
+            SendMessageContext ctx = invocation.getArgument(0);
+            MessageBlockRequest inviteBlock = ctx.getRequest().getBlocks().get(0);
+            assertThat(inviteBlock.getRoomInvite().getRoomName()).isEqualTo("Design Guild");
+            assertThat(inviteBlock.getRoomInvite().getRoomAvatarUrl()).isEqualTo("https://example.com/room.png");
+            assertThat(inviteBlock.getRoomInvite().getMemberCount()).isEqualTo(7);
+            ctx.setSavedMessage(savedMessage);
+            ctx.setSavedAttachments(List.of());
+            return ctx;
+        });
+        when(mapper.toResponse(eq(savedMessage), any(), any()))
+                .thenReturn(MessageResponse.builder().clientMessageId(clientMessageId).build());
+
+        SendMessageRequest request = SendMessageRequest.builder()
+                .roomId(roomId)
+                .senderId(senderId)
+                .content("invite")
+                .clientMessageId(clientMessageId)
+                .blocks(List.of(MessageBlockRequest.builder()
+                        .type(MessageBlockType.ROOM_INVITE)
+                        .roomInvite(RoomInviteRequest.builder().roomId(inviteRoomId).build())
+                        .build()))
+                .build();
+
+        service.sendMessage(request);
+
+        verify(sendPipeline).execute(any());
     }
 }

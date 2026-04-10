@@ -54,6 +54,7 @@ public class OAuthAuthService implements IOAuthService {
                                     Account.builder()
                                             .email(email)
                                             .enabled(true)
+                                            .emailVerified(true) // Google-verified emails are trusted
                                             .createdAt(Instant.now())
                                             .build()
                             )
@@ -66,6 +67,12 @@ public class OAuthAuthService implements IOAuthService {
                                     "Account exists but cannot be loaded"
                             )
                     );
+        }
+
+        // Ensure the account is marked email-verified (handles existing local accounts that gain Google link)
+        if (!account.isEmailVerified()) {
+            account.setEmailVerified(true);
+            accountRepo.save(account);
         }
 
         return idpService.linkIfAbsent(

@@ -1,0 +1,16 @@
+## MODIFIED Requirements
+
+### Requirement: Friend Request Badge Updates
+The system SHALL update the friend request notification badge when friend request events relevant to the current user are received.
+
+#### Scenario: Incoming request increments badge
+- **WHEN** another user sends a friend request to the current user
+- **THEN** the notification badge count MUST increment by one for the current user
+
+#### Scenario: Reconcile badge from unread source
+- **WHEN** the add-friend page initializes or reconnects after connection loss
+- **THEN** the client MUST reconcile badge count from the unread-count API response
+
+#### Scenario: Realtime transport unavailable uses fallback reconciliation
+- **WHEN** friendship WebSocket connection fails or is disconnected during an authenticated session
+- **THEN** the client MUST fetch unread-count via HTTP at initialization and maintain badge correctness until realtime reconnect succeeds
