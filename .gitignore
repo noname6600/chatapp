@@ -54,4 +54,7 @@ application-prod.yaml
 !.vscode/extensions.json
 !.vscode/settings.json
 
-# NOTE: openspec/ is intentionally NOT ignored — commit it!
+# === OpenSpec local-only ===
+openspec/
+chatappBE/openspec/
+chatappFE/openspec/
