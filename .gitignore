@@ -48,6 +48,9 @@ Thumbs.db
 !.env.example
 !**/.env.production.example
 !**/.env.local.example
+
+# === Local / Workspace ===
+.codex/
 application-local.yaml
 application-prod.yaml
 
