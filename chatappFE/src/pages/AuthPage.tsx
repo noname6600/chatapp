@@ -7,6 +7,9 @@ type Mode = "login" | "register";
 type SubmitPhase = "idle" | "verifying" | "bootstrapping";
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const AUTH_GATEWAY_BASE = (
+  import.meta.env.VITE_API_URL || "http://localhost:8080/api/v1"
+).replace(/\/api\/v1\/?$/, "");
 
 export default function AuthPage() {
 
@@ -98,8 +101,7 @@ export default function AuthPage() {
   };
 
   const handleGoogleLogin = () => {
-    window.location.href =
-      "http://localhost:8080/oauth2/authorization/google";
+    window.location.href = `${AUTH_GATEWAY_BASE}/oauth2/authorization/google`;
   };
 
   return (
