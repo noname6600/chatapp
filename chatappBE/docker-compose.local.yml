@@ -165,6 +165,7 @@ services:
       AUTH_DATABASE_USER: ${AUTH_DATABASE_USER:-auth_user}
       AUTH_DATABASE_PASSWORD: ${AUTH_DATABASE_PASSWORD:-auth_password}
       KAFKA_SERVERS: kafka:9092
+      USER_SERVICE_BASE_URL: http://user-service:8082/api/v1/users
       RESEND_API_KEY: ${RESEND_API_KEY}
       RESEND_FROM: ${RESEND_FROM}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
@@ -280,7 +281,7 @@ services:
       FRIENDSHIP_DATABASE_PASSWORD: ${FRIENDSHIP_DATABASE_PASSWORD:-friendship_password}
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
-      SERVICES_USER_URL: http://user-service:8082
+      USER_SERVICE_URL: http://user-service:8082
     networks:
       - chatapp-net
 
@@ -303,6 +304,8 @@ services:
       NOTIFICATION_DATABASE_USER: ${NOTIFICATION_DATABASE_USER:-notification_user}
       NOTIFICATION_DATABASE_PASSWORD: ${NOTIFICATION_DATABASE_PASSWORD:-notification_password}
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
     networks:
       - chatapp-net

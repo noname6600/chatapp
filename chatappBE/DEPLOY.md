@@ -79,14 +79,15 @@ Complete all items before the one-command startup.
 
 ### 2.4 Environment files and contract
 - [ ] Copy `chatappBE/.env.production.example` to `chatappBE/.env.production`
-- [ ] Fill all `CHANGE_ME` values (mail, oauth, cloudinary, service-scoped database passwords)
+- [ ] Fill all `CHANGE_ME` values (resend, oauth, cloudinary, service-scoped database passwords)
+- [ ] Copy `chatappFE/.env.production.example` to `chatappFE/.env.production`
 - [ ] Confirm backend domain variables:
   - `FRONTEND_URL=https://chatweb.nani.id.vn`
   - `CORS_ALLOWED_ORIGINS=https://chatweb.nani.id.vn,https://api.chatweb.nani.id.vn`
 - [ ] Confirm frontend production variables in `chatappFE/.env.production`:
   - `VITE_API_URL=https://api.chatweb.nani.id.vn/api/v1`
   - `VITE_WS_URL=wss://api.chatweb.nani.id.vn`
-- [ ] `.env.production` is not committed to git
+- [ ] `.env.production` files are not committed to git
 
 ### 2.4.1 Service database isolation contract
 - [ ] Configure per-service DB credentials in `.env.production`:

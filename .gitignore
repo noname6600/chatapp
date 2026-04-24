@@ -46,6 +46,8 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+!**/.env.production.example
+!**/.env.local.example
 application-local.yaml
 application-prod.yaml
 
