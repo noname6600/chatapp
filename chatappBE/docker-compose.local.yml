@@ -365,7 +365,7 @@ services:
     networks:
       - chatapp-net
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health/readiness || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/actuator/health/readiness || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

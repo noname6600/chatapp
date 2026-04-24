@@ -12,6 +12,8 @@ RUN npm run build
 # ─── Stage 2: Serve ───────────────────────────────────────────────────────────
 FROM nginx:stable-alpine
 
+RUN apk add --no-cache curl
+
 COPY --from=build /app/dist /usr/share/nginx/html
 
 # SPA fallback: route all 404s to index.html so React Router handles paths
