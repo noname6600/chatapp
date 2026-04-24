@@ -109,6 +109,15 @@ chmod +x nginx/init-letsencrypt.sh
 ```
 This script issues Let's Encrypt certificates for both production domains.
 
+### 2.5.0 One-command first deploy (recommended)
+```bash
+cd chatappBE
+chmod +x scripts/vps-first-deploy.sh
+./scripts/vps-first-deploy.sh your@email.com
+```
+This single command runs compose validation, first-time TLS issuance, full stack startup, and basic HTTPS checks.
+If ACME preflight fails, the script prints automatic diagnostics (local Host-header route check, public domain check, and port listeners).
+
 ### 2.5.1 ACME preflight validation (recommended before first issuance)
 ```bash
 cd chatappBE
