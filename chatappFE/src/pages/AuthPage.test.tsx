@@ -100,7 +100,7 @@ describe("AuthPage", () => {
   })
 
   it("navigates only after login bootstrap promise resolves", async () => {
-    let resolveLogin: (() => void) | null = null
+    let resolveLogin: () => void = () => {}
 
     authServiceMocks.loginApi.mockResolvedValue({
       accessToken: "access-token",
@@ -129,7 +129,7 @@ describe("AuthPage", () => {
     })
     expect(navigateMock).not.toHaveBeenCalled()
 
-    resolveLogin?.()
+    resolveLogin()
 
     await waitFor(() => {
       expect(navigateMock).toHaveBeenCalledWith("/chat")
@@ -137,7 +137,7 @@ describe("AuthPage", () => {
   })
 
   it("disables auth actions and shows loading state while submitting", async () => {
-    let resolveLoginApi: (() => void) | null = null
+    let resolveLoginApi: () => void = () => {}
 
     authServiceMocks.loginApi.mockImplementation(
       () =>
@@ -172,7 +172,7 @@ describe("AuthPage", () => {
     const googleButton = screen.getByRole("button", { name: /continue with google/i }) as HTMLButtonElement
     expect(googleButton.disabled).toBe(true)
 
-    resolveLoginApi?.()
+    resolveLoginApi()
   })
 
   it("shows deterministic fallback message when login fails without a message", async () => {

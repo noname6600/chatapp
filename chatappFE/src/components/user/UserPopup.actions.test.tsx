@@ -48,7 +48,7 @@ const userState = {
 }
 
 const friendState = {
-  map: { "user-1": "NONE", me: "FRIENDS" },
+  map: { "user-1": "NONE", me: "FRIENDS" } as Record<string, string>,
   resolve: vi.fn(),
   setStatus: vi.fn(),
 }
