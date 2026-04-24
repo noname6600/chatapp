@@ -148,6 +148,30 @@ verify_https_certs() {
   done
 }
 
+cleanup_dummy_cert_artifacts() {
+  local domain="$1"
+  local live_path archive_path renewal_path subject_line
+
+  live_path="${DATA_PATH}/conf/live/${domain}"
+  archive_path="${DATA_PATH}/conf/archive/${domain}"
+  renewal_path="${DATA_PATH}/conf/renewal/${domain}.conf"
+
+  if [ ! -f "${live_path}/fullchain.pem" ]; then
+    return 0
+  fi
+
+  # Real certbot-managed certs are symlinks under live/. The bootstrap dummy cert is a regular file.
+  if [ -L "${live_path}/fullchain.pem" ]; then
+    return 0
+  fi
+
+  subject_line="$(openssl x509 -in "${live_path}/fullchain.pem" -noout -subject 2>/dev/null || true)"
+  if echo "$subject_line" | grep -Eq 'CN\s*=\s*localhost'; then
+    echo "### Removing dummy certificate artifacts for ${domain} ..."
+    rm -rf "${live_path}" "${archive_path}" "${renewal_path}"
+  fi
+}
+
 # Download recommended TLS parameters if missing
 if [ ! -e "$DATA_PATH/conf/options-ssl-nginx.conf" ] || [ ! -e "$DATA_PATH/conf/ssl-dhparams.pem" ]; then
   echo "### Downloading recommended TLS parameters ..."
@@ -184,12 +208,16 @@ preflight_probe
 
 # Request real certificate for each domain
 for domain in "${DOMAINS[@]}"; do
+  cleanup_dummy_cert_artifacts "$domain"
+
   echo "### Issuing certificate for $domain ..."
   compose run --rm certbot \
     certonly --webroot \
     --webroot-path=/var/www/certbot \
     --email "$EMAIL" \
     --agree-tos --no-eff-email \
+    --cert-name "$domain" \
+    --force-renewal \
     -d "$domain"
 done
 
