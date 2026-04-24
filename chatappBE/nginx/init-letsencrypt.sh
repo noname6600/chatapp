@@ -1,18 +1,73 @@
 #!/bin/bash
 # init-letsencrypt.sh
 # Run ONCE on first deploy to obtain TLS certificates via Let's Encrypt.
-# After the initial run, certbot in the compose stack auto-renews.
+# After the initial run, certbot-renew in the compose stack auto-renews.
 #
 # Usage:
 #   chmod +x nginx/init-letsencrypt.sh
 #   ./nginx/init-letsencrypt.sh your@email.com
 
-set -e
+set -euo pipefail
 
 EMAIL="${1:?Usage: $0 <email>}"
 DOMAINS=("chatweb.nani.id.vn" "api.chatweb.nani.id.vn")
 RSA_KEY_SIZE=4096
 DATA_PATH="./certbot"
+COMPOSE_ARGS=( -f docker-compose.yml --env-file .env.production )
+
+compose() {
+  docker compose "${COMPOSE_ARGS[@]}" "$@"
+}
+
+fail_with_hint() {
+  echo ""
+  echo "ERROR: $1"
+  echo ""
+  echo "Troubleshooting hints:"
+  echo "- Confirm both domains resolve to this server IP:"
+  echo "  dig +short chatweb.nani.id.vn"
+  echo "  dig +short api.chatweb.nani.id.vn"
+  echo "- Confirm HTTP (port 80) is reachable from internet."
+  echo "- Confirm nginx uses the same webroot mount as certbot: ./certbot/www -> /var/www/certbot"
+  echo "- Confirm challenge file is readable via domain URL before issuance."
+  exit 1
+}
+
+preflight_probe() {
+  local token_file token_value domain url body
+  token_file="${DATA_PATH}/www/.well-known/acme-challenge/preflight-token"
+  token_value="acme-preflight-$(date +%s)"
+
+  mkdir -p "$(dirname "$token_file")"
+  printf '%s\n' "$token_value" > "$token_file"
+
+  for domain in "${DOMAINS[@]}"; do
+    url="http://${domain}/.well-known/acme-challenge/preflight-token"
+    echo "### Preflight probe for ${domain} ..."
+    body="$(curl -fsS --max-time 15 "$url" || true)"
+    if [ "$body" != "$token_value" ]; then
+      echo "Expected token: $token_value"
+      echo "Received body: ${body:-<empty>}"
+      fail_with_hint "ACME preflight probe failed for ${url}"
+    fi
+  done
+
+  rm -f "$token_file"
+  echo "### ACME preflight probe passed for all domains"
+}
+
+verify_https_certs() {
+  local domain cert_path
+  for domain in "${DOMAINS[@]}"; do
+    cert_path="${DATA_PATH}/conf/live/${domain}/fullchain.pem"
+    if [ ! -s "$cert_path" ]; then
+      fail_with_hint "Missing certificate file: ${cert_path}"
+    fi
+
+    echo "### HTTPS probe for ${domain} ..."
+    curl -fsSI --max-time 20 "https://${domain}" > /dev/null || fail_with_hint "HTTPS probe failed for https://${domain}"
+  done
+}
 
 # Download recommended TLS parameters if missing
 if [ ! -e "$DATA_PATH/conf/options-ssl-nginx.conf" ] || [ ! -e "$DATA_PATH/conf/ssl-dhparams.pem" ]; then
@@ -38,12 +93,20 @@ for domain in "${DOMAINS[@]}"; do
 done
 
 echo "### Starting nginx to serve ACME challenge ..."
-docker compose -f docker-compose.yml --env-file .env.production up -d nginx
+compose up -d nginx
+
+echo "### Validating nginx config before issuance ..."
+compose exec nginx nginx -t
+
+echo "### Reloading nginx with validated config ..."
+compose exec nginx nginx -s reload
+
+preflight_probe
 
 # Request real certificate for each domain
 for domain in "${DOMAINS[@]}"; do
   echo "### Issuing certificate for $domain ..."
-  docker compose -f docker-compose.yml --env-file .env.production run --rm certbot \
+  compose run --rm certbot \
     certonly --webroot \
     --webroot-path=/var/www/certbot \
     --email "$EMAIL" \
@@ -51,9 +114,15 @@ for domain in "${DOMAINS[@]}"; do
     -d "$domain"
 done
 
+echo "### Running certbot renewal dry-run ..."
+compose run --rm certbot renew --dry-run --webroot --webroot-path=/var/www/certbot
+
 echo "### Reloading nginx ..."
-docker compose -f docker-compose.yml --env-file .env.production exec nginx nginx -s reload
+compose exec nginx nginx -t
+compose exec nginx nginx -s reload
+
+verify_https_certs
 
 echo ""
 echo "Done! TLS certificates issued for: ${DOMAINS[*]}"
-echo "Run 'docker compose -f docker-compose.yml --env-file .env.production up -d' to start the full stack."
+echo "Run 'docker compose --env-file .env.production -f docker-compose.yml up -d' to start the full stack."

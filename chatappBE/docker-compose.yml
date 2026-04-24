@@ -455,11 +455,11 @@ services:
     volumes:
       - ./certbot/conf:/etc/letsencrypt
       - ./certbot/www:/var/www/certbot
-    # Renew certs every 12 hours; certbot skips if not yet due
-    entrypoint: /bin/sh -c "trap exit TERM; while :; do certbot renew --webroot --webroot-path=/var/www/certbot; sleep 12h & wait $${!}; done"
+    entrypoint: ["certbot"]
+    command: ["--version"]
     networks:
       - chatapp-net
-    restart: unless-stopped
+    restart: "no"
 
   certbot-renew:
     image: certbot/certbot:latest

@@ -109,6 +109,23 @@ chmod +x nginx/init-letsencrypt.sh
 ```
 This script issues Let's Encrypt certificates for both production domains.
 
+### 2.5.1 ACME preflight validation (recommended before first issuance)
+```bash
+cd chatappBE
+mkdir -p certbot/www/.well-known/acme-challenge
+echo "preflight-ok" > certbot/www/.well-known/acme-challenge/preflight-token
+curl -fsS http://chatweb.nani.id.vn/.well-known/acme-challenge/preflight-token
+curl -fsS http://api.chatweb.nani.id.vn/.well-known/acme-challenge/preflight-token
+rm -f certbot/www/.well-known/acme-challenge/preflight-token
+```
+Expected: both curl commands print `preflight-ok`.
+
+If you get 404, verify all of the following before retrying certbot:
+- Nginx is serving the same webroot path as certbot (`./certbot/www:/var/www/certbot`).
+- You are running commands from `chatappBE` (project-root path mismatches cause wrong bind mounts).
+- DNS for both domains points to the same VPS public IP.
+- Port 80 is reachable from internet.
+
 ### 2.6 Missing-variable failure behavior
 - If required env variables are missing, compose startup or service boot will fail.
 - Validate before startup:
@@ -204,6 +221,15 @@ Expected: coherent CORS headers, no duplicated `Access-Control-Allow-Origin` val
 3. Validate env file and re-run compose config check.
 4. Confirm DNS resolution for both production domains.
 5. Confirm certificate files exist for both domains in nginx cert volume.
+6. For ACME 404, confirm challenge file is externally reachable:
+```bash
+mkdir -p certbot/www/.well-known/acme-challenge
+echo "probe" > certbot/www/.well-known/acme-challenge/probe
+curl -i http://chatweb.nani.id.vn/.well-known/acme-challenge/probe
+curl -i http://api.chatweb.nani.id.vn/.well-known/acme-challenge/probe
+rm -f certbot/www/.well-known/acme-challenge/probe
+```
+Expected: HTTP 200 with body `probe`.
 
 ### 5.2 Ordered rollback actions
 1. Restore previous git revision for deployment files.
@@ -221,9 +247,36 @@ docker compose --env-file .env.production -f docker-compose.yml up -d --build
 
 ## 6. Certificate Renewal
 
-Certbot renews automatically in the `certbot` container. Manual renewal:
+Certbot renews automatically in the `certbot-renew` container. Manual renewal:
 
 ```bash
 docker compose --env-file .env.production -f docker-compose.yml run --rm certbot renew
 docker compose --env-file .env.production -f docker-compose.yml exec nginx nginx -s reload
 ```
+
+### 6.1 Post-issuance verification checklist
+```bash
+ls -l certbot/conf/live/chatweb.nani.id.vn/fullchain.pem
+ls -l certbot/conf/live/api.chatweb.nani.id.vn/fullchain.pem
+curl -sSI https://chatweb.nani.id.vn | head -5
+curl -sSI https://api.chatweb.nani.id.vn | head -5
+docker compose --env-file .env.production -f docker-compose.yml logs --tail=200 certbot-renew | grep -i "error\|failed\|acme\|challenge"
+```
+Expected:
+- certificate files exist for both domains
+- HTTPS headers are returned from both domains
+- no recurring ACME challenge 404/unauthorized errors in renewal logs
+
+### 6.2 Renewal dry-run and rollback
+```bash
+docker compose --env-file .env.production -f docker-compose.yml run --rm certbot renew --dry-run --webroot --webroot-path=/var/www/certbot
+```
+
+If dry-run fails:
+1. Backup current deployment files and env.
+2. Restore previous known-good `chatappBE/nginx/nginx.conf`, `chatappBE/docker-compose.yml`, and certbot paths.
+3. Recreate edge services:
+```bash
+docker compose --env-file .env.production -f docker-compose.yml up -d --build nginx certbot-renew
+```
+4. Re-run ACME preflight probe and retry dry-run only after HTTP challenge URL is reachable.
