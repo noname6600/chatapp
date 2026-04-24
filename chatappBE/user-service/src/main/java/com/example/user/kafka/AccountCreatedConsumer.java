@@ -1,58 +1,84 @@
 package com.example.user.kafka;
 
-import com.example.common.kafka.event.AccountCreatedEvent;
 import com.example.common.kafka.Topics;
+import com.example.common.kafka.event.AccountCreatedEvent;
 import com.example.user.entity.UserProfile;
 import com.example.user.repository.UserProfileRepository;
 import com.example.user.utils.AvatarGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
+
+import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class AccountCreatedConsumer {
 
+    private static final int MAX_USERNAME_ATTEMPTS = 50;
+
     private final UserProfileRepository repository;
     private final AvatarGenerator avatarGenerator;
 
     @KafkaListener(topics = Topics.ACCOUNT_CREATED)
     public void listen(AccountCreatedEvent event) {
-
         var payload = event.getPayload();
-        var accountId = payload.getAccountId();
+        UUID accountId = payload.getAccountId();
 
         log.info("[USER] Received AccountCreatedEvent for {}", payload.getEmail());
 
         if (repository.existsById(accountId)) {
-            log.info("[USER] Profile already exists → skip");
+            log.info("[USER] Profile already exists -> skip");
             return;
         }
 
-        String username = generateUniqueUsername(payload.getEmail());
-
-        String avatarUrl = avatarGenerator.generate(accountId, username);
-
-        repository.save(
-                UserProfile.builder()
-                        .accountId(accountId)
-                        .username(username)
-                        .displayName(username)
-                        .avatarUrl(avatarUrl)
-                        .avatarPublicId("generated:" + accountId)
-                        .aboutMe("")
-                        .backgroundColor("#ffffff")
-                        .build()
-        );
-
-        log.info("[USER] Profile created successfully → username={}", username);
+        createProfileIdempotently(accountId, payload.getEmail());
     }
 
-    private String generateUniqueUsername(String email) {
+    private void createProfileIdempotently(UUID accountId, String email) {
+        String base = normalizeBaseUsername(email);
 
+        for (int suffix = 0; suffix < MAX_USERNAME_ATTEMPTS; suffix++) {
+            String username = withSuffix(base, suffix);
+
+            if (repository.existsByUsername(username)) {
+                continue;
+            }
+
+            try {
+                String avatarUrl = avatarGenerator.generate(accountId, username);
+
+                repository.save(
+                        UserProfile.builder()
+                                .accountId(accountId)
+                                .username(username)
+                                .displayName(username)
+                                .avatarUrl(avatarUrl)
+                                .avatarPublicId("generated:" + accountId)
+                                .aboutMe("")
+                                .backgroundColor("#ffffff")
+                                .build()
+                );
+
+                log.info("[USER] Profile created successfully -> username={}", username);
+                return;
+            } catch (DataIntegrityViolationException ex) {
+                if (repository.existsById(accountId)) {
+                    log.info("[USER] Profile already created by concurrent consumer -> accountId={}", accountId);
+                    return;
+                }
+
+                log.debug("[USER] Username candidate conflict -> username={}", username);
+            }
+        }
+
+        throw new IllegalStateException("Unable to allocate a unique username for account " + accountId);
+    }
+
+    private String normalizeBaseUsername(String email) {
         String base = email.split("@")[0]
                 .replaceAll("[^a-zA-Z0-9._]", "")
                 .toLowerCase();
@@ -61,14 +87,13 @@ public class AccountCreatedConsumer {
             base = base + "user";
         }
 
-        String username = base;
-        int suffix = 0;
+        return base;
+    }
 
-        while (repository.existsByUsername(username)) {
-            suffix++;
-            username = base + suffix;
+    private String withSuffix(String base, int suffix) {
+        if (suffix == 0) {
+            return base;
         }
-
-        return username;
+        return base + suffix;
     }
 }

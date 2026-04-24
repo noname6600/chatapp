@@ -280,9 +280,11 @@ export default function FriendsPage() {
 
       case "add":
         return (
-          <div className="rounded-xl border border-gray-200 bg-white p-4">
+          <div className="flex max-h-[70vh] min-h-0 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white p-4">
             <h2 className="mb-4 text-lg font-semibold text-gray-900">Find and Add Friends</h2>
-            <AddFriendPanel />
+            <div className="min-h-0 flex-1">
+              <AddFriendPanel />
+            </div>
           </div>
         );
     }
@@ -293,9 +295,9 @@ export default function FriendsPage() {
   return (
     <div className="h-full w-full">
       <div className="mx-auto h-full max-w-6xl rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-        <div className="border-b bg-gray-50 px-5 py-4">
-          <h1 className="text-2xl font-semibold text-gray-900">Friends</h1>
-          <p className="mt-1 text-sm text-gray-600">
+        <div className="border-b bg-gray-50 px-5 py-3">
+          <h1 className="text-xl font-semibold text-gray-900">Friends</h1>
+          <p className="mt-1 text-xs text-gray-600">
             Keep your social circle organized and jump into direct chat faster.
           </p>
         </div>

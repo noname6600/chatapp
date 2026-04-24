@@ -40,3 +40,15 @@ export interface RoomMember {
 
   joinedAt: string
 }
+
+export interface RoomMemberJoinedPayload {
+  roomId: string
+  userId: string
+  role: string
+  joinedAt: string
+}
+
+export interface RoomMemberLeftPayload {
+  roomId: string
+  userId: string
+}

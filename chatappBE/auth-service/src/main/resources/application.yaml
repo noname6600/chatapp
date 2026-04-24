@@ -32,17 +32,10 @@ spring:
         jdbc:
           time_zone: UTC
 
-  mail:
-    host: smtp.gmail.com
-    port: 587
-    username: ${MAIL_USERNAME}
-    password: ${MAIL_PASSWORD}
-    properties:
-      mail:
-        smtp:
-          auth: true
-          starttls.enable: true
-      debug: false
+resend:
+  api-key: ${RESEND_API_KEY}
+  from: ${RESEND_FROM}
+  base-url: ${RESEND_BASE_URL:https://api.resend.com}
 
 security:
   oauth2:

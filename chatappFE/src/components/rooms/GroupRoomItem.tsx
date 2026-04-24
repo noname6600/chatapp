@@ -12,40 +12,45 @@ export default function GroupRoomItem({
   onClick,
 }: GroupRoomItemProps) {
   return (
-    <div
+    <button
+      type="button"
       onClick={onClick}
-      className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors duration-100 ${
+      className={`group flex w-full items-center gap-3 rounded-[18px] border px-3 py-3 text-left transition-all duration-150 ${
         isActive
-          ? "bg-blue-50 border-l-2 border-l-blue-500"
-          : "border-l-2 border-l-transparent hover:bg-gray-50"
+          ? "border-blue-200 bg-blue-50 shadow-sm shadow-blue-100/80"
+          : "border-transparent bg-white/70 hover:border-slate-200 hover:bg-white hover:shadow-sm"
       }`}
     >
-      {/* Avatar */}
       <div className="relative flex-shrink-0">
         <img
           src={room.avatarUrl || "/default-avatar.png"}
           alt={room.name}
-          className="w-9 h-9 rounded-xl object-cover"
+          className="h-10 w-10 rounded-2xl object-cover ring-1 ring-slate-200/80"
         />
         {room.unreadCount > 0 && (
-          <div className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] leading-none rounded-full min-w-[15px] h-[15px] flex items-center justify-center font-bold px-1">
+          <div className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white shadow-sm">
             {room.unreadCount > 99 ? "99+" : room.unreadCount}
           </div>
         )}
       </div>
 
-      {/* Room Info */}
       <div className="flex-1 min-w-0">
-        <div className={`text-sm truncate font-medium ${isActive ? "text-blue-700" : "text-gray-800"}`}>
+        <div
+          className={`truncate text-sm font-semibold ${
+            isActive ? "text-blue-700" : "text-slate-800"
+          }`}
+        >
           {room.name}
         </div>
         {room.lastMessage && (
-          <div className="text-xs text-gray-400 truncate mt-0.5 leading-tight">
-            <span className="font-medium text-gray-500">{room.lastMessage.senderName}:</span>{" "}
+          <div className="mt-1 truncate text-xs leading-tight text-slate-400">
+            <span className="font-medium text-slate-500">
+              {room.lastMessage.senderName}:
+            </span>{" "}
             {room.lastMessage.content}
           </div>
         )}
       </div>
-    </div>
+    </button>
   );
 }

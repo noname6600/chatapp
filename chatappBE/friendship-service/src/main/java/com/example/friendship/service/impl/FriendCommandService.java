@@ -18,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -96,8 +97,18 @@ public class FriendCommandService implements IFriendCommandService {
         }
 
         try {
-            ApiResponse<UserProfileResponse> response = userClient.searchByUsername(username.trim());
-            UserProfileResponse target = response.getData();
+            ApiResponse<List<UserProfileResponse>> response = userClient.searchByUsername(username.trim());
+            List<UserProfileResponse> matches = response.getData();
+            if (matches == null || matches.isEmpty()) {
+                return;
+            }
+
+            String normalized = username.trim().toLowerCase();
+            UserProfileResponse target = matches.stream()
+                    .filter(user -> user.getUsername() != null
+                            && user.getUsername().trim().toLowerCase().equals(normalized))
+                    .findFirst()
+                    .orElse(null);
             if (target == null || target.getAccountId() == null || sender.equals(target.getAccountId())) {
                 return;
             }
@@ -142,6 +153,12 @@ public class FriendCommandService implements IFriendCommandService {
         repository.delete(f);
 
         producer.publish(FriendshipEventType.FRIEND_REQUEST_DECLINED, f);
+        producer.publishFriendRequestEvent(
+                other,
+                me,
+                f.getId(),
+                FriendRequestEvent.Type.DECLINED
+        );
     }
 
     public void cancel(UUID sender, UUID receiver) {
@@ -156,6 +173,12 @@ public class FriendCommandService implements IFriendCommandService {
         repository.delete(f);
 
         producer.publish(FriendshipEventType.FRIEND_REQUEST_CANCELLED, f);
+        producer.publishFriendRequestEvent(
+                sender,
+                receiver,
+                f.getId(),
+                FriendRequestEvent.Type.CANCELLED
+        );
     }
 
     public void unfriend(UUID me, UUID other) {

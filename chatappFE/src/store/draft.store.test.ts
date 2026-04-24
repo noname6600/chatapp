@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useDraftStore } from './draft.store'
-import type { DraftBlock } from '../types/draft'
 
 describe('Draft Store - Block Operations', () => {
   beforeEach(() => {
@@ -33,8 +32,8 @@ describe('Draft Store - Block Operations', () => {
 
       const draft = useDraftStore.getState().getDraft(roomId)
       expect(draft?.blocks).toHaveLength(2)
-      expect(draft?.blocks[0].content).toBe('First')
-      expect(draft?.blocks[1].content).toBe('Second')
+      expect((draft?.blocks[0] as { content: string }).content).toBe('First')
+      expect((draft?.blocks[1] as { content: string }).content).toBe('Second')
     })
   })
 
@@ -52,7 +51,7 @@ describe('Draft Store - Block Operations', () => {
 
       const draft2 = useDraftStore.getState().getDraft(roomId)
       expect(draft2?.blocks).toHaveLength(1)
-      expect(draft2?.blocks[0].content).toBe('Text 2')
+      expect((draft2?.blocks[0] as { content: string }).content).toBe('Text 2')
     })
 
     it('should clear editing state when removing edited block', () => {
@@ -100,7 +99,7 @@ describe('Draft Store - Block Operations', () => {
       useDraftStore.getState().saveBlockEdit(roomId)
 
       const draft2 = useDraftStore.getState().getDraft(roomId)
-      expect(draft2?.blocks[0].content).toBe('Modified')
+      expect((draft2?.blocks[0] as { content: string }).content).toBe('Modified')
       expect(draft2?.editingBlockId).toBeUndefined()
     })
   })
@@ -119,7 +118,7 @@ describe('Draft Store - Block Operations', () => {
       useDraftStore.getState().cancelEdit(roomId)
 
       const draft2 = useDraftStore.getState().getDraft(roomId)
-      expect(draft2?.blocks[0].content).toBe('Original') // Unchanged
+      expect((draft2?.blocks[0] as { content: string }).content).toBe('Original') // Unchanged
       expect(draft2?.editingBlockId).toBeUndefined()
     })
   })
@@ -143,7 +142,7 @@ describe('Draft Store - Block Operations', () => {
       useDraftStore.getState().startEditBlock(roomId, block2Id)
 
       const draft2 = useDraftStore.getState().getDraft(roomId)
-      expect(draft2?.blocks[0].content).toBe('Text 1 Modified') // First saved
+      expect((draft2?.blocks[0] as { content: string }).content).toBe('Text 1 Modified') // First saved
       expect(draft2?.editingBlockId).toBe(block2Id) // Second now editing
     })
   })

@@ -2,7 +2,11 @@
 
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest"
 
-import { usePresenceStore } from "./presence.store"
+import {
+  selectMemberStatusForRoom,
+  selectTypingUsersForRoom,
+  usePresenceStore,
+} from "./presence.store"
 
 describe("presence.store", () => {
   beforeEach(() => {
@@ -64,5 +68,18 @@ describe("presence.store", () => {
     vi.advanceTimersByTime(6000)
 
     expect(usePresenceStore.getState().getTypingUsers("room-1")).toEqual([])
+  })
+
+  it("exposes room selectors for status and typing users", () => {
+    const store = usePresenceStore.getState()
+
+    store.setUserStatus("u1", "AWAY")
+    store.setRoomPresence("room-s", [{ userId: "u1", status: "ONLINE" }])
+    store.setUserTyping("room-s", "u1")
+
+    const state = usePresenceStore.getState()
+
+    expect(selectMemberStatusForRoom(state, "room-s", "u1")).toBe("ONLINE")
+    expect(selectTypingUsersForRoom(state, "room-s")).toEqual(["u1"])
   })
 })

@@ -10,11 +10,11 @@ import type { ReactNode } from "react"
 
 import {
   getNotificationsApi,
+  clearRoomNotificationsApi,
   getRoomMuteSettingsApi,
   markAllNotificationsReadApi,
   markNotificationReadApi,
-  muteRoomApi,
-  unmuteRoomApi,
+  updateRoomNotificationModeApi,
 } from "../api/notification.service"
 
 import { useAuth } from "./auth.store"
@@ -26,47 +26,114 @@ import {
   onNotificationEvent,
   onNotificationSocketOpen,
 } from "../websocket/notification.socket"
+import {
+  normalizeRoomNotificationMode,
+  shouldCountNotificationAsUnreadByMode,
+} from "../utils/notificationModePolicy"
 
 import type {
   Notification,
+  RoomNotificationMode,
   UnreadCountResponse,
 } from "../types/notification"
 
 interface NotificationContextType {
   notifications: Notification[]
   unreadCount: number
-  mutesByRoom: Record<string, boolean>
+  hasMoreNotifications: boolean
+  isLoadingMoreNotifications: boolean
+  notificationModesByRoom: Record<string, RoomNotificationMode>
   fetchNotifications: () => Promise<void>
+  loadMoreNotifications: () => Promise<void>
   markRead: (id: string) => Promise<void>
   markAllRead: () => Promise<void>
-  fetchRoomMute: (roomId: string) => Promise<boolean>
-  toggleRoomMute: (roomId: string, muted: boolean) => Promise<void>
+  clearRoomNotifications: (roomId: string) => Promise<void>
+  fetchRoomNotificationMode: (roomId: string) => Promise<RoomNotificationMode>
+  setRoomNotificationMode: (roomId: string, mode: RoomNotificationMode) => Promise<void>
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined)
-const ROOM_MUTE_STORAGE_KEY = "notification_mutes_by_room"
+const ROOM_NOTIFICATION_MODE_STORAGE_KEY = "notification_modes_by_room"
+const LEGACY_ROOM_MUTE_STORAGE_KEY = "notification_mutes_by_room"
 
 type SyncMode = "replace" | "reconcile"
 type SyncTriggerReason = "initial_load" | "socket_reconnect" | "manual_action" | "post-mark-read"
 
-// Constants for fetch throttling
-const RECONNECT_SYNC_COOLDOWN_MS = 2000 // 2 second minimum interval for reconnect-triggered syncs
+const RECONNECT_SYNC_COOLDOWN_MS = 2000
+const NOTIFICATION_PAGE_SIZE = 50
+
+// Pending read scopes track optimistic read operations until server confirmation.
+// The operation covers all notifications currently in state at the time the action
+// was triggered, so no timestamp comparison is needed — any notification that arrived
+// strictly after the scope was registered will not yet be in state and will not have
+// been optimistically marked read, so the server snapshot is the source of truth for those.
+interface PendingMarkAllReadScope {
+  type: "all"
+}
+interface PendingRoomClearScope {
+  type: "room"
+  roomId: string
+}
+type PendingReadScope = PendingMarkAllReadScope | PendingRoomClearScope
+
+const normalizeNotificationReadFlag = <T extends Notification>(notification: T): T => {
+  const candidate = notification as T & { read?: boolean }
+  const isRead =
+    typeof candidate.isRead === "boolean"
+      ? candidate.isRead
+      : typeof candidate.read === "boolean"
+        ? candidate.read
+        : true
+
+  return {
+    ...notification,
+    isRead,
+  }
+}
+
+const isCoveredByPendingScope = (
+  notification: Notification,
+  pendingScopes: PendingReadScope[]
+): boolean => {
+  return pendingScopes.some((scope) => {
+    if (scope.type === "all") {
+      return notification.type !== "FRIEND_REQUEST"
+    }
+    return scope.type === "room" && notification.roomId === scope.roomId && notification.type !== "FRIEND_REQUEST"
+  })
+}
 
 const isValidRealtimeNotification = (notification: Notification): boolean => {
   if (notification.type !== "MENTION") {
     return true
   }
 
-  // Mention UI entries require concrete target context.
   return Boolean(notification.referenceId && notification.roomId)
+}
+
+const isUnresolvedFriendRequest = (notification: Notification) => {
+  if (notification.type !== "FRIEND_REQUEST") {
+    return false
+  }
+
+  if (notification.isRead) {
+    return false
+  }
+
+  // Backward compatibility: if actionRequired is missing, treat unread requests as unresolved.
+  return notification.actionRequired !== false
 }
 
 const shouldIncrementUnread = (
   notification: Notification,
-  mutesByRoom: Record<string, boolean>,
+  modesByRoom: Record<string, RoomNotificationMode>,
   currentUserId: string | null
 ) => {
   if (notification.isRead) return false
+
+  if (notification.type === "FRIEND_REQUEST") {
+    return isUnresolvedFriendRequest(notification)
+  }
 
   if (
     isFeatureEnabled("enableSelfMessageUnreadExclusion") &&
@@ -77,13 +144,22 @@ const shouldIncrementUnread = (
   }
 
   const isRoomNotification =
-    notification.type === "MESSAGE" || notification.type === "MENTION"
+    notification.type === "MESSAGE" || notification.type === "MENTION" || notification.type === "REPLY" || notification.type === "REACTION" || notification.type === "GROUP_INVITE"
 
   if (!isRoomNotification || !notification.roomId) {
     return true
   }
 
-  return !Boolean(mutesByRoom[notification.roomId])
+  return shouldCountNotificationAsUnreadByMode(notification, modesByRoom)
+}
+
+const isPinnedNotification = (notification: Notification) => {
+  if (notification.actionRequired && !notification.isRead) {
+    return true
+  }
+
+  // Backward-compatible pinning rule if BE hasn't started sending actionRequired yet.
+  return notification.type === "FRIEND_REQUEST" && !notification.isRead
 }
 
 const toTimestamp = (createdAt: string | null | undefined) => {
@@ -116,9 +192,15 @@ const mergeNotifications = (
     )
   }
 
-  return [...map.values()].sort(
-    (a, b) => toTimestamp(b.createdAt) - toTimestamp(a.createdAt)
-  )
+  return [...map.values()].sort((a, b) => {
+    const pinnedA = isPinnedNotification(a) ? 1 : 0
+    const pinnedB = isPinnedNotification(b) ? 1 : 0
+    if (pinnedA !== pinnedB) return pinnedB - pinnedA
+    const tsDiff = toTimestamp(b.createdAt) - toTimestamp(a.createdAt)
+    if (tsDiff !== 0) return tsDiff
+    // Secondary tiebreak: id DESC (lexicographic, mirrors backend `id DESC` ordering)
+    return b.id > a.id ? 1 : b.id < a.id ? -1 : 0
+  })
 }
 
 const getNewestTimestamp = (items: Notification[]) => {
@@ -126,13 +208,43 @@ const getNewestTimestamp = (items: Notification[]) => {
   return items.reduce((maxTs, item) => Math.max(maxTs, toTimestamp(item.createdAt)), 0)
 }
 
+const pruneStaleFriendRequests = (
+  merged: Notification[],
+  authoritativeIncoming: Notification[],
+  serverNewestTimestamp: number,
+  realtimeTimestampFloor: number = 0
+) => {
+  const incomingIds = new Set(authoritativeIncoming.map((item) => item.id))
+  // A friend request must be newer than both the server snapshot window and the
+  // latest realtime event we have seen to be considered a genuinely unobserved
+  // arrival. Using only serverNewestTimestamp is insufficient when the server
+  // snapshot contains fewer items (e.g. reconnect returns a small page), because
+  // stale friend requests with timestamps just after serverNewestTimestamp would
+  // survive incorrectly.
+  const keepThreshold = Math.max(serverNewestTimestamp, realtimeTimestampFloor)
+
+  return merged.filter((item) => {
+    if (item.type !== "FRIEND_REQUEST") {
+      return true
+    }
+
+    if (incomingIds.has(item.id)) {
+      return true
+    }
+
+    // Keep genuinely newer realtime friend requests that neither the server
+    // snapshot nor the latest realtime window has observed yet.
+    return toTimestamp(item.createdAt) > keepThreshold
+  })
+}
+
 const countUnreadNotifications = (
   items: Notification[],
-  mutesByRoom: Record<string, boolean>,
+  modesByRoom: Record<string, RoomNotificationMode>,
   currentUserId: string | null
 ) => {
   return items.reduce((count, item) => {
-    if (!shouldIncrementUnread(item, mutesByRoom, currentUserId)) {
+    if (!shouldIncrementUnread(item, modesByRoom, currentUserId)) {
       return count
     }
 
@@ -140,26 +252,80 @@ const countUnreadNotifications = (
   }, 0)
 }
 
+const hasRoomModeOverrides = (modesByRoom: Record<string, RoomNotificationMode>) => {
+  return Object.values(modesByRoom).some((mode) => mode !== "NO_RESTRICT")
+}
+
+const parseStoredModes = (): Record<string, RoomNotificationMode> => {
+  const parsedModes: Record<string, RoomNotificationMode> = {}
+
+  try {
+    const raw = localStorage.getItem(ROOM_NOTIFICATION_MODE_STORAGE_KEY)
+    if (raw) {
+      const stored = JSON.parse(raw) as Record<string, unknown>
+      for (const [roomId, value] of Object.entries(stored)) {
+        if (value === "NO_RESTRICT" || value === "ONLY_MENTION" || value === "NOTHING") {
+          parsedModes[roomId] = value
+        }
+      }
+    }
+  } catch {
+    // Ignore malformed storage and continue.
+  }
+
+  // Compatibility path for old boolean mute storage.
+  try {
+    const legacyRaw = localStorage.getItem(LEGACY_ROOM_MUTE_STORAGE_KEY)
+    if (legacyRaw) {
+      const legacy = JSON.parse(legacyRaw) as Record<string, boolean>
+      for (const [roomId, muted] of Object.entries(legacy)) {
+        if (parsedModes[roomId] != null) continue
+        parsedModes[roomId] = muted ? "NOTHING" : "NO_RESTRICT"
+      }
+    }
+  } catch {
+    // Ignore malformed legacy data.
+  }
+
+  return parsedModes
+}
+
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { accessToken, userId } = useAuth()
 
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
-  const [mutesByRoom, setMutesByRoom] = useState<Record<string, boolean>>({})
+  const [notificationModesByRoom, setNotificationModesByRoom] = useState<Record<string, RoomNotificationMode>>(
+    () => parseStoredModes()
+  )
 
-  const mutesByRoomRef = useRef<Record<string, boolean>>({})
+  const notificationModesByRoomRef = useRef<Record<string, RoomNotificationMode>>({})
   const notificationsRef = useRef<Notification[]>([])
-  mutesByRoomRef.current = mutesByRoom
+  notificationModesByRoomRef.current = notificationModesByRoom
   notificationsRef.current = notifications
   const latestRealtimeTimestampRef = useRef(0)
-  
-  // Refs for sync fetch throttling (tasks 2.1-2.4)
+  const realtimeNotificationIdsRef = useRef<Set<string>>(new Set())
+  const pendingScopesRef = useRef<PendingReadScope[]>([])
+
   const syncInFlightRef = useRef<Promise<void> | null>(null)
   const lastSyncTimeRef = useRef(0)
   const lastSyncTriggerRef = useRef<SyncTriggerReason | null>(null)
+  const hasMoreNotificationsRef = useRef(false)
+  const nextPageRef = useRef<number | null>(null)
+  const windowCreatedAtRef = useRef<string | null>(null)
+  const loadingMoreRef = useRef(false)
+
+  const [hasMoreNotifications, setHasMoreNotifications] = useState(false)
+  const [isLoadingMoreNotifications, setIsLoadingMoreNotifications] = useState(false)
 
   const setNotificationsState = useCallback(
     (updater: Notification[] | ((prev: Notification[]) => Notification[])) => {
+      // Eagerly update the ref when given a plain array so that any event handler
+      // that runs between the setState call and React's batch commit sees fresh data.
+      // The ref is also updated inside the setState callback as a double-safety measure.
+      if (typeof updater !== "function") {
+        notificationsRef.current = updater
+      }
       setNotifications((prev) => {
         const next = typeof updater === "function"
           ? (updater as (prev: Notification[]) => Notification[])(prev)
@@ -172,34 +338,55 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   )
 
   const applyRealtimeNotification = useCallback((payload: Notification) => {
-    if (!isValidRealtimeNotification(payload)) {
+    const normalizedPayload = normalizeNotificationReadFlag(payload)
+    const isValid = isValidRealtimeNotification(normalizedPayload)
+
+    console.log("[notification-store] Applying realtime notification", {
+      id: normalizedPayload.id,
+      type: normalizedPayload.type,
+      isRead: normalizedPayload.isRead,
+      roomId: normalizedPayload.roomId,
+      referenceId: normalizedPayload.referenceId,
+      senderName: normalizedPayload.senderName,
+      preview: normalizedPayload.preview,
+      isValid,
+    })
+
+    if (!isValid) {
+      console.warn("[notification-store] Validation failed — MENTION requires referenceId + roomId", normalizedPayload)
       return
     }
 
     latestRealtimeTimestampRef.current = Math.max(
       latestRealtimeTimestampRef.current,
-      toTimestamp(payload.createdAt)
+      toTimestamp(normalizedPayload.createdAt)
     )
+    realtimeNotificationIdsRef.current.add(normalizedPayload.id)
 
-    const isNew = !notificationsRef.current.some((item) => item.id === payload.id)
+    const isNew = !notificationsRef.current.some((item) => item.id === normalizedPayload.id)
 
-    let mergedNotifications: Notification[] = []
-    setNotificationsState((prev) => {
-      mergedNotifications = mergeNotifications([payload], prev)
-      return mergedNotifications
-    })
+    const mergedNotifications = mergeNotifications([normalizedPayload], notificationsRef.current)
+    setNotificationsState(mergedNotifications)
 
     const unreadFloor = countUnreadNotifications(
       mergedNotifications,
-      mutesByRoomRef.current,
+      notificationModesByRoomRef.current,
       userId ?? null
     )
 
     setUnreadCount((prev) => {
       const next =
-        isNew && shouldIncrementUnread(payload, mutesByRoomRef.current, userId ?? null)
+        isNew && shouldIncrementUnread(normalizedPayload, notificationModesByRoomRef.current, userId ?? null)
           ? prev + 1
           : prev
+
+      console.log("[notification-store] Unread count update", {
+        prev,
+        next: Math.max(unreadFloor, next),
+        unreadFloor,
+        isNew,
+        shouldIncrement: shouldIncrementUnread(normalizedPayload, notificationModesByRoomRef.current, userId ?? null),
+      })
 
       return Math.max(unreadFloor, next)
     })
@@ -214,66 +401,89 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       const timeSinceLastSync = now - lastSyncTimeRef.current
       const isReconnectTrigger = triggerReason === "socket_reconnect"
 
-      // Task 2.1: Single-flight guard - return existing in-flight promise
       if (syncInFlightRef.current) {
-        console.debug("[notification-sync] Fetch already in-flight, coalescing request", {
-          triggerReason,
-          previousTrigger: lastSyncTriggerRef.current,
-        })
         return syncInFlightRef.current
       }
 
-      // Task 2.2: Apply reconnect-trigger cooldown
       if (
         isReconnectTrigger &&
         timeSinceLastSync < RECONNECT_SYNC_COOLDOWN_MS
       ) {
-        console.debug("[notification-sync] Skipping reconnect sync due to cooldown", {
-          timeSinceLastSyncMs: timeSinceLastSync,
-          cooldownMs: RECONNECT_SYNC_COOLDOWN_MS,
-        })
         return
       }
 
-      // Task 2.4: Log fetch execution decision
-      console.log("[notification-sync] Executing fetch request", {
-        triggerReason,
-        mode,
-        timeSinceLastSyncMs: timeSinceLastSync,
-      })
-
-      // Create single-flight promise
       const syncPromise = (async () => {
         try {
-          const response = await getNotificationsApi()
+          const response = await getNotificationsApi({ page: 0, size: NOTIFICATION_PAGE_SIZE })
           const incoming = response.notifications || []
           const incomingUnreadCount = response.unreadCount || 0
 
-          const serverNewestTimestamp = getNewestTimestamp(incoming)
+          const hasMore = response.hasMore === true
+          const nextPage = typeof response.nextPage === "number" ? response.nextPage : null
+          const windowCreatedAt = typeof response.windowCreatedAt === "string"
+            ? response.windowCreatedAt
+            : null
+
+          hasMoreNotificationsRef.current = hasMore
+          nextPageRef.current = nextPage
+          windowCreatedAtRef.current = windowCreatedAt
+          setHasMoreNotifications(hasMore)
+
+          // Apply pending read scopes: if a notification is covered by an unconfirmed read scope,
+          // preserve local isRead = true even if the server snapshot shows it as unread.
+          const pendingScopes = pendingScopesRef.current
+          const incomingWithScopeApplied = pendingScopes.length > 0
+            ? incoming.map((item) =>
+                !item.isRead && isCoveredByPendingScope(item, pendingScopes)
+                  ? { ...item, isRead: true }
+                  : item
+              )
+            : incoming
+
+          const serverNewestTimestamp = getNewestTimestamp(incomingWithScopeApplied)
           const hasNewerRealtimeEvents =
             mode === "reconcile" &&
             serverNewestTimestamp < latestRealtimeTimestampRef.current
 
-          let mergedNotifications: Notification[] = []
-          setNotificationsState((prev) => {
-            if (hasNewerRealtimeEvents) {
-              mergedNotifications = mergeNotifications(incoming, prev)
-              return mergedNotifications
-            }
-            mergedNotifications = mergeNotifications(incoming)
-            return mergedNotifications
-          })
+          const mergedNotifications = hasNewerRealtimeEvents
+            ? mergeNotifications(
+                incomingWithScopeApplied,
+                notificationsRef.current.filter((item) =>
+                  realtimeNotificationIdsRef.current.has(item.id) &&
+                  toTimestamp(item.createdAt) >= latestRealtimeTimestampRef.current
+                )
+              )
+            : mergeNotifications(incomingWithScopeApplied)
 
-          const unreadFloor = countUnreadNotifications(
+          const prunedNotifications = pruneStaleFriendRequests(
             mergedNotifications,
-            mutesByRoomRef.current,
-            userId ?? null
+            incomingWithScopeApplied,
+            serverNewestTimestamp,
+            latestRealtimeTimestampRef.current
           )
 
-          setUnreadCount((prev) => {
-            if (hasNewerRealtimeEvents) {
-              return Math.max(unreadFloor, prev, incomingUnreadCount)
+          setNotificationsState(prunedNotifications)
+
+          const unreadFloor = countUnreadNotifications(
+            prunedNotifications,
+            notificationModesByRoomRef.current,
+            userId ?? null
+          )
+          const hasModeOverrides = hasRoomModeOverrides(notificationModesByRoomRef.current)
+
+          setUnreadCount(() => {
+            if (hasModeOverrides) {
+              return unreadFloor
             }
+
+            // When pending read scopes are active, the server unread count may not yet reflect
+            // the optimistic read; trust the locally-computed floor in that case.
+            if (pendingScopes.length > 0) {
+              return unreadFloor
+            }
+
+            // API snapshot is authoritative baseline; floor protects against
+            // undercount when mode filters or unresolved action-required items apply.
             return Math.max(unreadFloor, incomingUnreadCount)
           })
         } finally {
@@ -292,6 +502,62 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const fetchNotifications = useCallback(async () => {
     await syncNotifications("replace", "manual_action")
   }, [syncNotifications])
+
+  const loadMoreNotifications = useCallback(async () => {
+    if (loadingMoreRef.current) {
+      return
+    }
+
+    if (!hasMoreNotificationsRef.current || nextPageRef.current == null) {
+      return
+    }
+
+    loadingMoreRef.current = true
+    setIsLoadingMoreNotifications(true)
+
+    try {
+      const response = await getNotificationsApi({
+        page: nextPageRef.current,
+        size: NOTIFICATION_PAGE_SIZE,
+        beforeCreatedAt: windowCreatedAtRef.current ?? undefined,
+      })
+
+      const incoming = response.notifications || []
+      const incomingUnreadCount = response.unreadCount || 0
+
+      const mergedNotifications = mergeNotifications(notificationsRef.current, incoming)
+      setNotificationsState(mergedNotifications)
+
+      const unreadFloor = countUnreadNotifications(
+        mergedNotifications,
+        notificationModesByRoomRef.current,
+        userId ?? null
+      )
+      const hasModeOverrides = hasRoomModeOverrides(notificationModesByRoomRef.current)
+
+      setUnreadCount(() => {
+        if (hasModeOverrides || pendingScopesRef.current.length > 0) {
+          return unreadFloor
+        }
+
+        return Math.max(unreadFloor, incomingUnreadCount)
+      })
+
+      const hasMore = response.hasMore === true
+      const nextPage = typeof response.nextPage === "number" ? response.nextPage : null
+      const windowCreatedAt = typeof response.windowCreatedAt === "string"
+        ? response.windowCreatedAt
+        : windowCreatedAtRef.current
+
+      hasMoreNotificationsRef.current = hasMore
+      nextPageRef.current = nextPage
+      windowCreatedAtRef.current = windowCreatedAt
+      setHasMoreNotifications(hasMore)
+    } finally {
+      loadingMoreRef.current = false
+      setIsLoadingMoreNotifications(false)
+    }
+  }, [setNotificationsState, userId])
 
   const markRead = useCallback(async (id: string) => {
     let decremented = false
@@ -313,53 +579,139 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, [setNotificationsState, syncNotifications])
 
   const markAllRead = useCallback(async () => {
-    setNotificationsState((prev) => prev.map((item) => ({ ...item, isRead: true })))
-    setUnreadCount(0)
-    await markAllNotificationsReadApi()
-    await syncNotifications("replace", "post-mark-read")
-  }, [setNotificationsState, syncNotifications])
+    const scope: PendingReadScope = { type: "all" }
+    pendingScopesRef.current = [...pendingScopesRef.current, scope]
 
-  const fetchRoomMute = useCallback(async (roomId: string) => {
-    const response = await getRoomMuteSettingsApi(roomId)
+    setNotificationsState((prev) =>
+      prev.map((item) => (item.type === "FRIEND_REQUEST" ? item : { ...item, isRead: true }))
+    )
 
-    setMutesByRoom((prev) => ({
-      ...prev,
-      [roomId]: response.isMuted,
-    }))
+    setUnreadCount(
+      countUnreadNotifications(
+        notificationsRef.current.map((item) => (item.type === "FRIEND_REQUEST" ? item : { ...item, isRead: true })),
+        notificationModesByRoomRef.current,
+        userId ?? null
+      )
+    )
+    try {
+      await markAllNotificationsReadApi()
+      await syncNotifications("replace", "post-mark-read")
+    } finally {
+      pendingScopesRef.current = pendingScopesRef.current.filter((s) => s !== scope)
+    }
+  }, [setNotificationsState, syncNotifications, userId])
 
-    return response.isMuted
-  }, [])
+  const clearRoomNotifications = useCallback(async (roomId: string) => {
+    if (!roomId) return
 
-  const toggleRoomMute = useCallback(async (roomId: string, muted: boolean) => {
-    const previousMuted = Boolean(mutesByRoomRef.current[roomId])
+    const scope: PendingReadScope = { type: "room", roomId }
+    pendingScopesRef.current = [...pendingScopesRef.current, scope]
 
-    setMutesByRoom((prev) => ({
-      ...prev,
-      [roomId]: muted,
-    }))
+    setNotificationsState((prev) =>
+      prev.map((item) => {
+        if (item.type === "FRIEND_REQUEST") return item
+        if (!item.roomId) return item
+        if (item.roomId !== roomId) return item
+        if (item.isRead) return item
+        return { ...item, isRead: true }
+      })
+    )
+
+    setUnreadCount(
+      countUnreadNotifications(
+        notificationsRef.current.map((item) => {
+          if (item.type === "FRIEND_REQUEST") return item
+          if (!item.roomId) return item
+          if (item.roomId !== roomId) return item
+          return { ...item, isRead: true }
+        }),
+        notificationModesByRoomRef.current,
+        userId ?? null
+      )
+    )
 
     try {
-      if (muted) {
-        await muteRoomApi(roomId)
-      } else {
-        await unmuteRoomApi(roomId)
-      }
-    } catch (error) {
-      setMutesByRoom((prev) => ({
-        ...prev,
-        [roomId]: previousMuted,
-      }))
-      throw error
+      await clearRoomNotificationsApi(roomId)
+      await syncNotifications("replace", "post-mark-read")
+    } finally {
+      pendingScopesRef.current = pendingScopesRef.current.filter((s) => s !== scope)
     }
+  }, [setNotificationsState, syncNotifications, userId])
+
+  const fetchRoomNotificationMode = useCallback(async (roomId: string) => {
+    const response = await getRoomMuteSettingsApi(roomId)
+    const mode = normalizeRoomNotificationMode(response.mode, response.isMuted)
+
+    setNotificationModesByRoom((prev) => ({
+      ...prev,
+      [roomId]: mode,
+    }))
+
+    return mode
   }, [])
 
+  const setRoomNotificationMode = useCallback(async (roomId: string, mode: RoomNotificationMode) => {
+    const previousMode = notificationModesByRoomRef.current[roomId] ?? "NO_RESTRICT"
+    const optimisticModes = {
+      ...notificationModesByRoomRef.current,
+      [roomId]: mode,
+    }
+
+    setNotificationModesByRoom(optimisticModes)
+    setUnreadCount(
+      countUnreadNotifications(
+        notificationsRef.current,
+        optimisticModes,
+        userId ?? null
+      )
+    )
+
+    try {
+      const response = await updateRoomNotificationModeApi(roomId, mode)
+      const normalized = normalizeRoomNotificationMode(response.mode, response.isMuted)
+      const confirmedModes = {
+        ...optimisticModes,
+        [roomId]: normalized,
+      }
+      setNotificationModesByRoom(confirmedModes)
+      setUnreadCount(
+        countUnreadNotifications(
+          notificationsRef.current,
+          confirmedModes,
+          userId ?? null
+        )
+      )
+    } catch (error) {
+      const rollbackModes = {
+        ...optimisticModes,
+        [roomId]: previousMode,
+      }
+      setNotificationModesByRoom(rollbackModes)
+      setUnreadCount(
+        countUnreadNotifications(
+          notificationsRef.current,
+          rollbackModes,
+          userId ?? null
+        )
+      )
+      throw error
+    }
+  }, [userId])
+
   useEffect(() => {
-    localStorage.setItem(ROOM_MUTE_STORAGE_KEY, JSON.stringify(mutesByRoom))
-  }, [mutesByRoom])
+    localStorage.setItem(ROOM_NOTIFICATION_MODE_STORAGE_KEY, JSON.stringify(notificationModesByRoom))
+  }, [notificationModesByRoom])
 
   useEffect(() => {
     if (!accessToken) {
       latestRealtimeTimestampRef.current = 0
+      realtimeNotificationIdsRef.current = new Set()
+      hasMoreNotificationsRef.current = false
+      nextPageRef.current = null
+      windowCreatedAtRef.current = null
+      loadingMoreRef.current = false
+      setHasMoreNotifications(false)
+      setIsLoadingMoreNotifications(false)
       disconnectNotificationSocket()
       return
     }
@@ -371,8 +723,14 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     })
 
     const unsubscribeEvent = onNotificationEvent((event) => {
+      console.log("[notification-store] Socket event received", {
+        type: event.type,
+        knownType: event.type === NotificationEventType.NOTIFICATION_NEW || event.type === NotificationEventType.UNREAD_COUNT_UPDATE,
+        rawData: event.data,
+      })
       if (event.type === NotificationEventType.NOTIFICATION_NEW) {
         const payload = event.data as Notification
+        console.log("[notification-store] NOTIFICATION_NEW raw payload", payload)
         applyRealtimeNotification(payload)
         return
       }
@@ -382,11 +740,24 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         if (typeof payload?.unreadCount === "number") {
           const unreadFloor = countUnreadNotifications(
             notificationsRef.current,
-            mutesByRoomRef.current,
+            notificationModesByRoomRef.current,
             userId ?? null
           )
+          const hasModeOverrides = hasRoomModeOverrides(notificationModesByRoomRef.current)
+          if (hasModeOverrides || pendingScopesRef.current.length > 0) {
+            setUnreadCount(unreadFloor)
+          } else {
+            // Guard against stale websocket unread increases after refresh.
+            // Increases should come from NOTIFICATION_NEW or next API snapshot.
+            setUnreadCount((prev) => {
+              const candidate = Math.max(unreadFloor, payload.unreadCount)
+              if (candidate > prev) {
+                return unreadFloor
+              }
 
-          setUnreadCount(Math.max(unreadFloor, payload.unreadCount))
+              return candidate
+            })
+          }
         }
       }
     })
@@ -403,12 +774,16 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       value={{
         notifications,
         unreadCount,
-        mutesByRoom,
+        hasMoreNotifications,
+        isLoadingMoreNotifications,
+        notificationModesByRoom,
         fetchNotifications,
+        loadMoreNotifications,
         markRead,
         markAllRead,
-        fetchRoomMute,
-        toggleRoomMute,
+        clearRoomNotifications,
+        fetchRoomNotificationMode,
+        setRoomNotificationMode,
       }}
     >
       {children}

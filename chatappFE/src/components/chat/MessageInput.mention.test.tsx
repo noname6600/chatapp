@@ -74,6 +74,25 @@ vi.mock("../../store/user.store", () => ({
   useUserStore: (selector: (state: typeof userState) => unknown) => selector(userState),
 }))
 
+vi.mock("./EmojiPicker", () => ({
+  default: ({
+    onEmojiSelect,
+    disabled,
+  }: {
+    onEmojiSelect?: (emoji: string) => void
+    disabled?: boolean
+  }) => (
+    <button
+      type="button"
+      aria-label="Open emoji picker"
+      disabled={disabled}
+      onClick={() => onEmojiSelect?.("😀")}
+    >
+      Emoji
+    </button>
+  ),
+}))
+
 describe("MessageInput mention flow", () => {
   afterEach(() => {
     cleanup()
@@ -91,7 +110,7 @@ describe("MessageInput mention flow", () => {
   it("sends successfully after selecting mention without undefined content", async () => {
     render(<MessageInput roomId="room-1" />)
 
-    const textarea = (await screen.findByPlaceholderText(/Type a message/i)) as HTMLTextAreaElement
+    const textarea = (await screen.findByPlaceholderText(/Message/i)) as HTMLTextAreaElement
 
     fireEvent.change(textarea, { target: { value: "@ali" } })
     textarea.setSelectionRange(4, 4)
@@ -118,7 +137,7 @@ describe("MessageInput mention flow", () => {
   it("supports keyboard mention selection without inserting undefined", async () => {
     render(<MessageInput roomId="room-1" />)
 
-    const textarea = (await screen.findByPlaceholderText(/Type a message/i)) as HTMLTextAreaElement
+    const textarea = (await screen.findByPlaceholderText(/Message/i)) as HTMLTextAreaElement
 
     fireEvent.change(textarea, { target: { value: "@ali" } })
     textarea.setSelectionRange(4, 4)
@@ -141,73 +160,23 @@ describe("MessageInput mention flow", () => {
     expect(args[5]).toEqual(["user-1"])
   })
 
-  it("opens draft review and sends edited review text", async () => {
+  it("sends directly without draft review affordance", async () => {
     render(<MessageInput roomId="room-1" />)
 
-    const textarea = (await screen.findByPlaceholderText(/Type a message/i)) as HTMLTextAreaElement
-    fireEvent.change(textarea, { target: { value: "original draft" } })
-
-    fireEvent.click(screen.getByRole("button", { name: /Review/i }))
-
-    const reviewText = screen.getByPlaceholderText(/Write your message/i) as HTMLTextAreaElement
-    fireEvent.change(reviewText, { target: { value: "edited from review" } })
-
-    fireEvent.click(screen.getByRole("button", { name: /Send reviewed message/i }))
+    const textarea = (await screen.findByPlaceholderText(/Message/i)) as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: "direct message" } })
+    expect(screen.queryByRole("button", { name: /Review/i })).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: /Send/i }))
 
     await waitFor(() => {
       expect(mocks.sendMessage).toHaveBeenCalledTimes(1)
     })
 
     const args = mocks.sendMessage.mock.calls[0]
-    expect(args[1]).toBe("edited from review")
+    expect(args[1]).toBe("direct message")
   })
 
-  it("opens and closes draft review modal", async () => {
-    render(<MessageInput roomId="room-1" />)
-
-    const textarea = (await screen.findByPlaceholderText(/Type a message/i)) as HTMLTextAreaElement
-    fireEvent.change(textarea, { target: { value: "draft to review" } })
-
-    fireEvent.click(screen.getByRole("button", { name: /Review/i }))
-    expect(screen.getByText(/Review draft/i)).toBeTruthy()
-
-    fireEvent.click(screen.getByRole("button", { name: /Close review modal/i }))
-
-    await waitFor(() => {
-      expect(screen.queryByText(/Review draft/i)).toBeNull()
-    })
-  })
-
-  it("allows editing text inside draft review modal", async () => {
-    render(<MessageInput roomId="room-1" />)
-
-    const textarea = (await screen.findByPlaceholderText(/Type a message/i)) as HTMLTextAreaElement
-    fireEvent.change(textarea, { target: { value: "initial draft" } })
-    fireEvent.click(screen.getByRole("button", { name: /Review/i }))
-
-    const reviewTextarea = screen.getByPlaceholderText(/Write your message/i) as HTMLTextAreaElement
-    fireEvent.change(reviewTextarea, { target: { value: "changed in modal" } })
-
-    expect(reviewTextarea.value).toBe("changed in modal")
-  })
-
-  it("cancel closes review modal without sending message", async () => {
-    render(<MessageInput roomId="room-1" />)
-
-    const textarea = (await screen.findByPlaceholderText(/Type a message/i)) as HTMLTextAreaElement
-    fireEvent.change(textarea, { target: { value: "cancel me" } })
-    fireEvent.click(screen.getByRole("button", { name: /Review/i }))
-
-    fireEvent.click(screen.getByRole("button", { name: /^Cancel$/i }))
-
-    await waitFor(() => {
-      expect(screen.queryByText(/Review draft/i)).toBeNull()
-    })
-
-    expect(mocks.sendMessage).not.toHaveBeenCalled()
-  })
-
-  it("preserves reply context when sending from draft review", async () => {
+  it("inserts emoji via picker and preserves reply context on send", async () => {
     replyingToState = {
       messageId: "reply-123",
       senderId: "user-1",
@@ -217,19 +186,56 @@ describe("MessageInput mention flow", () => {
 
     render(<MessageInput roomId="room-1" />)
 
-    const textarea = (await screen.findByPlaceholderText(/Type a message/i)) as HTMLTextAreaElement
-    fireEvent.change(textarea, { target: { value: "replying through review" } })
-    fireEvent.click(screen.getByRole("button", { name: /Review/i }))
-
-    expect(screen.getByText(/Reply context kept/i)).toBeTruthy()
-
-    fireEvent.click(screen.getByRole("button", { name: /Send reviewed message/i }))
+    const textarea = (await screen.findByPlaceholderText(/Message/i)) as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: "replying with emoji " } })
+    fireEvent.click(screen.getByRole("button", { name: /Open emoji picker/i }))
+    fireEvent.click(screen.getByRole("button", { name: /Send/i }))
 
     await waitFor(() => {
       expect(mocks.sendMessage).toHaveBeenCalledTimes(1)
     })
 
     const args = mocks.sendMessage.mock.calls[0]
+    expect(args[1]).toContain("😀")
     expect(args[3]).toBe("reply-123")
+  })
+
+  it("preserves per-room draft when switching rooms and restores it on return", async () => {
+    const { rerender } = render(<MessageInput roomId="room-1" />)
+
+    const textarea = (await screen.findByPlaceholderText(/Message/i)) as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: "draft for room 1" } })
+
+    // Switch to room-2 — draft should be cleared
+    rerender(<MessageInput roomId="room-2" />)
+    await waitFor(() => {
+      expect(textarea.value).toBe("")
+    })
+
+    // Switch back to room-1 — draft should be restored
+    rerender(<MessageInput roomId="room-1" />)
+    await waitFor(() => {
+      expect(textarea.value).toBe("draft for room 1")
+    })
+  })
+
+  it("focuses textarea automatically when replyingTo is set", async () => {
+    replyingToState = null
+    const { rerender } = render(<MessageInput roomId="room-1" />)
+
+    const textarea = await screen.findByPlaceholderText(/Message/i)
+    expect(document.activeElement).not.toBe(textarea)
+
+    replyingToState = {
+      messageId: "reply-auto",
+      senderId: "user-1",
+      content: "focus me",
+      deleted: false,
+    }
+    rerender(<MessageInput roomId="room-1" />)
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(textarea)
+    })
   })
 })

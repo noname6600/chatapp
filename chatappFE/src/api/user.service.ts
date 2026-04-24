@@ -83,17 +83,13 @@ export const getUsersBulkApi = async (ids: string[]): Promise<UserProfile[]> => 
 
 export const searchUserByUsernameApi = async (
   username: string
-): Promise<UserProfile | null> => {
+): Promise<UserProfile[]> => {
   try {
-    const res = await userApi.get<ApiResponse<UserProfile>>(
+    const res = await userApi.get<ApiResponse<UserProfile[]>>(
       `/search?username=${encodeURIComponent(username)}`
     )
     return unwrap(res)
   } catch (error: unknown) {
-    const status = (error as { response?: { status?: number } })?.response?.status
-    if (status === 404) {
-      return null
-    }
     throw new Error(extractErrorMessage(error))
   }
 }

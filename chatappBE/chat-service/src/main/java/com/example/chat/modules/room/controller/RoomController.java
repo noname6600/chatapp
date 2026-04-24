@@ -1,7 +1,9 @@
 package com.example.chat.modules.room.controller;
 
 import com.example.chat.modules.room.dto.*;
+import com.example.chat.modules.message.application.dto.response.MessageResponse;
 import com.example.chat.modules.room.service.IPrivateRoomService;
+import com.example.chat.modules.room.service.IRoomPinService;
 import com.example.chat.modules.room.service.IRoomQueryService;
 import com.example.chat.modules.room.service.IRoomService;
 import com.example.common.web.controller.BaseController;
@@ -29,6 +31,7 @@ public class RoomController extends BaseController {
     private final IRoomService roomService;
     private final IRoomQueryService roomQueryService;
     private final IPrivateRoomService privateRoomService;
+        private final IRoomPinService roomPinService;
 
     @PostMapping
     public ResponseEntity<ApiResponse<RoomResponse>> createRoom(
@@ -153,6 +156,35 @@ public class RoomController extends BaseController {
         ) {
                 roomService.markRoomRead(roomId, currentUserId(jwt));
                 return ResponseEntity.ok(ApiResponse.success(null));
+        }
+
+        @PostMapping("/{roomId}/pins")
+        public ResponseEntity<ApiResponse<Void>> pinMessage(
+                        @AuthenticationPrincipal Jwt jwt,
+                        @PathVariable UUID roomId,
+                        @RequestParam UUID messageId
+        ) {
+                roomPinService.pinMessage(roomId, currentUserId(jwt), messageId);
+                return ResponseEntity.ok(ApiResponse.success(null));
+        }
+
+        @DeleteMapping("/{roomId}/pins/{messageId}")
+        public ResponseEntity<ApiResponse<Void>> unpinMessage(
+                        @AuthenticationPrincipal Jwt jwt,
+                        @PathVariable UUID roomId,
+                        @PathVariable UUID messageId
+        ) {
+                roomPinService.unpinMessage(roomId, currentUserId(jwt), messageId);
+                return ResponseEntity.ok(ApiResponse.success(null));
+        }
+
+        @GetMapping("/{roomId}/pins")
+        public ResponseEntity<ApiResponse<List<MessageResponse>>> getPinnedMessages(
+                        @AuthenticationPrincipal Jwt jwt,
+                        @PathVariable UUID roomId
+        ) {
+                List<MessageResponse> pinnedMessages = roomPinService.getPinnedMessages(roomId, currentUserId(jwt));
+                return ResponseEntity.ok(ApiResponse.success(pinnedMessages));
         }
 
     @PostMapping(

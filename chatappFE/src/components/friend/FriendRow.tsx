@@ -1,7 +1,7 @@
 import { useUserStore } from "../../store/user.store";
 import { usePresenceStore } from "../../store/presence.store";
-import OnlineDot from "../presence/OnlineDot";
 import { MoreMenu } from "./MoreMenu";
+import UserAvatar from "../user/UserAvatar";
 
 interface Props {
   userId: string;
@@ -62,24 +62,9 @@ export function FriendRow({
       "
       data-testid={`friend-row-${variant}-${userId}`}
     >
-      {/* Avatar with status ring */}
-      <div className="relative w-11 h-11 rounded-full bg-gray-300 flex-shrink-0 overflow-hidden">
-        {user.avatarUrl ? (
-          <img
-            src={user.avatarUrl}
-            alt={user.displayName}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-sm">
-            👤
-          </div>
-        )}
-        {variant === "friend" && (
-          <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white flex items-center justify-center">
-            <OnlineDot userId={userId} />
-          </div>
-        )}
+      {/* Avatar with status dot */}
+      <div className="relative w-11 h-11 flex-shrink-0">
+        <UserAvatar userId={userId} avatar={user.avatarUrl} size={44} status={status} />
       </div>
 
       {/* Content */}
@@ -91,8 +76,7 @@ export function FriendRow({
             @{user.username}
           </div>
         ) : (
-          <div className="flex items-center gap-2 text-sm text-gray-500">
-            <OnlineDot userId={userId} />
+          <div className="text-sm text-gray-500">
             {status === "AWAY" ? "Away" : status === "ONLINE" ? "Online" : "Offline"}
           </div>
         )}

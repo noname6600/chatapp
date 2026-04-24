@@ -247,12 +247,15 @@ export const joinPresenceRoom = (roomId: string) => {
 export const leavePresenceRoom = (roomId: string) => {
   if (!roomId) return;
 
+  const wasJoined = joinedRooms.has(roomId);
   joinedRooms.delete(roomId);
 
-  sendPresenceCommand({
-    type: PresenceEventType.ROOM_LEAVE,
-    roomId,
-  });
+  if (wasJoined) {
+    sendPresenceCommand({
+      type: PresenceEventType.ROOM_LEAVE,
+      roomId,
+    });
+  }
 
   const state = usePresenceStore.getState();
   state.clearRoomOnline(roomId);

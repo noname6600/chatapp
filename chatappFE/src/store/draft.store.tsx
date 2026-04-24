@@ -143,7 +143,7 @@ export const useDraftStore = create<DraftStore>((set, get) => ({
       if (draft.editingBlockId && draft.editingContent !== undefined) {
         updatedBlocks = draft.blocks.map((b) =>
           b.id === draft.editingBlockId && isTextBlock(b)
-            ? { ...b, content: draft.editingContent }
+            ? { ...b, content: draft.editingContent ?? '' }
             : b
         )
       }

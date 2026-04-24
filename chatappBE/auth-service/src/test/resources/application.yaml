@@ -47,8 +47,11 @@ security:
           client-id: test-google-client-id
           client-secret: test-google-client-secret
 
-MAIL_USERNAME: test@example.com
-MAIL_PASSWORD: test-password
+resend:
+  api-key: test-resend-key
+  from: no-reply@test.local
+  base-url: http://localhost
+
 MASTER_DATABASE_URL: jdbc:h2:mem:ignored
 MASTER_DATABASE_USER: sa
 MASTER_DATABASE_PWD:

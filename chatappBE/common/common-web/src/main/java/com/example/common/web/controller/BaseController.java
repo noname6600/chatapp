@@ -1,5 +1,7 @@
 package com.example.common.web.controller;
 
+import com.example.common.web.exception.BusinessException;
+import com.example.common.web.exception.ErrorCode;
 import com.example.common.web.response.ApiResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -25,8 +27,13 @@ public abstract class BaseController {
 
     protected UUID currentUserId(Jwt jwt) {
         if (jwt == null || jwt.getSubject() == null) {
-            throw new IllegalStateException("Unauthenticated");
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "Unauthorized");
         }
-        return UUID.fromString(jwt.getSubject());
+
+        try {
+            return UUID.fromString(jwt.getSubject());
+        } catch (IllegalArgumentException ex) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "Unauthorized");
+        }
     }
 }

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 import lombok.Getter;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @Getter
@@ -16,6 +17,8 @@ public final class FriendRequestEvent {
     private final UUID senderId;
     private final UUID recipientId;
     private final UUID requestId;
+    private final String senderDisplayName;
+    private final Instant createdAt;
     private final Type type;
 
     @JsonCreator
@@ -23,16 +26,22 @@ public final class FriendRequestEvent {
             @JsonProperty("senderId") UUID senderId,
             @JsonProperty("recipientId") UUID recipientId,
             @JsonProperty("requestId") UUID requestId,
+            @JsonProperty("senderDisplayName") String senderDisplayName,
+            @JsonProperty("createdAt") Instant createdAt,
             @JsonProperty("type") Type type
     ) {
         this.senderId = senderId;
         this.recipientId = recipientId;
         this.requestId = requestId;
+        this.senderDisplayName = senderDisplayName;
+        this.createdAt = createdAt;
         this.type = type;
     }
 
     public enum Type {
         SENT,
-        ACCEPTED
+        ACCEPTED,
+        DECLINED,
+        CANCELLED
     }
 }

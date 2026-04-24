@@ -1,6 +1,6 @@
 import { useMemo, useState, useRef, useEffect } from "react";
 import type { ReactNode } from "react";
-import { Edit2, Trash2, Reply, X, Check, CornerUpLeft } from "lucide-react";
+import { Edit2, Trash2, Reply, X, Check, CornerUpLeft, Pin, Forward } from "lucide-react";
 import MentionAutocomplete from "./MentionAutocomplete";
 import type { MentionSuggestion } from "./MentionAutocomplete";
 import { useMention } from "../../hooks/useMention";
@@ -39,6 +39,9 @@ interface MessageItemProps {
   indexInGroup?: number;
   isReplyLinkedHighlight?: boolean;
   isJumpTarget?: boolean;
+  isPinned?: boolean;
+  onPin?: (message: ChatMessage) => void;
+  onForward?: (message: ChatMessage) => void;
 }
 
 const MENTION_TOKEN_PATTERN = /(^|\s)(@[A-Za-z0-9_.-]+)/g;
@@ -117,6 +120,9 @@ export default function MessageItem({
   indexInGroup = 0,
   isReplyLinkedHighlight = false,
   isJumpTarget = false,
+  isPinned = false,
+  onPin,
+  onForward,
 }: MessageItemProps) {
   const { upsertMessage, currentUserId, retryMessage } = useChat();
   const users = useUserStore((s) => s.users);
@@ -140,7 +146,7 @@ export default function MessageItem({
         setMentionCandidateIds(ids);
         void fetchUsers(ids);
       })
-      .catch((error) => {
+      .catch((_error) => {
         if (!alive) return;
         setMentionCandidateIds([]);
       });
@@ -190,7 +196,9 @@ export default function MessageItem({
     ]
   );
 
-  const isOwnMessage = m.senderId === currentUserId;
+  const resolvedCurrentUserId = currentUserId ?? localStorage.getItem("my_user_id");
+  const isOwnMessage = m.senderId === resolvedCurrentUserId;
+  const canUseMessageActions = !m.deleted && m.type !== "SYSTEM";
   const messageBlocks = m.blocks ?? [];
   const hasStructuredBlocks = messageBlocks.length > 0;
   const renderableMessageBlocks = getRenderableBlocks(messageBlocks);
@@ -456,6 +464,7 @@ export default function MessageItem({
                 : null
             }
             blocks={m.blocks ?? []}
+            forwardedFromMessageId={m.forwardedFromMessageId ?? null}
             resolveMentionLabel={resolveMentionLabel.resolveLabel}
             resolveMentionUserId={resolveMentionLabel.resolveUserId}
             onJumpToMessage={onJumpToMessage}
@@ -480,6 +489,7 @@ export default function MessageItem({
       <MessageActions
         isOwnMessage={isOwnMessage}
         isEditing={isEditing}
+        forceVisible={isJumpTarget}
         canEdit={canEditMessage}
         reactionLoading={reactionLoading}
         onReply={() => setReply(m)}
@@ -498,7 +508,11 @@ export default function MessageItem({
           setDeleting(m.messageId, m.content || "");
           onShowDeleteDialog?.();
         }}
+        onPin={() => onPin?.(m)}
+        onForward={() => onForward?.(m)}
         onEmojiSelect={toggleReaction}
+        canUseMessageActions={canUseMessageActions}
+        isPinned={isPinned}
       />
     </div>
   );
@@ -752,6 +766,7 @@ function MessageContent({
   editedAt,
   replyPreview,
   blocks,
+  forwardedFromMessageId,
   resolveMentionLabel,
   resolveMentionUserId,
   onJumpToMessage,
@@ -769,6 +784,7 @@ function MessageContent({
     repliedMessageId: string | null;
   } | null;
   blocks: MessageBlock[];
+  forwardedFromMessageId: string | null;
   resolveMentionLabel: (token: string) => string;
   resolveMentionUserId: (token: string) => string | null;
   onJumpToMessage?: (messageId: string) => void;
@@ -783,6 +799,12 @@ function MessageContent({
 
   return (
     <div className="flex flex-col gap-0.5">
+      {forwardedFromMessageId && (
+        <div className="w-fit rounded bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 inline-flex items-center gap-1">
+          <Forward size={11} />
+          <span className="italic">Forwarded</span>
+        </div>
+      )}
       {replyPreview && (
           <button
             data-testid="inline-reply-preview"
@@ -849,31 +871,43 @@ function MessageContent({
 function MessageActions({
   isOwnMessage,
   isEditing,
+  forceVisible,
   canEdit,
   reactionLoading,
   onReply,
   onEdit,
   onDelete,
+  onPin,
+  onForward,
   onEmojiSelect,
+  canUseMessageActions,
+  isPinned,
 }: {
   isOwnMessage: boolean;
   isEditing: boolean;
+  forceVisible: boolean;
   canEdit: boolean;
   reactionLoading: boolean;
   onReply: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onPin: () => void;
+  onForward: () => void;
   onEmojiSelect: (emoji: string) => void;
+  canUseMessageActions: boolean;
+  isPinned: boolean;
 }) {
   return (
     <div
       className={`absolute -top-2 right-0 flex gap-1 transition bg-white rounded shadow-sm p-1 border border-gray-200 ${
-        isEditing ? "opacity-100 z-20" : "opacity-0 group-hover:opacity-100"
+        isEditing || forceVisible
+          ? "opacity-100 z-20"
+          : "opacity-0 group-hover:opacity-100"
       }`}
     >
       <button
         onClick={onReply}
-        disabled={reactionLoading || isEditing}
+        disabled={reactionLoading || isEditing || !canUseMessageActions}
         className="p-1.5 rounded hover:bg-gray-100 transition disabled:opacity-50"
         title="Reply"
         type="button"
@@ -881,12 +915,32 @@ function MessageActions({
         <Reply size={14} className="text-gray-400 hover:text-gray-600" />
       </button>
 
+      <button
+        onClick={onPin}
+        disabled={reactionLoading || isEditing || !canUseMessageActions}
+        className="p-1.5 rounded hover:bg-gray-100 transition disabled:opacity-50"
+        title={isPinned ? "Unpin message" : "Pin message"}
+        type="button"
+      >
+        <Pin size={14} className={isPinned ? "text-blue-600" : "text-gray-400 hover:text-gray-600"} />
+      </button>
+
+      <button
+        onClick={onForward}
+        disabled={reactionLoading || isEditing || !canUseMessageActions}
+        className="p-1.5 rounded hover:bg-gray-100 transition disabled:opacity-50"
+        title="Forward message"
+        type="button"
+      >
+        <Forward size={14} className="text-gray-400 hover:text-gray-600" />
+      </button>
+
       {isOwnMessage && (
         <>
           {canEdit && !isEditing && (
             <button
               onClick={onEdit}
-              disabled={reactionLoading}
+              disabled={reactionLoading || !canUseMessageActions}
               className="p-1.5 rounded hover:bg-gray-100 transition disabled:opacity-50"
               title="Edit message"
               type="button"
@@ -897,7 +951,7 @@ function MessageActions({
 
           <button
             onClick={onDelete}
-            disabled={reactionLoading || isEditing}
+            disabled={reactionLoading || isEditing || !canUseMessageActions}
             className="p-1.5 rounded hover:bg-gray-100 transition disabled:opacity-50"
             title="Delete message"
             type="button"
@@ -909,7 +963,7 @@ function MessageActions({
 
       <EmojiPicker
         onEmojiSelect={onEmojiSelect}
-        disabled={reactionLoading || isEditing}
+        disabled={reactionLoading || isEditing || !canUseMessageActions}
         triggerClassName="p-1.5 text-gray-400 hover:text-gray-600"
       />
     </div>

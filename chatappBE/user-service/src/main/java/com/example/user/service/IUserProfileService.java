@@ -14,6 +14,6 @@ public interface IUserProfileService {
     boolean existsByAccountId(UUID accountId);
     void updateProfile(UUID accountId, UpdateProfileRequest req);
     List<UserBasicProfile> getMany(List<UUID> ids);
-    UserBasicProfile searchByUsername(String username);
+    List<UserBasicProfile> searchByUsername(String username);
     AvatarUploadResponse applyAvatarMetadata(UUID accountId, AvatarMetadataRequest request);
 }

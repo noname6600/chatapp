@@ -1,11 +1,14 @@
 package com.example.chat.modules.room.service.impl;
 
 import com.example.chat.config.InviteCodeGenerator;
+import com.example.chat.modules.message.application.service.ISystemMessageService;
+import com.example.chat.modules.message.infrastructure.client.UserClient;
 import com.example.chat.modules.room.entity.Room;
 import com.example.chat.modules.room.repository.RoomMemberRepository;
 import com.example.chat.modules.room.repository.RoomRepository;
 import com.example.chat.modules.room.enums.RoomType;
 import com.example.common.redis.api.ITimeRedisCacheManager;
+import com.example.common.websocket.session.IRoomBroadcaster;
 import com.example.common.web.exception.BusinessException;
 import com.example.common.web.exception.ErrorCode;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,12 +16,23 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
-import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.context.annotation.Bean;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -41,10 +55,13 @@ class RoomServiceInviteJoinIntegrationTest {
         roomService = new RoomService(
                 roomRepository,
                 roomMemberRepository,
+                mock(UserClient.class),
                 mock(InviteCodeGenerator.class),
                 mock(GroupAvatarGenerator.class),
                 mock(CloudinaryService.class),
-                mock(ITimeRedisCacheManager.class)
+                                mock(ITimeRedisCacheManager.class),
+                                mock(IRoomBroadcaster.class),
+                                mock(ISystemMessageService.class)
         );
     }
 
@@ -97,10 +114,59 @@ class RoomServiceInviteJoinIntegrationTest {
                 .hasSize(1);
     }
 
+        @Test
+        @Transactional(propagation = Propagation.NOT_SUPPORTED)
+        void joinByInviteRoomId_concurrentJoin_isIdempotent() throws Exception {
+                UUID userId = UUID.randomUUID();
+
+                Room room = roomRepository.save(Room.builder()
+                                .type(RoomType.GROUP)
+                                .name("Concurrency")
+                                .createdBy(UUID.randomUUID())
+                                .build());
+
+                int workerCount = 6;
+                ExecutorService pool = Executors.newFixedThreadPool(workerCount);
+                CountDownLatch ready = new CountDownLatch(workerCount);
+                CountDownLatch start = new CountDownLatch(1);
+                List<Future<?>> futures = new ArrayList<>();
+
+                try {
+                        for (int i = 0; i < workerCount; i++) {
+                                futures.add(pool.submit(() -> {
+                                        ready.countDown();
+                                        start.await(5, TimeUnit.SECONDS);
+                                        roomService.joinByInviteRoomId(userId, room.getId());
+                                        return null;
+                                }));
+                        }
+
+                        ready.await(5, TimeUnit.SECONDS);
+                        start.countDown();
+
+                        for (Future<?> future : futures) {
+                                future.get(10, TimeUnit.SECONDS);
+                        }
+                } finally {
+                        pool.shutdownNow();
+                }
+
+                assertThat(roomMemberRepository.findByRoomId(room.getId()))
+                                .filteredOn(member -> userId.equals(member.getUserId()))
+                                .hasSize(1);
+        }
+
     @SpringBootConfiguration
-    @EnableAutoConfiguration
     @EntityScan(basePackageClasses = Room.class)
     @EnableJpaRepositories(basePackageClasses = RoomRepository.class)
     static class TestApplication {
+
+        @Bean
+        JwtDecoder jwtDecoder() {
+            return token -> Jwt.withTokenValue(token)
+                    .header("alg", "none")
+                    .claim("sub", "test-user")
+                    .build();
+        }
     }
 }

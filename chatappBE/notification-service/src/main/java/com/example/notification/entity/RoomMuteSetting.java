@@ -1,6 +1,8 @@
 package com.example.notification.entity;
 
 import jakarta.persistence.EmbeddedId;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
@@ -23,5 +25,10 @@ public class RoomMuteSetting {
     @EmbeddedId
     private RoomMuteSettingId id;
 
+    @Enumerated(EnumType.STRING)
+    private RoomNotificationMode mode;
+
     private Instant mutedAt;
+
+    private Instant updatedAt;
 }

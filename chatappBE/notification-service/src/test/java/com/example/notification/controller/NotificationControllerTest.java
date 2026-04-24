@@ -13,7 +13,6 @@ import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -49,7 +48,7 @@ class NotificationControllerTest {
                 .senderName("Alice")
                 .preview("hello")
                 .isRead(false)
-                .createdAt(Instant.now())
+                .createdAt("2026-04-17T00:00:00Z")
                 .build();
 
         NotificationListResponse result = NotificationListResponse.builder()
@@ -57,14 +56,44 @@ class NotificationControllerTest {
                 .unreadCount(1)
                 .build();
 
-        when(queryService.getNotificationsForUser(userId)).thenReturn(result);
+        when(queryService.getNotificationsForUser(userId, 0, 50, null)).thenReturn(result);
 
-        var response = controller.getMyNotifications(jwt);
+        var response = controller.getMyNotifications(jwt, 0, 50, null);
 
         assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().getData().getUnreadCount()).isEqualTo(1);
     }
+
+        @Test
+        void getMyNotifications_forwardsPaginationParameters() {
+                UUID userId = UUID.randomUUID();
+                Jwt jwt = Jwt.withTokenValue("token")
+                                .subject(userId.toString())
+                                .headers(h -> h.put("alg", "none"))
+                                .claims(c -> c.put("sub", userId.toString()))
+                                .build();
+                Instant before = Instant.parse("2026-04-20T12:00:00Z");
+
+                NotificationListResponse result = NotificationListResponse.builder()
+                                .notifications(List.of())
+                                .unreadCount(0)
+                                .page(1)
+                                .size(20)
+                                .hasMore(false)
+                                .nextPage(null)
+                                .windowCreatedAt(before.toString())
+                                .build();
+
+                when(queryService.getNotificationsForUser(userId, 1, 20, before)).thenReturn(result);
+
+                var response = controller.getMyNotifications(jwt, 1, 20, before);
+
+                assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+                assertThat(response.getBody()).isNotNull();
+                assertThat(response.getBody().getData().getPage()).isEqualTo(1);
+                verify(queryService).getNotificationsForUser(userId, 1, 20, before);
+        }
 
     @Test
     void markRead_callsCommandService() {
@@ -93,5 +122,20 @@ class NotificationControllerTest {
         controller.markAllRead(jwt);
 
         verify(commandService).markAllRead(userId);
+    }
+
+    @Test
+    void clearRoomNotifications_callsCommandService() {
+        UUID userId = UUID.randomUUID();
+        UUID roomId = UUID.randomUUID();
+        Jwt jwt = Jwt.withTokenValue("token")
+                .subject(userId.toString())
+                .headers(h -> h.put("alg", "none"))
+                .claims(c -> c.put("sub", userId.toString()))
+                .build();
+
+        controller.clearRoomNotifications(roomId, jwt);
+
+        verify(commandService).clearRoom(userId, roomId);
     }
 }

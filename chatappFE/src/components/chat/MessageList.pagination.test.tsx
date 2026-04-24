@@ -10,6 +10,7 @@ const loadOlderMessages = vi.fn<(...args: unknown[]) => Promise<void>>()
 const removeMessage = vi.fn()
 const fetchUsers = vi.fn()
 const markRoomRead = vi.fn()
+const clearRoomNotifications = vi.fn(async () => {})
 
 let messageState: Record<string, ChatMessage[]> = {}
 let roomState: Record<string, { unreadCount?: number }> = {}
@@ -43,6 +44,12 @@ vi.mock("../../store/room.store", () => ({
   useRooms: () => ({
     roomsById: roomState,
     markRoomRead,
+  }),
+}))
+
+vi.mock("../../store/notification.store", () => ({
+  useNotifications: () => ({
+    clearRoomNotifications,
   }),
 }))
 

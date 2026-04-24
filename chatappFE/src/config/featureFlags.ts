@@ -17,6 +17,13 @@ export const FEATURE_FLAGS = {
    */
   enableSelfMessageUnreadExclusion:
     (import.meta.env.VITE_ENABLE_SELF_MESSAGE_UNREAD_EXCLUSION ?? "true") === "true",
+
+  /**
+   * Enable grouped room member list (Owner/Online/Offline)
+   * If false, sidebar falls back to flat members list for quick rollback
+   */
+  enableRoomMemberStatusGrouping:
+    (import.meta.env.VITE_FEATURE_ROOM_MEMBER_STATUS_GROUPING ?? "true") === "true",
 };
 
 /**

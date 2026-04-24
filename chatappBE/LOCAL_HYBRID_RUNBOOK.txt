@@ -201,7 +201,7 @@ foreach ($p in $ports) {
 }
 
 .env.local Caveats
-- MAIL_USERNAME and MAIL_PASSWORD defaults are provided in `auth-service/application-local.yaml` for local development; override if needed.
+- RESEND_API_KEY and RESEND_FROM must be provided (env vars) for auth email delivery via Resend.
 - GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET defaults are provided in `auth-service/application-local.yaml` for local development; override if needed.
 - CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET defaults are provided in local profiles for upload/user/chat flows; override if needed.
 - FRONTEND_URL should be http://localhost:5173 for local browser flow.

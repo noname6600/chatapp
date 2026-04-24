@@ -4,6 +4,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useNavigate, Link } from "react-router-dom";
 
 type Mode = "login" | "register";
+type SubmitPhase = "idle" | "verifying" | "bootstrapping";
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -19,6 +20,18 @@ export default function AuthPage() {
 
   const [usernameError, setUsernameError] = useState("");
   const [formError, setFormError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitPhase, setSubmitPhase] = useState<SubmitPhase>("idle");
+
+  const getFallbackAuthError = () =>
+    mode === "login"
+      ? "Login failed. Please verify your email and password and try again."
+      : "Registration failed. Please review your details and try again.";
+
+  const toAuthErrorMessage = (err: unknown) => {
+    if (err instanceof Error && err.message.trim()) return err.message;
+    return getFallbackAuthError();
+  };
 
   const validateEmailBlur = (value: string) => {
 
@@ -52,6 +65,7 @@ export default function AuthPage() {
   };
 
   const handleSubmit = async () => {
+    if (isSubmitting) return;
 
     setFormError("");
 
@@ -61,21 +75,24 @@ export default function AuthPage() {
     if (error) return;
 
     try {
+      setIsSubmitting(true);
+      setSubmitPhase("verifying");
 
       const tokens =
         mode === "login"
           ? await loginApi({ username, password })
           : await registerApi({ username, password });
 
+      setSubmitPhase("bootstrapping");
       await login(tokens.accessToken, tokens.refreshToken);
 
       navigate("/chat");
 
     } catch (err) {
-
-      if (err instanceof Error) {
-        setFormError(err.message);
-      }
+      setFormError(toAuthErrorMessage(err));
+    } finally {
+      setIsSubmitting(false);
+      setSubmitPhase("idle");
 
     }
   };
@@ -106,6 +123,7 @@ export default function AuthPage() {
         <div className="relative mb-5">
 
           <input
+            disabled={isSubmitting}
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             onBlur={handleUsernameBlur}
@@ -137,6 +155,7 @@ export default function AuthPage() {
 
         {/* PASSWORD */}
         <input
+          disabled={isSubmitting}
           type="password"
           placeholder="Password"
           className="w-full p-3 border rounded-lg mb-4 focus:ring-2 focus:ring-indigo-500 outline-none"
@@ -146,11 +165,34 @@ export default function AuthPage() {
 
         {/* BUTTON */}
         <button
+          disabled={isSubmitting}
           onClick={handleSubmit}
-          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-lg font-semibold"
+          className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed text-white py-3 rounded-lg font-semibold"
         >
-          {mode === "login" ? "Login" : "Register"}
+          {isSubmitting
+            ? submitPhase === "verifying"
+              ? mode === "login"
+                ? "Checking credentials..."
+                : "Creating account..."
+              : mode === "login"
+                ? "Starting session..."
+                : "Preparing account..."
+            : mode === "login"
+              ? "Login"
+              : "Register"}
         </button>
+
+        {isSubmitting && (
+          <div className="text-sm text-gray-500 mt-3 text-center">
+            {submitPhase === "verifying"
+              ? mode === "login"
+                ? "Verifying your credentials..."
+                : "Verifying your registration details..."
+              : mode === "login"
+                ? "Finalizing your secure session..."
+                : "Finalizing your account setup..."}
+          </div>
+        )}
 
         {/* FORGOT PASSWORD */}
         {mode === "login" && (
@@ -169,8 +211,9 @@ export default function AuthPage() {
 
         {/* GOOGLE LOGIN */}
         <button
+          disabled={isSubmitting}
           onClick={handleGoogleLogin}
-          className="w-full border rounded-lg py-3 flex items-center justify-center gap-2 hover:bg-gray-50"
+          className="w-full border rounded-lg py-3 flex items-center justify-center gap-2 hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed"
         >
           <img
             src="https://www.svgrepo.com/show/475656/google-color.svg"
@@ -187,7 +230,7 @@ export default function AuthPage() {
             : "Already have an account?"}
 
           <span
-            className="text-indigo-600 font-semibold ml-1 cursor-pointer"
+            className={`text-indigo-600 font-semibold ml-1 ${isSubmitting ? "opacity-60 cursor-not-allowed pointer-events-none" : "cursor-pointer"}`}
             onClick={() =>
               setMode(mode === "login" ? "register" : "login")
             }

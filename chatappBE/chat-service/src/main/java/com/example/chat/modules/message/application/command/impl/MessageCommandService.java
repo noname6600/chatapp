@@ -3,9 +3,11 @@ package com.example.chat.modules.message.application.command.impl;
 import com.example.chat.modules.message.application.command.IMessageCommandService;
 import com.example.chat.modules.message.application.dto.request.DeleteMessageRequest;
 import com.example.chat.modules.message.application.dto.request.EditMessageRequest;
+import com.example.chat.modules.message.application.dto.request.ForwardMessageRequest;
 import com.example.chat.modules.message.application.dto.request.SendMessageRequest;
 import com.example.chat.modules.message.application.dto.response.MessageResponse;
 import com.example.chat.modules.message.application.mapper.MessageMapper;
+import com.example.chat.modules.message.application.service.IMessageEventPublisher;
 import com.example.chat.modules.message.application.pipeline.delete.DeleteMessageContext;
 import com.example.chat.modules.message.application.pipeline.delete.DeleteMessagePipeline;
 import com.example.chat.modules.message.application.pipeline.edit.EditMessageContext;
@@ -41,6 +43,7 @@ public class MessageCommandService
     private final DeleteMessagePipeline deletePipeline;
 
     private final MessageMapper mapper;
+        private final IMessageEventPublisher messageEventPublisher;
 
     private final ChatMessageRepository messageRepository;
     private final ChatAttachmentRepository attachmentRepository;
@@ -178,6 +181,81 @@ public class MessageCommandService
                 attachments,
                 Collections.emptyList()
         );
+    }
+
+    @Override
+    public MessageResponse forwardMessage(
+            ForwardMessageRequest request
+    ) {
+        UUID actorId = request.getActorId();
+        UUID targetRoomId = request.getTargetRoomId();
+
+        if (!roomMemberRepository.existsByRoomIdAndUserId(targetRoomId, actorId)) {
+            throw new BusinessException(
+                    ErrorCode.FORBIDDEN,
+                    "Not a member of target room"
+            );
+        }
+
+        ChatMessage sourceMessage = messageRepository.findById(request.getSourceMessageId())
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.RESOURCE_NOT_FOUND,
+                        "Source message not found"
+                ));
+
+        if (Boolean.TRUE.equals(sourceMessage.getDeleted())) {
+            throw new BusinessException(
+                    ErrorCode.BAD_REQUEST,
+                    "Cannot forward a deleted message"
+            );
+        }
+
+        Long nextSeq = Objects.requireNonNullElse(
+                messageRepository.findMaxSeqByRoomId(targetRoomId),
+                0L
+        ) + 1;
+
+        ChatMessage forwardedMessage = ChatMessage.builder()
+                .id(UUID.randomUUID())
+                .roomId(targetRoomId)
+                .senderId(actorId)
+                .seq(nextSeq)
+                .type(sourceMessage.getType())
+                .content(sourceMessage.getContent())
+                .blocksJson(sourceMessage.getBlocksJson())
+                .forwardedFromMessageId(sourceMessage.getId())
+                .deleted(false)
+                .build();
+
+        messageRepository.save(forwardedMessage);
+
+        List<ChatAttachment> sourceAttachments = attachmentRepository.findByMessageId(sourceMessage.getId());
+        List<ChatAttachment> forwardedAttachments = sourceAttachments.stream()
+                .map(attachment -> ChatAttachment.builder()
+                        .id(UUID.randomUUID())
+                        .messageId(forwardedMessage.getId())
+                        .type(attachment.getType())
+                        .url(attachment.getUrl())
+                        .publicId(attachment.getPublicId())
+                        .fileName(attachment.getFileName())
+                        .size(attachment.getSize())
+                        .width(attachment.getWidth())
+                        .height(attachment.getHeight())
+                        .duration(attachment.getDuration())
+                        .build())
+                .toList();
+
+        if (!forwardedAttachments.isEmpty()) {
+            attachmentRepository.saveAll(forwardedAttachments);
+        }
+
+        messageEventPublisher.publishMessageCreated(
+                forwardedMessage,
+                forwardedAttachments,
+                List.of()
+        );
+
+        return mapper.toResponse(forwardedMessage, forwardedAttachments, List.of());
     }
 
     @Override

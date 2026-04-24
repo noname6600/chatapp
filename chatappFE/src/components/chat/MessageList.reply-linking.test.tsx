@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   setActiveRoom: vi.fn(async () => {}),
   removeMessage: vi.fn(),
   fetchUsers: vi.fn(async () => {}),
+  clearRoomNotifications: vi.fn(async () => {}),
   deleteMessageApi: vi.fn(async () => {}),
   setReply: vi.fn(),
   setDeleting: vi.fn(),
@@ -67,6 +68,12 @@ vi.mock("../../store/room.store", () => ({
       "room-1": { unreadCount: 0 },
     },
     markRoomRead: vi.fn(async () => {}),
+  }),
+}));
+
+vi.mock("../../store/notification.store", () => ({
+  useNotifications: () => ({
+    clearRoomNotifications: mocks.clearRoomNotifications,
   }),
 }));
 

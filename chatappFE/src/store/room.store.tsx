@@ -11,6 +11,7 @@ import { getMyRooms, markRoomReadApi } from "../api/room.service"
 import { onChatEvent, onSocketOpen, subscribeRoom } from "../websocket/chat.socket"
 import { ChatEventType } from "../constants/chatEvents"
 import { useAuth } from "./auth.store"
+import { useNotifications } from "./notification.store"
 import { useUserStore } from "./user.store"
 import { usePopulateUserCache } from "../hooks/usePopulateUserCache"
 import { isFeatureEnabled } from "../config/featureFlags"
@@ -22,8 +23,14 @@ import {
 
 import type { Room } from "../types/room"
 import type { ChatMessage } from "../types/message"
+import type { RoomNotificationMode } from "../types/notification"
+import {
+  normalizeRoomNotificationMode,
+  shouldDeliverRoomEventByMode,
+} from "../utils/notificationModePolicy"
 
-const ROOM_MUTE_STORAGE_KEY = "notification_mutes_by_room"
+const ROOM_NOTIFICATION_MODE_STORAGE_KEY = "notification_modes_by_room"
+const LEGACY_ROOM_MUTE_STORAGE_KEY = "notification_mutes_by_room"
 
 const toTimestamp = (value: string | null | undefined): number => {
   if (!value) return 0
@@ -36,15 +43,25 @@ const getRoomLatestTimestamp = (room: Room): number => {
   return toTimestamp(room.latestMessageAt ?? room.lastMessage?.createdAt ?? null)
 }
 
-const isRoomMuted = (roomId: string): boolean => {
+const getRoomNotificationMode = (roomId: string): RoomNotificationMode => {
   try {
-    const raw = localStorage.getItem(ROOM_MUTE_STORAGE_KEY)
-    if (!raw) return false
-
-    const parsed = JSON.parse(raw) as Record<string, boolean>
-    return Boolean(parsed[roomId])
+    const raw = localStorage.getItem(ROOM_NOTIFICATION_MODE_STORAGE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw) as Record<string, RoomNotificationMode>
+      const mode = parsed[roomId]
+      return normalizeRoomNotificationMode(mode)
+    }
   } catch {
-    return false
+    // Fallback to legacy boolean storage below.
+  }
+
+  try {
+    const legacy = localStorage.getItem(LEGACY_ROOM_MUTE_STORAGE_KEY)
+    if (!legacy) return "NO_RESTRICT"
+    const parsed = JSON.parse(legacy) as Record<string, boolean>
+    return parsed[roomId] ? "NOTHING" : "NO_RESTRICT"
+  } catch {
+    return "NO_RESTRICT"
   }
 }
 
@@ -54,6 +71,7 @@ interface RoomContextType {
   loadRooms: () => Promise<void>
   addRoom: (room: Room) => void
   updateRoom: (room: Room) => void
+  removeRoom: (roomId: string) => void
   markRoomRead: (roomId: string) => Promise<void>
   reconcileRoomState: () => Promise<void>
 }
@@ -62,6 +80,7 @@ const RoomContext = createContext<RoomContextType | undefined>(undefined)
 
 export function RoomProvider({ children }: { children: React.ReactNode }) {
   const { accessToken, userId } = useAuth()
+  const { clearRoomNotifications } = useNotifications()
   const users = useUserStore((state) => state.users)
   const usersRef = useRef(users)
   usersRef.current = users
@@ -196,6 +215,21 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
     })
   }, [userId])
 
+  const removeRoom = useCallback((roomId: string) => {
+    if (!roomId) return
+
+    setRoomsById((prev) => {
+      if (!prev[roomId]) return prev
+
+      const nextMap = { ...prev }
+      delete nextMap[roomId]
+      return nextMap
+    })
+
+    setRoomOrder((prev) => prev.filter((id) => id !== roomId))
+    delete processedMessagesRef.current[roomId]
+  }, [])
+
   const resetUnreadLocal = useCallback((roomId: string) => {
     setRoomsById(prev => {
       const room = prev[roomId]
@@ -220,8 +254,13 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
     } finally {
       // Keep FE responsive even if network fails; backend will reconcile on next /rooms/my load.
       resetUnreadLocal(roomId)
+
+      // When user is at latest (mark-read interaction), clear eligible room-scoped notifications too.
+      if (accessToken) {
+        await clearRoomNotifications(roomId).catch(() => {})
+      }
     }
-  }, [resetUnreadLocal])
+  }, [accessToken, clearRoomNotifications, resetUnreadLocal])
 
   // Reconcile room state with backend snapshot (used after websocket reconnect/reload).
   const reconcileRoomState = useCallback(async () => {
@@ -230,9 +269,11 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
       const freshRooms = await getMyRooms()
 
       setRoomsById(prev => {
-        const updated = { ...prev }
+        const updated: Record<string, Room> = {}
+        const nextOrder: string[] = []
 
         for (const freshRoom of freshRooms) {
+          nextOrder.push(freshRoom.id)
           const existing = prev[freshRoom.id]
           if (existing) {
             const existingLatestTs = getRoomLatestTimestamp(existing)
@@ -255,7 +296,9 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        setRoomOrder((prevOrder) => sortRoomIdsByRecency(updated, prevOrder))
+        setRoomOrder(
+          nextOrder.length > 0 ? sortRoomIdsByRecency(updated, nextOrder) : []
+        )
 
         return updated
       })
@@ -265,7 +308,7 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error("Failed to reconcile room state:", error)
     }
-  }, [])
+  }, [userId])
 
   const scheduleMissingRoomReconcile = useCallback(() => {
     if (missingRoomReconcileTimeoutRef.current != null) {
@@ -405,7 +448,9 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
         if (!room) return prev
 
         const isSender = userId != null && msg.senderId === userId
-        const muted = isRoomMuted(msg.roomId)
+        const mode = getRoomNotificationMode(msg.roomId)
+        const isMentioned = Boolean(userId && msg.mentionedUserIds?.includes(userId))
+        const suppressUnreadByMode = !shouldDeliverRoomEventByMode(mode, isMentioned)
 
         const senderName = resolveLastMessageSenderName({
           room,
@@ -421,7 +466,7 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
         // Self-message unread exclusion (can be disabled via feature flag)
         const excludeSelfFromUnread = isFeatureEnabled("enableSelfMessageUnreadExclusion") && isSender;
         const unreadCount =
-          excludeSelfFromUnread || muted
+          excludeSelfFromUnread || suppressUnreadByMode
             ? (room.unreadCount ?? 0)
             : (room.unreadCount ?? 0) + 1
 
@@ -481,6 +526,7 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
         loadRooms,
         addRoom,
         updateRoom,
+        removeRoom,
         markRoomRead,
         reconcileRoomState
       }}

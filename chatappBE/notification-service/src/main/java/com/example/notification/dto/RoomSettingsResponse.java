@@ -10,4 +10,6 @@ import lombok.Getter;
 public class RoomSettingsResponse {
 
     private boolean isMuted;
+
+    private String mode;
 }

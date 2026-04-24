@@ -46,15 +46,15 @@ public class UserProfileController extends BaseController {
     }
 
     @GetMapping("/search")
-    public ResponseEntity<ApiResponse<UserBasicProfile>> search(
+    public ResponseEntity<ApiResponse<List<UserBasicProfile>>> search(
             @RequestParam(required = false) String username
     ) {
         if (username == null || username.isBlank()) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "Username parameter is required and cannot be blank");
         }
 
-        UserBasicProfile profile = service.searchByUsername(username.trim());
-        return ResponseEntity.ok(ApiResponse.success(profile));
+        List<UserBasicProfile> profiles = service.searchByUsername(username.trim());
+        return ResponseEntity.ok(ApiResponse.success(profiles));
     }
 
     @GetMapping("/{id}")

@@ -13,6 +13,7 @@ const {
   removeMessage,
   loadOlderMessages,
   fetchUsers,
+  clearRoomNotifications,
   deleteMessageApiMock,
 } = vi.hoisted(() => ({
   clearDeleting: vi.fn(),
@@ -20,6 +21,7 @@ const {
   removeMessage: vi.fn(),
   loadOlderMessages: vi.fn(),
   fetchUsers: vi.fn(),
+  clearRoomNotifications: vi.fn(async () => {}),
   deleteMessageApiMock: vi.fn(),
 }))
 
@@ -45,6 +47,12 @@ vi.mock("../../store/user.store", () => ({
       "user-1": { accountId: "user-1", username: "user1", displayName: "User One" },
     },
     fetchUsers,
+  }),
+}))
+
+vi.mock("../../store/notification.store", () => ({
+  useNotifications: () => ({
+    clearRoomNotifications,
   }),
 }))
 

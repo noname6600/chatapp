@@ -14,13 +14,13 @@ let roomsByIdMock: Record<string, unknown> = {}
 
 Object.defineProperty(navigator, "clipboard", {
   value: {
-    writeText: (...args: unknown[]) => clipboardWriteTextMock(...args),
+    writeText: (...args: Parameters<typeof clipboardWriteTextMock>) => clipboardWriteTextMock(...args),
   },
   configurable: true,
 })
 
 vi.mock("../../api/room.service", () => ({
-  joinRoomByInviteApi: (...args: unknown[]) => joinRoomByInviteApiMock(...args),
+  joinRoomByInviteApi: (...args: Parameters<typeof joinRoomByInviteApiMock>) => joinRoomByInviteApiMock(...args),
 }))
 
 vi.mock("../../store/room.store", () => ({
@@ -250,7 +250,7 @@ describe("MessageBlocks", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Unavailable" }).getAttribute("disabled")).not.toBeNull()
-      expect(screen.getByText("Room not found")).toBeTruthy()
+      expect(screen.getByText("This invite is no longer valid.")).toBeTruthy()
     })
   })
 })

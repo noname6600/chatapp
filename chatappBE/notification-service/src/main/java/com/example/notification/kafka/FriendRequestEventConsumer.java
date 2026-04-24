@@ -45,21 +45,50 @@ public class FriendRequestEventConsumer {
                     NotificationType.FRIEND_REQUEST,
                     payload.getSenderId(),
                     null,
+                    payload.getSenderId(),
+                    payload.getSenderDisplayName(),
                     null,
-                    "New friend request"
+                    "New friend request",
+                    payload.getCreatedAt(),
+                    true
             );
             return;
         }
 
         if (payload.getType() == FriendRequestEvent.Type.ACCEPTED) {
+            // Resolve the sticky friend request for the accepter (senderId = accepter, recipientId = original sender).
+            notificationRepository
+                    .findFirstByUserIdAndTypeAndReferenceIdAndIsReadFalse(
+                            payload.getSenderId(),
+                            NotificationType.FRIEND_REQUEST,
+                            payload.getRecipientId()
+                    )
+                    .ifPresent(n -> notificationCommandService.resolveActionRequired(n.getId(), payload.getSenderId()));
+
             notificationCommandService.createNotification(
                     payload.getRecipientId(),
                     NotificationType.FRIEND_REQUEST_ACCEPTED,
                     payload.getSenderId(),
                     null,
+                    payload.getSenderId(),
+                    payload.getSenderDisplayName(),
                     null,
-                    "Friend request accepted"
+                    "Friend request accepted",
+                    payload.getCreatedAt()
             );
+            return;
+        }
+
+        if (payload.getType() == FriendRequestEvent.Type.DECLINED
+                || payload.getType() == FriendRequestEvent.Type.CANCELLED) {
+            // Resolve the sticky friend request for the original recipient.
+            notificationRepository
+                    .findFirstByUserIdAndTypeAndReferenceIdAndIsReadFalse(
+                            payload.getRecipientId(),
+                            NotificationType.FRIEND_REQUEST,
+                            payload.getSenderId()
+                    )
+                    .ifPresent(n -> notificationCommandService.resolveActionRequired(n.getId(), payload.getRecipientId()));
         }
     }
 }

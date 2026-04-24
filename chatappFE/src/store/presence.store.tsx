@@ -55,6 +55,17 @@ export interface PresenceState {
   getTypingUsers: (roomId: RoomId) => UserId[]
 }
 
+export const selectMemberStatusForRoom = (
+  state: PresenceState,
+  roomId: RoomId,
+  userId: UserId
+): PresenceStatus => state.roomUserStatuses[roomId]?.[userId] ?? state.userStatuses[userId] ?? "OFFLINE"
+
+export const selectTypingUsersForRoom = (
+  state: PresenceState,
+  roomId: RoomId
+): UserId[] => Object.keys(state.typingByRoom[roomId] ?? {})
+
 export const usePresenceStore = create<PresenceState>((set, get) => ({
   onlineUsers: {},
   onlineUsersByRoom: {},

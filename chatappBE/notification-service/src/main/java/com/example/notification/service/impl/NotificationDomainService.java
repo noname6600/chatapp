@@ -6,6 +6,7 @@ import com.example.notification.kafka.NotificationEventProducer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @Service
@@ -16,26 +17,32 @@ public class NotificationDomainService {
     private final NotificationEventProducer producer;
 
     public void notifyChatMessage(UUID receiverId, String messageContent, UUID senderId) {
-    Notification noti = commandService.createNotification(
+        Notification noti = commandService.createNotification(
         receiverId,
         NotificationType.MESSAGE,
         senderId,
         null,
+        senderId,
+        senderId.toString(),
         null,
-        messageContent
+        messageContent,
+        Instant.now()
     );
 
         producer.publishRequested(noti);
     }
 
     public void notifyWelcome(UUID userId, String email) {
-    Notification noti = commandService.createNotification(
+        Notification noti = commandService.createNotification(
         userId,
         NotificationType.WELCOME,
         userId,
         null,
+        null,
         "System",
-        "Account " + email + " has been register successfully!"
+        "System",
+        "Account " + email + " has been register successfully!",
+        Instant.now()
     );
 
         producer.publishRequested(noti);

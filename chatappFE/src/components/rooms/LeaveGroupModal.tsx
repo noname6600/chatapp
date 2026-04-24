@@ -7,7 +7,7 @@ interface LeaveGroupModalProps {
   isOpen: boolean;
   room: Room;
   onClose: () => void;
-  onSuccess?: () => void;
+  onSuccess?: (roomId: string) => void | Promise<void>;
 }
 
 export default function LeaveGroupModal({
@@ -25,7 +25,7 @@ export default function LeaveGroupModal({
 
     try {
       await leaveRoomApi(room.id);
-      onSuccess?.();
+      await onSuccess?.(room.id);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to leave group");

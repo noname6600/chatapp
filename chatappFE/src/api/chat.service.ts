@@ -9,6 +9,7 @@ import type {
   ChatMessage,
   MessagePage,
   MessageBlock,
+  PinnedMessage,
   SendMessagePayload,
 } from "../types/message"
 
@@ -273,6 +274,79 @@ export const toggleReactionApi = async (
     )
 
     unwrap(res)
+  } catch (error) {
+    throw new Error(extractErrorMessage(error))
+  }
+}
+
+// =========================
+// PIN MESSAGE
+// =========================
+
+export const pinMessage = async (
+  roomId: string,
+  messageId: string
+): Promise<void> => {
+  try {
+    const res = await chatApi.post<ApiResponse<void>>(
+      `/rooms/${roomId}/pins`,
+      null,
+      { params: { messageId } }
+    )
+
+    unwrap(res)
+  } catch (error) {
+    throw new Error(extractErrorMessage(error))
+  }
+}
+
+export const unpinMessage = async (
+  roomId: string,
+  messageId: string
+): Promise<void> => {
+  try {
+    const res = await chatApi.delete<ApiResponse<void>>(
+      `/rooms/${roomId}/pins/${messageId}`
+    )
+
+    unwrap(res)
+  } catch (error) {
+    throw new Error(extractErrorMessage(error))
+  }
+}
+
+export const getPinnedMessages = async (
+  roomId: string
+): Promise<PinnedMessage[]> => {
+  try {
+    const res = await chatApi.get<ApiResponse<PinnedMessage[]>>(
+      `/rooms/${roomId}/pins`
+    )
+
+    return unwrap(res)
+  } catch (error) {
+    throw new Error(extractErrorMessage(error))
+  }
+}
+
+// =========================
+// FORWARD MESSAGE
+// =========================
+
+export const forwardMessage = async (
+  sourceMessageId: string,
+  targetRoomId: string
+): Promise<ChatMessage> => {
+  try {
+    const res = await chatApi.post<ApiResponse<ChatMessage>>(
+      "/messages/forward",
+      {
+        sourceMessageId,
+        targetRoomId,
+      }
+    )
+
+    return unwrap(res)
   } catch (error) {
     throw new Error(extractErrorMessage(error))
   }

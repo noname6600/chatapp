@@ -6,6 +6,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import UserPopup from "./UserPopup"
 
 const navigateMock = vi.fn()
+const sendFriendRequestApiMock = vi.fn()
 
 const overlayState = {
   userId: "user-1",
@@ -99,13 +100,14 @@ vi.mock("../../store/room.store", () => ({
 }))
 
 vi.mock("../../api/friend.service", () => ({
-  sendFriendRequestApi: vi.fn(),
+  sendFriendRequestApi: (...args: Parameters<typeof sendFriendRequestApiMock>) =>
+    sendFriendRequestApiMock(...args),
   unfriendApi: vi.fn(),
   blockUserApi: vi.fn(),
 }))
 
 vi.mock("../../api/room.service", () => ({
-  startPrivateChatApi: (...args: unknown[]) => startPrivateChatApi(...args),
+  startPrivateChatApi: (...args: Parameters<typeof startPrivateChatApi>) => startPrivateChatApi(...args),
 }))
 
 vi.mock("../../api/user.service", () => ({
@@ -117,6 +119,25 @@ vi.mock("../../api/user.service", () => ({
     aboutMe: null,
     backgroundColor: null,
   })),
+}))
+
+vi.mock("../chat/EmojiPicker", () => ({
+  default: ({
+    onEmojiSelect,
+    disabled,
+  }: {
+    onEmojiSelect?: (emoji: string) => void
+    disabled?: boolean
+  }) => (
+    <button
+      type="button"
+      aria-label="Open emoji picker"
+      disabled={disabled}
+      onClick={() => onEmojiSelect?.("😀")}
+    >
+      Emoji
+    </button>
+  ),
 }))
 
 const authState = {
@@ -138,6 +159,14 @@ describe("UserPopup self/other actions", () => {
     chatState.setActiveRoom.mockClear()
     chatState.sendMessage.mockClear()
     startPrivateChatApi.mockClear()
+    sendFriendRequestApiMock.mockReset()
+    friendState.resolve.mockReset()
+    friendState.setStatus.mockReset()
+    friendState.setStatus.mockImplementation((targetUserId: string, status: string) => {
+      friendState.map[targetUserId] = status
+    })
+    friendState.map["user-1"] = "NONE"
+    friendState.map.me = "FRIENDS"
     authState.userId = "me"
     overlayState.userId = "user-1"
   })
@@ -157,15 +186,68 @@ describe("UserPopup self/other actions", () => {
     render(<UserPopup />)
 
     const input = screen.getByPlaceholderText("Send a message...") as HTMLInputElement
-    fireEvent.change(input, { target: { value: "hello 🙂" } })
+    fireEvent.change(input, { target: { value: "hello" } })
     fireEvent.keyDown(input, { key: "Enter" })
 
     await waitFor(() => {
       expect(startPrivateChatApi).toHaveBeenCalledWith("user-1")
       expect(chatState.setActiveRoom).toHaveBeenCalledWith("room-1")
-      expect(chatState.sendMessage).toHaveBeenCalledWith("room-1", "hello 🙂")
+      expect(chatState.sendMessage).toHaveBeenCalledWith("room-1", "hello")
       expect(navigateMock).toHaveBeenCalledWith("/chat")
     })
+  })
+
+  it("inserts emoji via picker into popup mini-chat input", () => {
+    render(<UserPopup />)
+
+    const input = screen.getByPlaceholderText("Send a message...") as HTMLInputElement
+    fireEvent.change(input, { target: { value: "hi " } })
+    fireEvent.click(screen.getByRole("button", { name: /Open emoji picker/i }))
+
+    expect((screen.getByPlaceholderText("Send a message...") as HTMLInputElement).value).toBe("hi 😀")
+  })
+
+  it("switches add-friend action to pending after successful request", async () => {
+    sendFriendRequestApiMock.mockResolvedValue(undefined)
+
+    render(<UserPopup />)
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Friend" }))
+
+    await waitFor(() => {
+      expect(sendFriendRequestApiMock).toHaveBeenCalledWith("user-1")
+      const pendingBtn = screen.getByRole("button", { name: "Pending friend request" })
+      expect(pendingBtn).toBeTruthy()
+      expect(pendingBtn.hasAttribute("disabled")).toBe(true)
+      expect(screen.getByText("Pending")).toBeTruthy()
+    })
+  })
+
+  it("renders pending immediately when status is already request sent on load", () => {
+    friendState.map["user-1"] = "REQUEST_SENT"
+
+    render(<UserPopup />)
+
+    const pendingBtn = screen.getByRole("button", { name: "Pending friend request" })
+    expect(pendingBtn).toBeTruthy()
+    expect(pendingBtn.hasAttribute("disabled")).toBe(true)
+    expect(screen.getByText("Pending")).toBeTruthy()
+  })
+
+  it("keeps add-friend action when request send fails", async () => {
+    sendFriendRequestApiMock.mockRejectedValue(new Error("network error"))
+
+    render(<UserPopup />)
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Friend" }))
+
+    await waitFor(() => {
+      expect(sendFriendRequestApiMock).toHaveBeenCalledWith("user-1")
+    })
+
+    expect(screen.getByRole("button", { name: "Add Friend" })).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Pending friend request" })).toBeNull()
+    expect(friendState.setStatus).not.toHaveBeenCalled()
   })
 
   it("sends selected group invite card from profile popup", async () => {

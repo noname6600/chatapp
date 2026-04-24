@@ -1,4 +1,5 @@
 package com.example.chat.config;
+import com.example.chat.modules.room.dto.RoomMessagePinEventPayload;
 import com.example.common.integration.chat.*;
 import com.example.common.redis.registry.IRedisMessageRegistry;
 import jakarta.annotation.PostConstruct;
@@ -32,6 +33,16 @@ public class ChatRedisEventConfig {
         registry.register(
                 ChatEventType.MESSAGE_DELETED.value(),
                 MessageDeletedPayload.class
+        );
+
+        registry.register(
+                ChatEventType.MESSAGE_PINNED.value(),
+                RoomMessagePinEventPayload.class
+        );
+
+        registry.register(
+                ChatEventType.MESSAGE_UNPINNED.value(),
+                RoomMessagePinEventPayload.class
         );
     }
 }

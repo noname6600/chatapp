@@ -3,12 +3,17 @@ import { connectChatSocket, disconnectChatSocket } from "../websocket/chat.socke
 import { connectPresenceSocket, disconnectPresenceSocket } from "../websocket/presence.socket"
 import { getMyProfileApi } from "../api/user.service"
 import { getGlobalPresenceApi, getMyPresenceApi } from "../api/presence.service"
+import { getMyRooms } from "../api/room.service"
+import { getNotificationsApi } from "../api/notification.service"
+import { getUnreadFriendRequestCountApi } from "../api/friend.service"
 import { usePresenceStore } from "./presence.store"
+import { useFriendStore } from "./friend.store"
 
 interface AuthContextType {
   accessToken: string | null
   refreshToken: string | null
   isInitializing: boolean
+  isBootstrapping: boolean
   login: (accessToken: string, refreshToken: string) => Promise<void>
   logout: () => void
   userId: string | null
@@ -25,6 +30,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [userId, setUserId] = useState<string | null>(null)
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [isInitializing, setIsInitializing] = useState(true)
+  const [isBootstrapping, setIsBootstrapping] = useState(false)
 
   const isIncompleteAccountError = (error: unknown): boolean => {
     const candidate = error as { code?: string; message?: string }
@@ -42,6 +48,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }
 
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+  const preloadCriticalBootstrap = async () => {
+    const [rooms, notifications, unreadFriendRequests] = await Promise.all([
+      getMyRooms(),
+      getNotificationsApi(),
+      getUnreadFriendRequestCountApi(),
+    ])
+
+    useFriendStore.getState().setUnreadCount(unreadFriendRequests.unreadCount)
+
+    return {
+      roomsCount: rooms.length,
+      notificationsCount: notifications.notifications.length,
+    }
+  }
 
   const loadSessionContextWithRetry = async () => {
     let lastError: unknown = null
@@ -61,6 +82,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCurrentUser(me)
         usePresenceStore.getState().setSelfPresence(presence)
         usePresenceStore.getState().setGlobalPresence(globalPresence)
+        await preloadCriticalBootstrap()
         return
       } catch (error) {
         lastError = error
@@ -86,13 +108,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setAccessToken(access)
     setRefreshToken(refresh)
+    setIsBootstrapping(true)
 
     ;(async () => {
       try {
         await loadSessionContextWithRetry()
+        connectChatSocket()
+        connectPresenceSocket()
       } catch {
         handleLogout(false)
       } finally {
+        setIsBootstrapping(false)
         setIsInitializing(false)
       }
     })()
@@ -100,18 +126,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     if (!accessToken) {
-      disconnectChatSocket()
-      disconnectPresenceSocket()
-      return
-    }
-
-    const timer = setTimeout(() => {
-      connectChatSocket()
-      connectPresenceSocket()
-    }, 300)
-
-    return () => {
-      clearTimeout(timer)
       disconnectChatSocket()
       disconnectPresenceSocket()
     }
@@ -144,9 +158,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setAccessToken(at)
     setRefreshToken(rt)
+    setIsBootstrapping(true)
 
     try {
       await loadSessionContextWithRetry()
+      connectChatSocket()
+      connectPresenceSocket()
     } catch (error) {
       handleLogout(false)
 
@@ -155,6 +172,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       throw error instanceof Error ? error : new Error("Login failed")
+    } finally {
+      setIsBootstrapping(false)
     }
   }
 
@@ -172,6 +191,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setCurrentUser(null)
     usePresenceStore.getState().setSelfPresence(null)
     usePresenceStore.getState().clearAllOnline()
+    useFriendStore.getState().setUnreadCount(0)
 
     if (redirect && !window.location.pathname.includes("/login")) {
       window.location.href = "/login"
@@ -195,6 +215,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         accessToken,
         refreshToken,
         isInitializing,
+        isBootstrapping,
         login: handleLogin,
         logout: () => handleLogout(true),
         userId,

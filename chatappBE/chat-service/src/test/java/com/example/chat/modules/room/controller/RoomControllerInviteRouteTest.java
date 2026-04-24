@@ -1,6 +1,7 @@
 package com.example.chat.modules.room.controller;
 
 import com.example.chat.modules.room.service.IPrivateRoomService;
+import com.example.chat.modules.room.service.IRoomPinService;
 import com.example.chat.modules.room.service.IRoomQueryService;
 import com.example.chat.modules.room.service.IRoomService;
 import org.junit.jupiter.api.Test;
@@ -22,8 +23,9 @@ class RoomControllerInviteRouteTest {
         IRoomService roomService = mock(IRoomService.class);
         IRoomQueryService roomQueryService = mock(IRoomQueryService.class);
         IPrivateRoomService privateRoomService = mock(IPrivateRoomService.class);
+        IRoomPinService roomPinService = mock(IRoomPinService.class);
 
-        RoomController controller = new RoomController(roomService, roomQueryService, privateRoomService);
+        RoomController controller = new RoomController(roomService, roomQueryService, privateRoomService, roomPinService);
 
         UUID roomId = UUID.randomUUID();
         UUID currentUserId = UUID.randomUUID();

@@ -14,6 +14,7 @@ import java.util.UUID;
 public interface UserProfileRepository extends JpaRepository<UserProfile, UUID> {
     Optional<UserProfile> findByUsername(String username);
     Optional<UserProfile> findByUsernameIgnoreCase(String username);
+    List<UserProfile> findTop10ByUsernameContainingIgnoreCaseOrderByUsernameAsc(String username);
     boolean existsByUsername(String username);
 
     @Query("SELECT u FROM UserProfile u WHERE u.accountId IN :ids")

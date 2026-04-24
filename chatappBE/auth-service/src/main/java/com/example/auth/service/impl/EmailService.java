@@ -2,13 +2,12 @@ package com.example.auth.service.impl;
 
 import com.example.auth.repository.AccountRepository;
 import com.example.auth.service.IEmailService;
+import com.example.auth.integration.resend.ResendEmailClient;
 import com.example.common.web.exception.BusinessException;
 import com.example.common.web.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
 import java.util.UUID;
@@ -18,14 +17,11 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class EmailService implements IEmailService {
 
-    private final JavaMailSender mailSender;
+    private final ResendEmailClient resendEmailClient;
     private final AccountRepository accountRepository;
 
     @Value("${app.frontend.reset-password-url:http://localhost:5173}")
     private String frontendUrl;
-
-    @Value("${spring.mail.username:noreply@chatapp.local}")
-    private String fromEmail;
 
     @Override
     public void sendVerificationEmail(UUID accountId, String verificationToken) {
@@ -61,19 +57,13 @@ public class EmailService implements IEmailService {
 
     private void sendEmail(String to, String subject, String body) {
         try {
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom(fromEmail);
-            message.setTo(to);
-            message.setSubject(subject);
-            message.setText(body);
-
-            mailSender.send(message);
+            resendEmailClient.sendEmail(to, subject, body);
             log.info("Email sent successfully to {}", to);
         } catch (Exception ex) {
             log.error("Failed to send email to {}: {}", to, ex.getMessage(), ex);
             throw new BusinessException(
                     ErrorCode.INTERNAL_ERROR,
-                    "Failed to send verification email. Please try again later."
+                    "Failed to send email. Please try again later."
             );
         }
     }

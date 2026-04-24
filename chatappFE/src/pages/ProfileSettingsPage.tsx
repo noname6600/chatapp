@@ -218,6 +218,8 @@ export default function ProfileSettingsPage() {
             <ProfileIdentityCard
               presentation={{ ...presentation, backgroundColor: resolvedBackground }}
               aboutTestId="settings-about-text"
+              userId={currentUser?.accountId}
+              avatarSize={80}
             >
               <button className="w-full rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-500">
                 Edit Profile

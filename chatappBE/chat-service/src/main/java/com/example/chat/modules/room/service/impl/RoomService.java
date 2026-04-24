@@ -1,11 +1,20 @@
 package com.example.chat.modules.room.service.impl;
 
 import com.example.chat.config.InviteCodeGenerator;
+import com.example.chat.modules.message.application.service.ISystemMessageService;
+import com.example.chat.modules.message.domain.enums.SystemEventType;
 import com.example.chat.modules.message.infrastructure.cache.CacheNames;
+import com.example.chat.modules.message.infrastructure.client.UserBasicProfile;
+import com.example.chat.modules.message.infrastructure.client.UserClient;
 import com.example.chat.modules.room.dto.CloudinaryUploadResult;
 import com.example.chat.modules.room.dto.LastMessagePreview;
 import com.example.chat.modules.room.dto.RoomAvatarUploadResponse;
+import com.example.chat.modules.room.dto.RoomMemberJoinedPayload;
+import com.example.chat.modules.room.dto.RoomMemberLeftPayload;
 import com.example.chat.modules.room.dto.RoomResponse;
+import com.example.common.integration.chat.ChatEventType;
+import com.example.common.integration.websocket.WsEvent;
+import com.example.common.websocket.session.IRoomBroadcaster;
 import com.example.chat.modules.room.entity.Room;
 import com.example.chat.modules.room.entity.RoomMember;
 import com.example.chat.modules.room.enums.Role;
@@ -17,6 +26,7 @@ import com.example.common.redis.api.ITimeRedisCacheManager;
 import com.example.common.redis.exception.CreateCacheException;
 import com.example.common.web.exception.BusinessException;
 import com.example.common.web.exception.ErrorCode;
+import org.springframework.dao.DataIntegrityViolationException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -36,10 +46,13 @@ public class RoomService implements IRoomService {
 
     private final RoomRepository roomRepo;
     private final RoomMemberRepository memberRepo;
+    private final UserClient userClient;
     private final InviteCodeGenerator inviteCodeGenerator;
     private final GroupAvatarGenerator avatarGenerator;
     private final CloudinaryService cloudinaryService;
     private final ITimeRedisCacheManager cacheManager;
+    private final IRoomBroadcaster roomBroadcaster;
+    private final ISystemMessageService systemMessageService;
 
     @Override
     public RoomResponse createRoom(UUID creatorId, String name) {
@@ -52,9 +65,13 @@ public class RoomService implements IRoomService {
 
         roomRepo.save(room);
 
+        UserBasicProfile creatorProfile = safeGetBasicProfile(creatorId);
+
         RoomMember member = RoomMember.builder()
                 .roomId(room.getId())
                 .userId(creatorId)
+                .displayName(creatorProfile != null ? creatorProfile.getDisplayName() : null)
+                .avatarUrl(creatorProfile != null ? creatorProfile.getAvatarUrl() : null)
                 .role(Role.OWNER)
                 .build();
 
@@ -98,13 +115,44 @@ public class RoomService implements IRoomService {
             return;
         }
 
-        memberRepo.save(RoomMember.builder()
+        UserBasicProfile joinerProfile = safeGetBasicProfile(userId);
+
+        RoomMember saved;
+        try {
+            saved = memberRepo.save(RoomMember.builder()
                 .roomId(roomId)
                 .userId(userId)
+                .displayName(joinerProfile != null ? joinerProfile.getDisplayName() : null)
+                .avatarUrl(joinerProfile != null ? joinerProfile.getAvatarUrl() : null)
                 .role(Role.MEMBER)
                 .build());
+        } catch (DataIntegrityViolationException ex) {
+            log.info(
+                "Concurrent join ignored as duplicate membership roomId={}, userId={}",
+                roomId,
+                userId
+            );
+            return;
+        }
 
         evictRoomsCache(userId);
+
+        roomBroadcaster.sendToRoom(roomId, WsEvent.builder()
+                .type(ChatEventType.MEMBER_JOINED.value())
+                .payload(RoomMemberJoinedPayload.builder()
+                        .roomId(roomId)
+                        .userId(userId)
+                        .role(Role.MEMBER.name())
+                        .joinedAt(saved.getJoinedAt())
+                        .build())
+                .build());
+
+                systemMessageService.sendSystemMessage(
+                    roomId,
+                    SystemEventType.JOIN,
+                    userId,
+                    null
+                );
     }
 
     @Override
@@ -134,6 +182,14 @@ public class RoomService implements IRoomService {
 
         evictRoomsCache(userId);
         evictRoomMembers(roomId);
+
+        roomBroadcaster.sendToRoom(roomId, WsEvent.builder()
+                .type(ChatEventType.MEMBER_LEFT.value())
+                .payload(RoomMemberLeftPayload.builder()
+                        .roomId(roomId)
+                        .userId(userId)
+                        .build())
+                .build());
     }
 
     @Override
@@ -168,11 +224,20 @@ public class RoomService implements IRoomService {
             return;
         }
 
-        memberRepo.save(RoomMember.builder()
+        try {
+            memberRepo.save(RoomMember.builder()
                 .roomId(roomId)
                 .userId(newUserId)
                 .role(Role.MEMBER)
                 .build());
+        } catch (DataIntegrityViolationException ex) {
+            log.info(
+                "Concurrent add-member ignored as duplicate membership roomId={}, userId={}",
+                roomId,
+                newUserId
+            );
+            return;
+        }
 
         evictRoomsCache(newUserId);
         evictRoomMembers(roomId);
@@ -350,5 +415,20 @@ public class RoomService implements IRoomService {
 
     private String defaultAvatar() {
         return "https://cdn.myapp.com/group/default.png";
+    }
+
+    private UserBasicProfile safeGetBasicProfile(UUID userId) {
+        try {
+            if (userId == null) return null;
+            var response = userClient.getUsersBulk(List.of(userId));
+            if (response == null || response.getData() == null) return null;
+            return response.getData().stream()
+                    .filter(p -> p != null && userId.equals(p.getAccountId()))
+                    .findFirst()
+                    .orElse(null);
+        } catch (Exception ex) {
+            log.warn("Failed to resolve user profile for room membership userId={}", userId);
+            return null;
+        }
     }
 }

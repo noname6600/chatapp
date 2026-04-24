@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
   toggleReaction: vi.fn(),
   setReply: vi.fn(),
   setDeleting: vi.fn(),
-  mentionHandleKeyDown: vi.fn(() => null),
+  mentionHandleKeyDown: vi.fn((): { userId: string; displayName: string; username: string } | null => null),
   mentionSelect: vi.fn(),
   mentionDetect: vi.fn(),
   mentionSetOpen: vi.fn(),
@@ -42,7 +42,7 @@ vi.mock("../../store/chat.store", () => ({
 }));
 
 vi.mock("../../store/user.store", () => ({
-  useUserStore: (selector: (state: { users: Record<string, unknown> }) => unknown) =>
+  useUserStore: (selector: (state: { users: Record<string, unknown>; fetchUsers: unknown }) => unknown) =>
     selector({
       users: {
         "user-1": {
@@ -257,6 +257,19 @@ describe("MessageItem inline edit flow", () => {
     );
 
     expect(screen.queryByTitle(/Edit message/i)).toBeNull();
+  });
+
+  it("renders the Forwarded banner when forwardedFromMessageId exists", () => {
+    render(
+      <MessageItem
+        message={makeMessage({
+          forwardedFromMessageId: "source-123",
+          content: "Forwarded payload",
+        })}
+      />
+    );
+
+    expect(screen.getByText("Forwarded")).toBeTruthy();
   });
 
   it("opens inline editor prefilled with current message content", () => {

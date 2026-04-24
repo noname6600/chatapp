@@ -1,274 +1,319 @@
-import { useEffect, useMemo, useState } from "react"
-import {
-  getFriendsApi,
-  getOutgoingApi,
-  sendFriendRequestApi,
-  sendFriendRequestByUsernameApi,
-} from "../../api/friend.service"
-import { getRoomMembersBulk } from "../../api/room.service"
-import { useAuth } from "../../store/auth.store"
-import { useRooms } from "../../store/room.store"
-import { useUserStore } from "../../store/user.store"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { sendFriendRequestApi } from "../../api/friend.service"
+import { searchUserByUsernameApi } from "../../api/user.service"
 import { useFriendStatus } from "../../hooks/useFriendStatus"
-import { onFriendshipEvent, FriendshipEventType } from "../../websocket/friendship.socket"
+import { useFriendStore } from "../../store/friend.store"
+import { useUserOverlay } from "../../store/userOverlay.store"
+import { useUserStore } from "../../store/user.store"
+import type { FriendStatus } from "../../types/friend"
 import type { UserProfile } from "../../types/user"
 
-function SuggestionCard({
-  user,
-  pending,
-  onAdd,
-}: {
+type SearchState = "idle" | "loading" | "success" | "empty" | "error"
+
+const SEARCH_DEBOUNCE_MS = 600
+const MIN_QUERY_LENGTH = 2
+const MAX_VISIBLE_RESULTS = 10
+
+const toUserProfile = (profile: UserProfile): UserProfile => ({
+  accountId: profile.accountId,
+  username: profile.username,
+  displayName: profile.displayName,
+  avatarUrl: profile.avatarUrl,
+  aboutMe: profile.aboutMe ?? null,
+  backgroundColor: profile.backgroundColor ?? null,
+})
+
+const getActionCopy = (
+  friendStatus: FriendStatus | undefined,
+  isSending: boolean
+): { label: string; helper: string; disabled: boolean } => {
+  if (isSending) {
+    return {
+      label: "Sending...",
+      helper: "Sending friend request...",
+      disabled: true,
+    }
+  }
+
+  switch (friendStatus) {
+    case "SELF":
+      return {
+        label: "This is you",
+        helper: "You cannot send a friend request to your own profile.",
+        disabled: true,
+      }
+    case "FRIENDS":
+      return {
+        label: "Friends",
+        helper: "You are already connected with this user.",
+        disabled: true,
+      }
+    case "REQUEST_SENT":
+      return {
+        label: "Pending",
+        helper: "A friend request is already waiting for this user.",
+        disabled: true,
+      }
+    case "REQUEST_RECEIVED":
+      return {
+        label: "Request received",
+        helper: "This user already sent you a friend request. Check the Pending tab.",
+        disabled: true,
+      }
+    case "BLOCKED_BY_ME":
+    case "BLOCKED_ME":
+      return {
+        label: "Blocked",
+        helper: "Friend requests are unavailable while this user is blocked.",
+        disabled: true,
+      }
+    case "NONE":
+      return {
+        label: "Add Friend",
+        helper: "Click the card to inspect the profile, or send the request directly here.",
+        disabled: false,
+      }
+    default:
+      return {
+        label: "Checking...",
+        helper: "Checking your current friendship status...",
+        disabled: true,
+      }
+  }
+}
+
+const getStatusLabel = (friendStatus: FriendStatus | undefined): string => {
+  switch (friendStatus) {
+    case "SELF":
+      return "You"
+    case "FRIENDS":
+      return "Friends"
+    case "REQUEST_SENT":
+      return "Pending"
+    case "REQUEST_RECEIVED":
+      return "Request received"
+    case "BLOCKED_BY_ME":
+    case "BLOCKED_ME":
+      return "Blocked"
+    case "NONE":
+      return "Not friends"
+    default:
+      return "Checking..."
+  }
+}
+
+type FriendSearchCardProps = {
   user: UserProfile
-  pending: boolean
-  onAdd: (userId: string) => Promise<void>
-}) {
+  isSending: boolean
+  onOpenProfile: (user: UserProfile, rect: DOMRect) => void
+  onAddFriend: (user: UserProfile) => void
+}
+
+const FriendSearchCard = ({
+  user,
+  isSending,
+  onOpenProfile,
+  onAddFriend,
+}: FriendSearchCardProps) => {
+  const cardRef = useRef<HTMLDivElement>(null)
   const friendStatus = useFriendStatus(user.accountId)
+  const actionCopy = useMemo(
+    () => getActionCopy(friendStatus, isSending),
+    [friendStatus, isSending]
+  )
 
-  const disabled =
-    pending ||
-    friendStatus === "FRIENDS" ||
-    friendStatus === "REQUEST_SENT" ||
-    friendStatus === "BLOCKED_BY_ME" ||
-    friendStatus === "BLOCKED_ME"
-
-  const label = (() => {
-    if (pending || friendStatus === "REQUEST_SENT") return "Pending"
-    if (friendStatus === "FRIENDS") return "Friends"
-    if (friendStatus === "BLOCKED_BY_ME") return "Blocked"
-    if (friendStatus === "BLOCKED_ME") return "Blocked"
-    return "Add"
-  })()
+  const handleOpenProfile = () => {
+    if (!cardRef.current) return
+    onOpenProfile(user, cardRef.current.getBoundingClientRect())
+  }
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4">
+    <div
+      ref={cardRef}
+      role="button"
+      tabIndex={0}
+      aria-label={`Open profile for ${user.displayName}`}
+      onClick={handleOpenProfile}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault()
+          handleOpenProfile()
+        }
+      }}
+      className="flex items-center justify-between gap-4 rounded-lg border border-gray-200 bg-white px-4 py-3 text-left transition hover:border-blue-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+      data-testid="friend-search-card"
+    >
       <div className="flex items-center gap-3">
         <img
-          src={user.avatarUrl ?? "https://via.placeholder.com/40"}
+          src={user.avatarUrl ?? "/default-avatar.png"}
           alt={user.displayName}
-          className="h-10 w-10 rounded-full object-cover"
+          className="h-12 w-12 rounded-full object-cover"
         />
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-gray-900">{user.displayName}</p>
-          <p className="truncate text-xs text-gray-500">@{user.username}</p>
+        <div className="space-y-1">
+          <div className="text-sm font-semibold text-gray-900">
+            {user.displayName}
+          </div>
+          <div className="text-xs text-gray-500">@{user.username}</div>
+          <div className="text-xs text-gray-400">{getStatusLabel(friendStatus)}</div>
         </div>
       </div>
 
       <button
-        onClick={() => void onAdd(user.accountId)}
-        disabled={disabled}
-        className="mt-3 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation()
+          if (!actionCopy.disabled) {
+            onAddFriend(user)
+          }
+        }}
+        disabled={actionCopy.disabled}
+        className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-700"
       >
-        {label}
+        {actionCopy.label}
       </button>
     </div>
   )
 }
 
 export function AddFriendPanel() {
-  const { userId: currentUserId } = useAuth()
-  const { roomsById } = useRooms()
-  const users = useUserStore((state) => state.users)
-  const fetchUsers = useUserStore((state) => state.fetchUsers)
-
-  const [friends, setFriends] = useState<string[]>([])
-  const [outgoing, setOutgoing] = useState<string[]>([])
-  const [candidateIds, setCandidateIds] = useState<string[]>([])
-  const [pendingSuggestionIds, setPendingSuggestionIds] = useState<Record<string, true>>({})
+  const updateUserLocal = useUserStore((state) => state.updateUserLocal)
+  const openUserOverlay = useUserOverlay((state) => state.open)
+  const setFriendStatus = useFriendStore((state) => state.setStatus)
 
   const [searchText, setSearchText] = useState("")
-  const [searchLoading, setSearchLoading] = useState(false)
+  const [searchState, setSearchState] = useState<SearchState>("idle")
+  const [results, setResults] = useState<UserProfile[]>([])
+  const [sendingRequestId, setSendingRequestId] = useState<string | null>(null)
 
   useEffect(() => {
-    let active = true
+    const normalized = searchText.trim()
+    setSendingRequestId(null)
 
-    const loadFriendLists = async () => {
-      try {
-        const [friendIds, outgoingIds] = await Promise.all([getFriendsApi(), getOutgoingApi()])
-        if (!active) return
-
-        setFriends(friendIds)
-        setOutgoing(outgoingIds)
-      } catch (err) {
-        console.error("Failed to load friend relationship lists", err)
-      }
+    if (!normalized || normalized.length < MIN_QUERY_LENGTH) {
+      setResults([])
+      setSearchState("idle")
+      return
     }
 
-    void loadFriendLists()
+    let cancelled = false
+    const timeoutId = window.setTimeout(() => {
+      void (async () => {
+        try {
+          setSearchState("loading")
 
-    return () => {
-      active = false
-    }
-  }, [])
+          const matches = await searchUserByUsernameApi(normalized)
+          if (cancelled) return
 
-  useEffect(() => {
-    let active = true
-
-    const loadCandidates = async () => {
-      const groupRoomIds = Object.values(roomsById)
-        .filter((room) => room.type === "GROUP")
-        .map((room) => room.id)
-
-      if (!groupRoomIds.length) {
-        setCandidateIds([])
-        return
-      }
-
-      try {
-        const membersByRoom = await getRoomMembersBulk(groupRoomIds)
-        if (!active) return
-
-        const allIds = new Set<string>()
-        Object.values(membersByRoom).forEach((members) => {
-          members.forEach((member) => {
-            if (member.userId && member.userId !== currentUserId) {
-              allIds.add(member.userId)
-            }
-          })
-        })
-
-        const ids = Array.from(allIds)
-        setCandidateIds(ids)
-        if (ids.length) {
-          await fetchUsers(ids)
-        }
-      } catch (err) {
-        console.warn("Failed to load suggestion candidates", err)
-      }
-    }
-
-    void loadCandidates()
-
-    return () => {
-      active = false
-    }
-  }, [roomsById, currentUserId, fetchUsers])
-
-  // Handle realtime friend request status updates for recommendation cards
-  useEffect(() => {
-    const unsubscribe = onFriendshipEvent((event) => {
-      switch (event.type) {
-        case FriendshipEventType.FRIEND_REQUEST_ACCEPTED: {
-          // Move user from outgoing to friends list
-          const targetUserId = event.data.senderId || event.data.userId
-          if (targetUserId) {
-            setOutgoing((prev) => prev.filter((id) => id !== targetUserId))
-            setFriends((prev) => (prev.includes(targetUserId) ? prev : [...prev, targetUserId]))
-            setPendingSuggestionIds((prev) => {
-              const next = { ...prev }
-              delete next[targetUserId]
-              return next
+          const hydratedMatches = matches
+            .slice(0, MAX_VISIBLE_RESULTS)
+            .map((match) =>
+            toUserProfile({
+              ...match,
+              aboutMe: match.aboutMe ?? null,
+              backgroundColor: match.backgroundColor ?? null,
             })
-          }
-          break
-        }
+          )
 
-        case FriendshipEventType.FRIEND_REQUEST_DECLINED:
-        case FriendshipEventType.FRIEND_REQUEST_CANCELLED: {
-          // Remove user from outgoing list (back to available)
-          const targetUserId = event.data.senderId || event.data.userId
-          if (targetUserId) {
-            setOutgoing((prev) => prev.filter((id) => id !== targetUserId))
-            setPendingSuggestionIds((prev) => {
-              const next = { ...prev }
-              delete next[targetUserId]
-              return next
-            })
-          }
-          break
-        }
+          hydratedMatches.forEach(updateUserLocal)
 
-        // Ignore other events for add-friend context
-        case FriendshipEventType.FRIEND_REQUEST_RECEIVED:
-        case FriendshipEventType.FRIEND_STATUS_CHANGED:
-        default:
-          break
-      }
-    })
+          setResults(hydratedMatches)
+          if (hydratedMatches.length === 0) {
+            setSearchState("empty")
+            return
+          }
+
+          setSearchState("success")
+        } catch (error) {
+          if (cancelled) return
+          console.error("Failed to search username", error)
+          setResults([])
+          setSearchState("error")
+        }
+      })()
+    }, SEARCH_DEBOUNCE_MS)
 
     return () => {
-      unsubscribe()
+      cancelled = true
+      window.clearTimeout(timeoutId)
     }
-  }, [])
+  }, [searchText, updateUserLocal])
 
-  const suggestions = useMemo(() => {
-    const friendSet = new Set(friends)
-    const outgoingSet = new Set(outgoing)
-
-    return candidateIds
-      .filter((id) => id !== currentUserId)
-      .filter((id) => !friendSet.has(id))
-      .filter((id) => !outgoingSet.has(id))
-      .map((id) => users[id])
-      .filter((profile): profile is UserProfile => Boolean(profile))
-      .slice(0, 20)
-  }, [candidateIds, currentUserId, friends, outgoing, users])
-
-  const sendByUsername = async () => {
-    const raw = searchText.trim()
-    if (!raw || searchLoading) return
-
-    try {
-      setSearchLoading(true)
-      await sendFriendRequestByUsernameApi(raw)
-      setSearchText("")
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setSearchLoading(false)
-    }
+  const handleOpenProfile = (user: UserProfile, rect: DOMRect) => {
+    openUserOverlay(user.accountId, rect, "FRIEND_SEARCH")
   }
 
-  const sendFromSuggestion = async (userId: string) => {
+  const handleAddFriend = async (user: UserProfile) => {
+    if (!user || sendingRequestId) return
+
     try {
-      await sendFriendRequestApi(userId)
-      setPendingSuggestionIds((prev) => ({ ...prev, [userId]: true }))
-      setOutgoing((prev) => (prev.includes(userId) ? prev : [...prev, userId]))
-    } catch (err) {
-      console.error(err)
+      setSendingRequestId(user.accountId)
+      await sendFriendRequestApi(user.accountId)
+      setFriendStatus(user.accountId, "REQUEST_SENT")
+      setSendingRequestId(null)
+    } catch (error) {
+      console.error("Failed to send friend request", error)
+      setSendingRequestId(null)
     }
   }
 
   return (
-    <div className="space-y-6 rounded-xl border border-gray-200 bg-gray-50 p-5">
+    <div className="flex h-full min-h-0 flex-col space-y-6 rounded-xl border border-gray-200 bg-gray-50 p-4">
       <section className="space-y-3">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-600">Search by username</h3>
-        <div className="flex gap-2">
-          <input
-            value={searchText}
-            onChange={(event) => setSearchText(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                void sendByUsername()
-              }
-            }}
-            placeholder="Enter exact username"
-            className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
-          />
-          <button
-            onClick={() => void sendByUsername()}
-            disabled={!searchText.trim() || searchLoading}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {searchLoading ? "Sending..." : "Send Request"}
-          </button>
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-600">
+            Search people
+          </h3>
+          <p className="text-sm text-gray-500">
+            Type at least {MIN_QUERY_LENGTH} characters and pause to see matches.
+          </p>
         </div>
+
+        <input
+          value={searchText}
+          onChange={(event) => setSearchText(event.target.value)}
+          placeholder="Search by username"
+          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
+        />
+
+        {searchState === "loading" ? (
+          <p className="text-sm text-gray-500">Searching for matches...</p>
+        ) : null}
+
+        {searchState === "empty" ? (
+          <p className="text-sm text-amber-600">No matches found yet.</p>
+        ) : null}
+
+        {searchState === "error" ? (
+          <p className="text-sm text-red-600">
+            We couldn&apos;t search right now. Please try again.
+          </p>
+        ) : null}
       </section>
 
-      {suggestions.length > 0 && (
-        <section className="space-y-3">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-600">People you may know</h3>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {suggestions.map((user) => (
-              <SuggestionCard
+      {results.length > 0 ? (
+        <section className="flex min-h-0 flex-1 flex-col space-y-3">
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-600">
+              Results
+            </h3>
+            <p className="text-sm text-gray-500">
+              Click a card to preview the profile or send a request.
+            </p>
+          </div>
+
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 max-h-[45vh]">
+            {results.map((user) => (
+              <FriendSearchCard
                 key={user.accountId}
                 user={user}
-                pending={Boolean(pendingSuggestionIds[user.accountId])}
-                onAdd={sendFromSuggestion}
+                isSending={sendingRequestId === user.accountId}
+                onOpenProfile={handleOpenProfile}
+                onAddFriend={handleAddFriend}
               />
             ))}
           </div>
         </section>
-      )}
+      ) : null}
     </div>
   )
 }

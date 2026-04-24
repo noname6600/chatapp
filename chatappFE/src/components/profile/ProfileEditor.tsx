@@ -2,7 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { updateMyProfileApi, uploadAvatarApi, searchUserByUsernameApi } from "../../api/user.service";
 import { useUserStore } from "../../store/user.store";
 import { useAuth } from "../../store/auth.store";
+import { usePresenceStore } from "../../store/presence.store";
 import type { ProfileDraft } from "../../types/profile";
+import UserStatusFrame from "../presence/UserStatusFrame";
+import AvatarImage from "../user/AvatarImage";
 
 interface Props {
   draft: ProfileDraft;
@@ -12,6 +15,9 @@ interface Props {
 export default function ProfileEditor({ draft, setDraft }: Props) {
   const updateLocal = useUserStore((s) => s.updateUserLocal);
   const { currentUser, refreshCurrentUser } = useAuth();
+  const currentStatus = usePresenceStore((s) =>
+    currentUser?.accountId ? s.getUserStatus(currentUser.accountId) : "OFFLINE"
+  );
 
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -120,8 +126,13 @@ export default function ProfileEditor({ draft, setDraft }: Props) {
       }
 
       if (currentUser && draft.username.trim() !== currentUser.username) {
-        const existing = await searchUserByUsernameApi(draft.username.trim());
-        if (existing && existing.accountId !== currentUser.accountId) {
+        const matches = await searchUserByUsernameApi(draft.username.trim());
+        const hasExactMatch = matches.some(
+          (user) =>
+            user.username.trim().toLowerCase() === draft.username.trim().toLowerCase() &&
+            user.accountId !== currentUser.accountId
+        );
+        if (hasExactMatch) {
           setFieldErrors({ username: "Username is already taken." });
           setStatus({ type: "error", message: "Username is already in use." });
           return;
@@ -235,10 +246,14 @@ export default function ProfileEditor({ draft, setDraft }: Props) {
       {/* AVATAR */}
       <Field label="Avatar">
         <div className="flex items-center gap-4">
-          <img
-            src={draft.avatarUrl || "/default-avatar.png"}
-            className="w-14 h-14 rounded-full object-cover shadow bg-gray-100"
-          />
+          <UserStatusFrame status={currentStatus} size={56}>
+            <AvatarImage
+              src={draft.avatarUrl || "/default-avatar.png"}
+              alt="Profile avatar preview"
+              size={56}
+              className="shadow"
+            />
+          </UserStatusFrame>
 
           <label
             className="

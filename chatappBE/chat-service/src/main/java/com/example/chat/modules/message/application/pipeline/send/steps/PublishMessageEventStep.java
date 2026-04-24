@@ -51,6 +51,9 @@ public class PublishMessageEventStep
                 savedMessage.getSeq()
         );
 
+        // Sender should never see their own sent message as unread after refresh.
+        roomService.markRoomRead(savedMessage.getRoomId(), savedMessage.getSenderId());
+
         // Kafka publish is best-effort: fire async so broker unavailability
         // never blocks the send response. The message is already persisted.
         final ChatMessage msg = savedMessage;

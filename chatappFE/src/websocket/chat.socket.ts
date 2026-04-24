@@ -1,4 +1,5 @@
 import type { ChatMessage } from "../types/message"
+import type { RoomMemberJoinedPayload, RoomMemberLeftPayload } from "../types/room"
 import { ChatEventType } from "../constants/chatEvents"
 import { normalizeReactions } from "../utils/reactionState"
 import { getWsEndpoint } from "../config/ws.config"
@@ -46,11 +47,23 @@ export type ReactionUpdatedPayload = {
   createdAt: string | null
 }
 
+export type MessagePinEventPayload = {
+  eventId: string
+  roomId: string
+  messageId: string
+  actorId: string
+  occurredAt: string | null
+}
+
 export type ChatSocketEvent =
   | { type: typeof ChatEventType.MESSAGE_SENT; payload: ChatMessage }
   | { type: typeof ChatEventType.MESSAGE_EDITED; payload: MessageEditedPayload }
   | { type: typeof ChatEventType.MESSAGE_DELETED; payload: MessageDeletedPayload }
+  | { type: typeof ChatEventType.MESSAGE_PINNED; payload: MessagePinEventPayload }
+  | { type: typeof ChatEventType.MESSAGE_UNPINNED; payload: MessagePinEventPayload }
   | { type: typeof ChatEventType.REACTION_UPDATED; payload: ReactionUpdatedPayload }
+  | { type: typeof ChatEventType.MEMBER_JOINED; payload: RoomMemberJoinedPayload }
+  | { type: typeof ChatEventType.MEMBER_LEFT; payload: RoomMemberLeftPayload }
 
 /* ================= CONNECT ================= */
 
@@ -121,12 +134,46 @@ export const connectChatSocket = () => {
           break
         }
 
+        case ChatEventType.MESSAGE_PINNED: {
+          eventHandlers.forEach((h) =>
+            h({
+              type: ChatEventType.MESSAGE_PINNED,
+              payload: mapMessagePinPayload(payload),
+            })
+          )
+          break
+        }
+
+        case ChatEventType.MESSAGE_UNPINNED: {
+          eventHandlers.forEach((h) =>
+            h({
+              type: ChatEventType.MESSAGE_UNPINNED,
+              payload: mapMessagePinPayload(payload),
+            })
+          )
+          break
+        }
+
         case ChatEventType.REACTION_UPDATED: {
           eventHandlers.forEach((h) =>
             h({
               type: ChatEventType.REACTION_UPDATED,
               payload: mapReactionPayload(payload),
             })
+          )
+          break
+        }
+
+        case ChatEventType.MEMBER_JOINED: {
+          eventHandlers.forEach((h) =>
+            h({ type: ChatEventType.MEMBER_JOINED, payload: payload as RoomMemberJoinedPayload })
+          )
+          break
+        }
+
+        case ChatEventType.MEMBER_LEFT: {
+          eventHandlers.forEach((h) =>
+            h({ type: ChatEventType.MEMBER_LEFT, payload: payload as RoomMemberLeftPayload })
           )
           break
         }
@@ -214,6 +261,10 @@ function mapToChatMessage(p: any): ChatMessage {
     type: p.type,
     content: p.content,
     replyToMessageId: p.replyToMessageId ?? null,
+    forwardedFromMessageId: p.forwardedFromMessageId ?? null,
+    systemEventType: p.systemEventType ?? null,
+    actorUserId: p.actorUserId ?? null,
+    targetMessageId: p.targetMessageId ?? null,
     clientMessageId: p.clientMessageId ?? null,
     createdAt: p.createdAt,
     editedAt: p.editedAt ?? null,
@@ -252,5 +303,15 @@ function mapReactionPayload(p: any): ReactionUpdatedPayload {
     emoji: p.emoji,
     action: p.action,
     createdAt: p.createdAt ?? null,
+  }
+}
+
+function mapMessagePinPayload(p: any): MessagePinEventPayload {
+  return {
+    eventId: p.eventId,
+    roomId: p.roomId,
+    messageId: p.messageId,
+    actorId: p.actorId,
+    occurredAt: p.occurredAt ?? null,
   }
 }

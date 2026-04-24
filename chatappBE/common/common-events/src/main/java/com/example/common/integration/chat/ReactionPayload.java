@@ -27,6 +27,10 @@ public final class ReactionPayload {
 
     private final Instant createdAt;
 
+    private final UUID messageAuthorId;
+
+    private final String actorDisplayName;
+
     @JsonCreator
     public ReactionPayload(
             @JsonProperty("messageId") UUID messageId,
@@ -34,7 +38,9 @@ public final class ReactionPayload {
             @JsonProperty("userId") UUID userId,
             @JsonProperty("emoji") String emoji,
             @JsonProperty("action") ReactionAction action,
-            @JsonProperty("createdAt") Instant createdAt
+            @JsonProperty("createdAt") Instant createdAt,
+            @JsonProperty("messageAuthorId") UUID messageAuthorId,
+            @JsonProperty("actorDisplayName") String actorDisplayName
     ) {
         this.messageId = messageId;
         this.roomId = roomId;
@@ -42,5 +48,7 @@ public final class ReactionPayload {
         this.emoji = emoji;
         this.action = action;
         this.createdAt = createdAt;
+        this.messageAuthorId = messageAuthorId;
+        this.actorDisplayName = actorDisplayName;
     }
 }

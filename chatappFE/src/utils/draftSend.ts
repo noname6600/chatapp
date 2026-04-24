@@ -1,4 +1,5 @@
-import { DraftBlock, isTextBlock, isMediaBlock } from '../types/draft'
+import type { DraftBlock } from '../types/draft'
+import { isTextBlock, isMediaBlock } from '../types/draft'
 
 /**
  * Reassemble draft blocks into message format for sending

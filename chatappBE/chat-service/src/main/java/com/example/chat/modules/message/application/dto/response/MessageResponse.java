@@ -1,6 +1,7 @@
 package com.example.chat.modules.message.application.dto.response;
 
 import com.example.chat.modules.message.domain.enums.MessageType;
+import com.example.chat.modules.message.domain.enums.SystemEventType;
 import lombok.*;
 import java.time.Instant;
 import java.util.List;
@@ -26,6 +27,14 @@ public class MessageResponse {
     private String content;
 
     private UUID replyToMessageId;
+
+    private UUID forwardedFromMessageId;
+
+    private SystemEventType systemEventType;
+
+    private UUID actorUserId;
+
+    private UUID targetMessageId;
 
     private Instant createdAt;
 

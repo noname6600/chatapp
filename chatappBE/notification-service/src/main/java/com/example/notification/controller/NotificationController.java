@@ -11,8 +11,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -26,10 +28,14 @@ public class NotificationController extends BaseController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<NotificationListResponse>> getMyNotifications(
-            @AuthenticationPrincipal Jwt jwt
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "50") int size,
+            @RequestParam(name = "beforeCreatedAt", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant beforeCreatedAt
     ) {
         return ResponseEntity.ok(
-                ApiResponse.success(queryService.getNotificationsForUser(currentUserId(jwt)))
+                ApiResponse.success(queryService.getNotificationsForUser(currentUserId(jwt), page, size, beforeCreatedAt))
         );
     }
 
@@ -58,6 +64,24 @@ public class NotificationController extends BaseController {
         commandService.markAllRead(currentUserId(jwt));
         return ResponseEntity.ok(ApiResponse.success(null));
     }
+
+    @PostMapping("/rooms/{roomId}/clear")
+    public ResponseEntity<ApiResponse<Void>> clearRoomNotifications(
+            @PathVariable UUID roomId,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        commandService.clearRoom(currentUserId(jwt), roomId);
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+        @PostMapping("/mark-read-by-room/{roomId}")
+        public ResponseEntity<ApiResponse<Void>> markReadByRoom(
+                        @PathVariable UUID roomId,
+                        @AuthenticationPrincipal Jwt jwt
+        ) {
+                commandService.markReadByRoom(currentUserId(jwt), roomId);
+                return ResponseEntity.ok(ApiResponse.success(null));
+        }
 
     @GetMapping("/unread/count")
     public ResponseEntity<ApiResponse<UnreadCountResponse>> getUnreadCount(

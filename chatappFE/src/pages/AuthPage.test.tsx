@@ -98,4 +98,103 @@ describe("AuthPage", () => {
     expect(loginMock).toHaveBeenCalledWith("access-token", "refresh-token")
     expect(navigateMock).not.toHaveBeenCalled()
   })
+
+  it("navigates only after login bootstrap promise resolves", async () => {
+    let resolveLogin: (() => void) | null = null
+
+    authServiceMocks.loginApi.mockResolvedValue({
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
+      accessTokenExpiresIn: 900,
+    })
+    loginMock.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveLogin = resolve
+        })
+    )
+
+    renderPage()
+
+    fireEvent.change(screen.getByPlaceholderText("Email"), {
+      target: { value: "ok@example.com" },
+    })
+    fireEvent.change(screen.getByPlaceholderText("Password"), {
+      target: { value: "Password1!" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Login" }))
+
+    await waitFor(() => {
+      expect(loginMock).toHaveBeenCalledWith("access-token", "refresh-token")
+    })
+    expect(navigateMock).not.toHaveBeenCalled()
+
+    resolveLogin?.()
+
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith("/chat")
+    })
+  })
+
+  it("disables auth actions and shows loading state while submitting", async () => {
+    let resolveLoginApi: (() => void) | null = null
+
+    authServiceMocks.loginApi.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveLoginApi = () =>
+            resolve({
+              accessToken: "access-token",
+              refreshToken: "refresh-token",
+              accessTokenExpiresIn: 900,
+            })
+        })
+    )
+
+    loginMock.mockResolvedValue(undefined)
+
+    renderPage()
+
+    fireEvent.change(screen.getByPlaceholderText("Email"), {
+      target: { value: "loading@example.com" },
+    })
+    fireEvent.change(screen.getByPlaceholderText("Password"), {
+      target: { value: "Password1!" },
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "Login" }))
+
+    await waitFor(() => {
+      const submitButton = screen.getByRole("button", { name: "Checking credentials..." }) as HTMLButtonElement
+      expect(submitButton.disabled).toBe(true)
+    })
+    expect(screen.getByText("Verifying your credentials...")).toBeTruthy()
+    const googleButton = screen.getByRole("button", { name: /continue with google/i }) as HTMLButtonElement
+    expect(googleButton.disabled).toBe(true)
+
+    resolveLoginApi?.()
+  })
+
+  it("shows deterministic fallback message when login fails without a message", async () => {
+    authServiceMocks.loginApi.mockRejectedValue({})
+
+    renderPage()
+
+    fireEvent.change(screen.getByPlaceholderText("Email"), {
+      target: { value: "alice@example.com" },
+    })
+    fireEvent.change(screen.getByPlaceholderText("Password"), {
+      target: { value: "WrongPass1!" },
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "Login" }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Login failed. Please verify your email and password and try again.")
+      ).toBeTruthy()
+    })
+    expect(loginMock).not.toHaveBeenCalled()
+    expect(navigateMock).not.toHaveBeenCalled()
+  })
 })

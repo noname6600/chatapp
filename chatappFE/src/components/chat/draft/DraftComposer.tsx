@@ -3,7 +3,6 @@ import { useDraftStore } from '../../../store/draft.store'
 import { TextBlockComponent } from './TextBlock'
 import { MediaBlockComponent } from './MediaBlock'
 import { isTextBlock } from '../../../types/draft'
-import type { DraftBlock } from '../../../types/draft'
 
 interface DraftComposerProps {
   roomId: string

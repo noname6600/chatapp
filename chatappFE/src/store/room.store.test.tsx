@@ -1,6 +1,6 @@
 /* @vitest-environment jsdom */
 
-import { act, render, waitFor } from "@testing-library/react"
+import { act, cleanup, render, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { useEffect } from "react"
 
@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   getMyRooms: vi.fn(),
   markRoomReadApi: vi.fn(),
   subscribeRoom: vi.fn(),
+  clearRoomNotifications: vi.fn(),
 }))
 
 let chatEventHandler: ((event: { type: string; payload: any }) => void) | null = null
@@ -28,6 +29,12 @@ vi.mock("./auth.store", () => ({
 
 vi.mock("./user.store", () => ({
   useUserStore: (selector: (state: any) => unknown) => selector({ users: {} }),
+}))
+
+vi.mock("./notification.store", () => ({
+  useNotifications: () => ({
+    clearRoomNotifications: mocks.clearRoomNotifications,
+  }),
 }))
 
 vi.mock("../hooks/usePopulateUserCache", () => ({
@@ -105,6 +112,7 @@ describe("room.store", () => {
     chatEventHandler = null
     socketOpenHandler = null
     localStorage.removeItem("notification_mutes_by_room")
+    localStorage.removeItem("notification_modes_by_room")
 
     mocks.getMyRooms.mockResolvedValue([
       makeRoom({
@@ -130,10 +138,13 @@ describe("room.store", () => {
         },
       }),
     ])
+
+    mocks.clearRoomNotifications.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
     vi.useRealTimers()
+    cleanup()
   })
 
   it("room list re-sorts when message arrives for background room", async () => {
@@ -198,6 +209,52 @@ describe("room.store", () => {
     })
 
     expect(harness.store.roomsById["room-b"]?.unreadCount).toBe(0)
+  })
+
+  it("mention-only mode skips unread increments for non-mention messages", async () => {
+    localStorage.setItem("notification_modes_by_room", JSON.stringify({ "room-b": "ONLY_MENTION" }))
+    const harness = await renderRoomProvider()
+
+    await act(async () => {
+      chatEventHandler?.({
+        type: ChatEventType.MESSAGE_SENT,
+        payload: {
+          messageId: "msg-only-mention-non-target",
+          roomId: "room-b",
+          senderId: "u2",
+          type: "TEXT",
+          content: "hello team",
+          mentionedUserIds: ["someone-else"],
+          attachments: [],
+          createdAt: "2026-03-26T11:05:00.000Z",
+        },
+      })
+    })
+
+    expect(harness.store.roomsById["room-b"]?.unreadCount).toBe(0)
+  })
+
+  it("mention-only mode increments unread for targeted mentions", async () => {
+    localStorage.setItem("notification_modes_by_room", JSON.stringify({ "room-b": "ONLY_MENTION" }))
+    const harness = await renderRoomProvider()
+
+    await act(async () => {
+      chatEventHandler?.({
+        type: ChatEventType.MESSAGE_SENT,
+        payload: {
+          messageId: "msg-only-mention-target",
+          roomId: "room-b",
+          senderId: "u2",
+          type: "TEXT",
+          content: "@me check this",
+          mentionedUserIds: ["me"],
+          attachments: [],
+          createdAt: "2026-03-26T11:06:00.000Z",
+        },
+      })
+    })
+
+    expect(harness.store.roomsById["room-b"]?.unreadCount).toBe(1)
   })
 
   it("self-sent message does not increment unread", async () => {
@@ -376,8 +433,10 @@ describe("room.store", () => {
       })
     })
 
-    expect(harness.store.roomsById["room-a"]?.latestMessageAt).toBe("2026-03-26T11:20:00.000Z")
-    expect(harness.store.roomsById["room-a"]?.lastMessage?.content).toBe("live message")
+    await waitFor(() => {
+      expect(harness.store.roomsById["room-a"]?.latestMessageAt).toBe("2026-03-26T11:20:00.000Z")
+      expect(harness.store.roomsById["room-a"]?.lastMessage?.content).toBe("live message")
+    })
 
     mocks.getMyRooms.mockResolvedValueOnce([
       makeRoom({
@@ -525,5 +584,68 @@ describe("room.store", () => {
     })
 
     expect(mocks.subscribeRoom).toHaveBeenCalledWith("room-c")
+  })
+
+  it("removes a room locally without waiting for a reload", async () => {
+    const harness = await renderRoomProvider()
+
+    await waitFor(() => {
+      expect(harness.store.roomOrder).toEqual(["room-a", "room-b"])
+    })
+
+    await act(async () => {
+      harness.store.removeRoom("room-a")
+    })
+
+    expect(harness.store.roomsById["room-a"]).toBeUndefined()
+    expect(harness.store.roomOrder).toEqual(["room-b"])
+  })
+
+  it("reconciliation drops rooms no longer returned by the backend", async () => {
+    const harness = await renderRoomProvider()
+
+    await waitFor(() => {
+      expect(harness.store.roomOrder).toEqual(["room-a", "room-b"])
+    })
+
+    mocks.getMyRooms.mockResolvedValueOnce([
+      makeRoom({
+        id: "room-b",
+        name: "Room B",
+        latestMessageAt: "2026-03-26T09:00:00.000Z",
+        lastMessage: {
+          id: "msg-b",
+          senderId: "u2",
+          content: "b",
+          createdAt: "2026-03-26T09:00:00.000Z",
+        },
+      }),
+    ])
+
+    await act(async () => {
+      await harness.store.reconcileRoomState()
+    })
+
+    await waitFor(() => {
+      expect(harness.store.roomsById["room-a"]).toBeUndefined()
+      expect(harness.store.roomOrder).toEqual(["room-b"])
+    })
+  })
+
+  it("markRoomRead triggers room-scoped notification clear when authenticated", async () => {
+    const harness = await renderRoomProvider()
+
+    await waitFor(() => {
+      expect(harness.store.roomOrder).toEqual(["room-a", "room-b"])
+    })
+
+    mocks.markRoomReadApi.mockResolvedValueOnce(undefined)
+
+    await act(async () => {
+      await harness.store.markRoomRead("room-a")
+    })
+
+    expect(mocks.markRoomReadApi).toHaveBeenCalledWith("room-a")
+    expect(mocks.clearRoomNotifications).toHaveBeenCalledWith("room-a")
   })
 })

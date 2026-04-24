@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Users, Settings, LogOut, PanelRightClose, PanelRightOpen } from "lucide-react";
+import { ChevronDown, Users, Settings, LogOut, PanelRightClose, PanelRightOpen, Pin } from "lucide-react";
 import type { Room } from "../../types/room";
+import { usePresenceStore } from "../../store/presence.store";
+import UserAvatar from "../user/UserAvatar";
 
 interface RoomHeaderProps {
   room: Room | null;
@@ -10,6 +12,9 @@ interface RoomHeaderProps {
   onLeave?: () => void;
   membersOpen?: boolean;
   onToggleMembers?: () => void;
+  onTogglePins?: () => void;
+  pinsOpen?: boolean;
+  pinCount?: number;
 }
 
 export default function RoomHeader({
@@ -20,6 +25,9 @@ export default function RoomHeader({
   onLeave,
   membersOpen,
   onToggleMembers,
+  onTogglePins,
+  pinsOpen,
+  pinCount = 0,
 }: RoomHeaderProps) {
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -43,6 +51,10 @@ export default function RoomHeader({
 
   const isGroupRoom = room.type === "GROUP";
   const displayName = isGroupRoom ? room.name : otherUserName || room.name;
+  const otherUserId = room.otherUserId ?? null;
+  const otherStatus = usePresenceStore((s) =>
+    otherUserId ? s.getUserStatus(otherUserId) : "OFFLINE"
+  );
 
   return (
     <div className="border-b bg-white px-4 py-3 flex items-center justify-between">
@@ -101,6 +113,21 @@ export default function RoomHeader({
 
       {/* Right: Avatar + Members Toggle */}
       <div className="flex items-center gap-2">
+        {onTogglePins && (
+          <button
+            onClick={onTogglePins}
+            className={`relative p-1.5 rounded-lg transition-colors ${pinsOpen ? "text-blue-700 bg-blue-50" : "text-gray-500 hover:text-gray-800 hover:bg-gray-100"}`}
+            title={pinsOpen ? "Hide pinned messages" : "Show pinned messages"}
+            aria-label={pinsOpen ? "Hide pinned messages" : "Show pinned messages"}
+          >
+            <Pin size={18} />
+            {pinCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-blue-600 text-white text-[10px] leading-4 text-center font-semibold">
+                {pinCount > 99 ? "99+" : pinCount}
+              </span>
+            )}
+          </button>
+        )}
         {onToggleMembers && (
           <button
             onClick={onToggleMembers}
@@ -110,11 +137,21 @@ export default function RoomHeader({
             {membersOpen ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}
           </button>
         )}
-        <img
-          src={room.avatarUrl || "/default-avatar.png"}
-          alt={displayName}
-          className="w-8 h-8 rounded-full object-cover"
-        />
+        {isGroupRoom ? (
+          <img
+            src={room.avatarUrl || "/default-avatar.png"}
+            alt={displayName}
+            className="w-8 h-8 rounded-full object-cover"
+          />
+        ) : otherUserId ? (
+          <UserAvatar userId={otherUserId} avatar={room.avatarUrl} size={32} status={otherStatus} />
+        ) : (
+          <img
+            src={room.avatarUrl || "/default-avatar.png"}
+            alt={displayName}
+            className="w-8 h-8 rounded-full object-cover"
+          />
+        )}
       </div>
     </div>
   );

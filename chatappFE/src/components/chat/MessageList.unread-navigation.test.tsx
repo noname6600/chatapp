@@ -6,6 +6,8 @@ import type { ChatMessage } from "../../types/message"
 
 import MessageList from "./MessageList"
 
+const flushAnimationFrames = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+
 const mocks = vi.hoisted(() => ({
   loadOlderMessages: vi.fn(async () => {}),
   loadNewerMessages: vi.fn(async () => {}),
@@ -14,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   setActiveRoom: vi.fn(async () => {}),
   fetchUsers: vi.fn(async () => {}),
   markRoomRead: vi.fn(async () => {}),
+  clearRoomNotifications: vi.fn(async () => {}),
   batchScrollToBottom: vi.fn(),
 }))
 
@@ -45,6 +48,12 @@ vi.mock("../../store/room.store", () => ({
   useRooms: () => ({
     roomsById: roomState,
     markRoomRead: mocks.markRoomRead,
+  }),
+}))
+
+vi.mock("../../store/notification.store", () => ({
+  useNotifications: () => ({
+    clearRoomNotifications: mocks.clearRoomNotifications,
   }),
 }))
 
@@ -250,6 +259,80 @@ describe("MessageList unread navigation behavior", () => {
 
     await waitFor(() => {
       expect(mocks.markRoomRead).toHaveBeenCalledWith("room-1")
+      expect(mocks.clearRoomNotifications).toHaveBeenCalledWith("room-1")
+    })
+  })
+
+  it("auto-marks room read when newest message is visible", async () => {
+    const { container } = render(<MessageList roomId="room-1" />)
+    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement
+
+    let scrollTopValue = 0
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      get: () => scrollTopValue,
+      set: (value: number) => {
+        scrollTopValue = value
+      },
+    })
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      get: () => 500,
+    })
+
+    const newestElement = container.querySelector('[data-message-seq="140"]') as HTMLElement
+    Object.defineProperty(newestElement, "offsetTop", {
+      configurable: true,
+      get: () => 320,
+    })
+    Object.defineProperty(newestElement, "clientHeight", {
+      configurable: true,
+      get: () => 24,
+    })
+
+    fireEvent.scroll(scrollContainer)
+
+    await waitFor(() => {
+      expect(mocks.markRoomRead).toHaveBeenCalledWith("room-1")
+    })
+  })
+
+  it("keeps jump indicator visible when newest message is offscreen", async () => {
+    const { container } = render(<MessageList roomId="room-1" />)
+    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement
+
+    let scrollTopValue = 0
+    Object.defineProperty(scrollContainer, "scrollTop", {
+      configurable: true,
+      get: () => scrollTopValue,
+      set: (value: number) => {
+        scrollTopValue = value
+      },
+    })
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      configurable: true,
+      get: () => 300,
+    })
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      configurable: true,
+      get: () => 2000,
+    })
+
+    const newestElement = container.querySelector('[data-message-seq="140"]') as HTMLElement
+    Object.defineProperty(newestElement, "offsetTop", {
+      configurable: true,
+      get: () => 1200,
+    })
+    Object.defineProperty(newestElement, "clientHeight", {
+      configurable: true,
+      get: () => 24,
+    })
+
+    mocks.markRoomRead.mockClear()
+    fireEvent.scroll(scrollContainer)
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Jump to latest messages" })).toBeDefined()
     })
   })
 

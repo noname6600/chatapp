@@ -41,7 +41,8 @@ export const createBaseApi = (baseURL: string): AxiosInstance => {
   createAuthRefreshInterceptor(api, refreshAuthLogic, {
     shouldRefresh: (error) => {
       const url = error?.config?.url ?? ""
-      const responseCode = error?.response?.data?.error?.code ?? error?.response?.data?.code
+      const data = error?.response?.data as Record<string, unknown> | undefined
+      const responseCode = (data?.error as Record<string, unknown> | undefined)?.code ?? data?.code
       if (responseCode === "INCOMPLETE_ACCOUNT") {
         return false
       }

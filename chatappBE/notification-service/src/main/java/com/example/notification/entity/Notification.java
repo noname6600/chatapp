@@ -28,12 +28,22 @@ public class Notification {
 
     private UUID roomId;
 
+    private UUID actorId;
+
+    private String actorDisplayName;
+
     private String senderName;
 
     @Column(length = 1000)
     private String preview;
 
     private boolean isRead;
+
+    /**
+     * Marks notifications that require user action. Read-all preserves unread FRIEND_REQUEST items,
+     * while other action-required types can still be marked read.
+     */
+    private boolean actionRequired;
 
     private Instant createdAt;
 }

@@ -27,9 +27,44 @@ public class NotificationCommandService {
             NotificationType type,
             UUID referenceId,
             UUID roomId,
+            UUID actorId,
+            String actorDisplayName,
             String senderName,
-            String preview
+            String preview,
+            Instant eventCreatedAt
     ) {
+        return createNotification(
+                userId,
+                type,
+                referenceId,
+                roomId,
+                actorId,
+                actorDisplayName,
+                senderName,
+                preview,
+                eventCreatedAt,
+                false
+        );
+    }
+
+    @Transactional
+    public Notification createNotification(
+            UUID userId,
+            NotificationType type,
+            UUID referenceId,
+            UUID roomId,
+            UUID actorId,
+            String actorDisplayName,
+            String senderName,
+            String preview,
+            Instant eventCreatedAt,
+            boolean actionRequired
+    ) {
+
+        Instant createdAt = eventCreatedAt == null ? Instant.now() : eventCreatedAt;
+        String normalizedSenderName = actorDisplayName != null && !actorDisplayName.isBlank()
+                ? actorDisplayName
+                : senderName;
 
         Notification created = repository.save(
                 Notification.builder()
@@ -37,10 +72,13 @@ public class NotificationCommandService {
                         .type(type)
                         .referenceId(referenceId)
                         .roomId(roomId)
-                        .senderName(senderName)
+                        .actorId(actorId)
+                        .actorDisplayName(actorDisplayName)
+                        .senderName(normalizedSenderName)
                         .preview(preview)
                         .isRead(false)
-                        .createdAt(Instant.now())
+                        .actionRequired(actionRequired)
+                        .createdAt(createdAt)
                         .build()
         );
 
@@ -58,6 +96,10 @@ public class NotificationCommandService {
             throw new BusinessException(ErrorCode.FORBIDDEN, "Forbidden");
         }
 
+        if (noti.isActionRequired()) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "This notification can only be resolved by action");
+        }
+
         noti.setRead(true);
 
         pushService.pushUnreadCount(userId);
@@ -65,10 +107,33 @@ public class NotificationCommandService {
     }
 
     @Transactional
-    public void markAllRead(UUID userId) {
-        List<Notification> list = repository.findByUserIdAndIsReadFalse(userId);
-        list.forEach(n -> n.setRead(true));
+    public Notification resolveActionRequired(UUID notificationId, UUID userId) {
+        Notification noti = repository.findById(notificationId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "Notification not found"));
 
+        if (!noti.getUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "Forbidden");
+        }
+
+        noti.setRead(true);
+        pushService.pushUnreadCount(userId);
+        return noti;
+    }
+
+    @Transactional
+    public void markAllRead(UUID userId) {
+        repository.markAllReadByUserId(userId);
+        pushService.pushUnreadCount(userId);
+    }
+
+    @Transactional
+    public void clearRoom(UUID userId, UUID roomId) {
+        markReadByRoom(userId, roomId);
+    }
+
+    @Transactional
+    public void markReadByRoom(UUID userId, UUID roomId) {
+        repository.markReadByUserIdAndRoomId(userId, roomId);
         pushService.pushUnreadCount(userId);
     }
 

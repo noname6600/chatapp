@@ -4,6 +4,7 @@ import { Menu, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { updateMyPresenceApi } from "../../api/presence.service";
 import { usePresenceStore } from "../../store/presence.store";
 import type { PresenceStatus } from "../../types/presence";
+import { getStatusDotClass } from "../../utils/presenceStatus";
 import { useAuth } from "../../hooks/useAuth";
 import { useFriendStore } from "../../store/friend.store";
 import UserAvatar from "../user/UserAvatar";
@@ -14,12 +15,6 @@ const menu = [
   { to: "/friends", label: "Friends" },
   { to: "/settings", label: "Settings" },
 ];
-
-const statusDotClass: Record<PresenceStatus, string> = {
-  ONLINE: "bg-green-500",
-  AWAY: "bg-amber-500",
-  OFFLINE: "bg-gray-400",
-};
 
 const statusOptions: PresenceStatus[] = ["ONLINE", "AWAY", "OFFLINE"];
 
@@ -165,9 +160,7 @@ const Sidebar = () => {
                     userId={currentUser.accountId}
                     avatar={currentUser.avatarUrl}
                     size={40}
-                  />
-                  <span
-                    className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white ${statusDotClass[effectiveStatus]}`}
+                    status={effectiveStatus}
                   />
                 </button>
                 <div className="flex-1 min-w-0">
@@ -202,7 +195,7 @@ const Sidebar = () => {
                     disabled={statusSaving}
                     className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-left hover:bg-gray-100 disabled:opacity-60"
                   >
-                    <span className={`h-2.5 w-2.5 rounded-full ${statusDotClass[status]}`} />
+                    <span className={`h-2.5 w-2.5 rounded-full ${getStatusDotClass(status)}`} />
                     {status}
                   </button>
                 ))}
@@ -226,9 +219,7 @@ const Sidebar = () => {
                       userId={currentUser.accountId}
                       avatar={currentUser.avatarUrl}
                       size={40}
-                    />
-                    <span
-                      className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white ${statusDotClass[effectiveStatus]}`}
+                      status={effectiveStatus}
                     />
                   </button>
                   <div className="flex-1 min-w-0">
@@ -260,7 +251,7 @@ const Sidebar = () => {
                         disabled={statusSaving}
                         className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-left hover:bg-gray-100 disabled:opacity-60"
                       >
-                        <span className={`h-2.5 w-2.5 rounded-full ${statusDotClass[status]}`} />
+                        <span className={`h-2.5 w-2.5 rounded-full ${getStatusDotClass(status)}`} />
                         {status}
                       </button>
                     ))}
@@ -282,14 +273,12 @@ const Sidebar = () => {
                 className="relative rounded-full"
                 aria-label="Open profile"
               >
-                <UserAvatar
-                  userId={currentUser.accountId}
-                  avatar={currentUser.avatarUrl}
-                  size={40}
-                />
-                <span
-                  className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white ${statusDotClass[effectiveStatus]}`}
-                />
+                  <UserAvatar
+                    userId={currentUser.accountId}
+                    avatar={currentUser.avatarUrl}
+                    size={40}
+                    status={effectiveStatus}
+                  />
               </button>
             ) : (
               <div className="w-10 h-10 bg-gray-300 rounded-full" />

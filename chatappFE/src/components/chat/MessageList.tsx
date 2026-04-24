@@ -9,16 +9,23 @@ import type { ChatMessage } from "../../types/message";
 import { useChat } from "../../store/chat.store";
 import { useRooms } from "../../store/room.store";
 import { useUserStore } from "../../store/user.store";
+import { useNotifications } from "../../store/notification.store";
 import { useDelete } from "../../hooks/useDelete";
-import { deleteMessageApi } from "../../api/chat.service";
+import { useUnpin } from "../../hooks/useUnpin";
+import { useNewestMessageVisibility } from "../../hooks/useNewestMessageVisibility";
+import { deleteMessageApi, forwardMessage, pinMessage } from "../../api/chat.service";
 import { isFeatureEnabled } from "../../config/featureFlags";
 import { batchScrollToBottom, isAtBottom } from "../../utils/scrollUtils";
 import MessageItem from "./MessageItem";
 import ConfirmDeleteDialog from "./ConfirmDeleteDialog";
+import ForwardMessageModal from "./ForwardMessageModal";
+import SystemMessageItem from "./SystemMessageItem";
 import { UnreadMessageIndicator } from "../message/UnreadMessageIndicator";
+import { groupMessages } from "./messageGrouping";
 
 interface Props {
   roomId: string;
+  pinnedMessageIds?: Set<string>;
 }
 
 const CHAT_DEBUG = false;
@@ -31,7 +38,7 @@ const MAX_REPLY_JUMP_BACKFILL_ATTEMPTS = 6;
 
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-export default function MessageList({ roomId }: Props) {
+export default function MessageList({ roomId, pinnedMessageIds }: Props) {
   const {
     messagesByRoom,
     windowMetaByRoom = {},
@@ -46,7 +53,9 @@ export default function MessageList({ roomId }: Props) {
   const { roomsById, markRoomRead } = useRooms();
   const { fetchUsers } = useUserStore();
   const usersById = useUserStore((state) => state.users);
+  const { clearRoomNotifications } = useNotifications();
   const { deletingMessageId, deletingContent, clearDeleting } = useDelete();
+  const { setUnpinning } = useUnpin();
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   const messages = messagesByRoom[roomId] || [];
@@ -85,10 +94,15 @@ export default function MessageList({ roomId }: Props) {
   const showDistanceIndicator = roomUnreadCount <= 0 && distanceToLatest >= 100;
   const showIncrementalIndicator =
     roomUnreadCount <= 0 && distanceToLatest > 0 && !showDistanceIndicator;
-  const topIndicatorVisible =
-    roomUnreadCount > 0 || showDistanceIndicator || showIncrementalIndicator;
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const { isNewestVisible, evaluateVisibility } = useNewestMessageVisibility({
+    containerRef,
+    newestSeq,
+  });
+
+  const topIndicatorVisible =
+    (roomUnreadCount > 0 && !isNewestVisible) || showDistanceIndicator || showIncrementalIndicator;
 
   const unreadDividerRef = useRef<HTMLDivElement>(null);
 
@@ -101,10 +115,12 @@ export default function MessageList({ roomId }: Props) {
   const prevHeightForAppendRef = useRef(0);
   const lastLoadAtRef = useRef(0);
   const lastRoomRef = useRef<string>("");
+  const pinInFlightByMessageIdRef = useRef<Record<string, boolean>>({});
   const firstUnreadAnchorDoneRef = useRef<Record<string, boolean>>({});
   const initialBottomAnchorDoneRef = useRef<Record<string, boolean>>({});
   const markReadInFlightRef = useRef<Record<string, boolean>>({});
   const markReadSentRef = useRef<Record<string, boolean>>({});
+  const lastMarkReadSeqRef = useRef<Record<string, number | null>>({});
   const autoPrefetchAttemptsRef = useRef<Record<string, number>>({});
   const autoPrefetchMessageCountRef = useRef<Record<string, number>>({});
   const prevMessageCountByRoomRef = useRef<Record<string, number>>({});
@@ -113,6 +129,7 @@ export default function MessageList({ roomId }: Props) {
   const [loadingOld, setLoadingOld] = useState(false);
   const [loadingNew, setLoadingNew] = useState(false);
   const [jumpTargetMessageId, setJumpTargetMessageId] = useState<string | null>(null);
+  const [forwardSourceMessage, setForwardSourceMessage] = useState<ChatMessage | null>(null);
   const [unavailableReplyTargetsByRoom, setUnavailableReplyTargetsByRoom] =
     useState<Record<string, Record<string, boolean>>>({});
   const wasPinnedToBottomRef = useRef(true);
@@ -133,6 +150,40 @@ export default function MessageList({ roomId }: Props) {
   const handleCancelDelete = useCallback(() => {
     clearDeleting();
   }, [clearDeleting]);
+
+  const handlePinMessage = useCallback(async (message: ChatMessage) => {
+    if (pinInFlightByMessageIdRef.current[message.messageId]) {
+      return;
+    }
+
+    const isPinned = pinnedMessageIds?.has(message.messageId) ?? false;
+    if (isPinned) {
+      setUnpinning(
+        message.messageId,
+        (message.content || "").trim() || "(attachment or structured content)"
+      );
+      return;
+    }
+
+    pinInFlightByMessageIdRef.current[message.messageId] = true;
+    try {
+      await pinMessage(roomId, message.messageId);
+    } catch (error) {
+      console.error("Pin failed:", error);
+    } finally {
+      pinInFlightByMessageIdRef.current[message.messageId] = false;
+    }
+  }, [pinnedMessageIds, roomId, setUnpinning]);
+
+  const handleForwardConfirm = useCallback(async (targetRoomId: string) => {
+    if (!forwardSourceMessage) return;
+
+    try {
+      await forwardMessage(forwardSourceMessage.messageId, targetRoomId);
+    } catch (error) {
+      console.error("Forward failed:", error);
+    }
+  }, [forwardSourceMessage]);
 
   const groupedMessages = groupMessages(messages);
 
@@ -303,6 +354,20 @@ export default function MessageList({ roomId }: Props) {
     windowMetaByRoom,
   ]);
 
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const customEvent = event as CustomEvent<{ roomId: string; messageId: string }>;
+      if (!customEvent.detail) return;
+      if (customEvent.detail.roomId !== roomId) return;
+      void handleJumpToMessage(customEvent.detail.messageId);
+    };
+
+    window.addEventListener("chat:jump-to-message", handler as EventListener);
+    return () => {
+      window.removeEventListener("chat:jump-to-message", handler as EventListener);
+    };
+  }, [handleJumpToMessage, roomId]);
+
   // Mark-read policy: trigger from meaningful interactions (boundary crossing,
   // jump-to-latest, and confirmed live-tail view), deduped per room-view cycle.
   const triggerMarkRead = useCallback(async () => {
@@ -310,14 +375,28 @@ export default function MessageList({ roomId }: Props) {
     if (markReadSentRef.current[roomId]) return;
     if (markReadInFlightRef.current[roomId]) return;
 
+    const readSeq = effectiveLatestSeq;
+    if (
+      readSeq != null &&
+      lastMarkReadSeqRef.current[roomId] != null &&
+      lastMarkReadSeqRef.current[roomId] === readSeq
+    ) {
+      return;
+    }
+
     markReadInFlightRef.current[roomId] = true;
     try {
       await markRoomRead(roomId);
       markReadSentRef.current[roomId] = true;
+      lastMarkReadSeqRef.current[roomId] = readSeq ?? null;
+      // Bridge: clear room notifications on the notification service so that
+      // action-required entries remain but passive message notifications are
+      // marked read, keeping the notification count in sync with the chat read.
+      void clearRoomNotifications(roomId).catch(() => {});
     } finally {
       markReadInFlightRef.current[roomId] = false;
     }
-  }, [markRoomRead, roomId, roomUnreadCount]);
+  }, [clearRoomNotifications, effectiveLatestSeq, markRoomRead, roomId, roomUnreadCount]);
 
   const handleJumpToLatest = useCallback(async () => {
     if (!roomId) return;
@@ -358,6 +437,7 @@ export default function MessageList({ roomId }: Props) {
       firstUnreadAnchorDoneRef.current[roomId] = false;
       initialBottomAnchorDoneRef.current[roomId] = false;
       markReadSentRef.current[roomId] = false;
+      lastMarkReadSeqRef.current[roomId] = null;
       prevMessageCountByRoomRef.current[roomId] = 0;
 
       if (typeof setActiveRoom === "function") {
@@ -385,6 +465,10 @@ export default function MessageList({ roomId }: Props) {
       void fetchUsers(ids);
     }
   }, [messages, fetchUsers]);
+
+  useEffect(() => {
+    evaluateVisibility();
+  }, [evaluateVisibility, messages.length, newestSeq, roomId]);
 
   useEffect(() => {
     const roomMap = unavailableReplyTargetsByRoom[roomId];
@@ -613,6 +697,15 @@ export default function MessageList({ roomId }: Props) {
     void triggerLoadOlder({ stickToBottom: roomUnreadCount <= 0 });
   }, [messages.length, roomId, roomUnreadCount, triggerLoadOlder]);
 
+  useEffect(() => {
+    if (!roomId) return;
+    if (roomUnreadCount <= 0) return;
+    if (!isNewestVisible) return;
+    if (hasNewerInWindow) return;
+
+    void triggerMarkRead();
+  }, [hasNewerInWindow, isNewestVisible, roomId, roomUnreadCount, triggerMarkRead]);
+
   // ================= SCROLL =================
   const handleScroll = useCallback(() => {
     const el = containerRef.current;
@@ -700,35 +793,60 @@ export default function MessageList({ roomId }: Props) {
                 </div>
               )}
 
-              <MessageItem
-                message={m}
-                showUserInfo={indexInGroup === 0}
-                isGrouped={group.messages.length > 1}
-                indexInGroup={indexInGroup}
-                repliedMessageId={m.replyToMessageId}
-                isReplyTargetUnavailable={
-                  Boolean(
-                    m.replyToMessageId &&
-                    unavailableReplyTargetsByRoom[roomId]?.[m.replyToMessageId]
-                  )
-                }
-                repliedMessage={
-                  m.replyToMessageId
-                    ? messageById.get(m.replyToMessageId) ?? null
-                    : null
-                }
-                onJumpToMessage={handleJumpToMessage}
-                isReplyLinkedHighlight={
-                  linkedHighlightMessageIds.has(m.messageId) ||
-                  mentionedHighlightMessageIds.has(m.messageId)
-                }
-                isJumpTarget={jumpTargetMessageId === m.messageId}
-                onShowDeleteDialog={() => { /* state already set by MessageItem via useDelete */ }}
-              />
+              {m.type === "SYSTEM" ? (
+                <SystemMessageItem
+                  message={m}
+                  onJumpToMessage={handleJumpToMessage}
+                  onOpenPinnedMessages={() => {
+                    window.dispatchEvent(
+                      new CustomEvent("chat:open-pins-panel", { detail: { roomId } })
+                    );
+                  }}
+                />
+              ) : (
+                <MessageItem
+                  message={m}
+                  showUserInfo={indexInGroup === 0}
+                  isGrouped={group.messages.length > 1}
+                  indexInGroup={indexInGroup}
+                  repliedMessageId={m.replyToMessageId}
+                  isReplyTargetUnavailable={
+                    Boolean(
+                      m.replyToMessageId &&
+                      unavailableReplyTargetsByRoom[roomId]?.[m.replyToMessageId]
+                    )
+                  }
+                  repliedMessage={
+                    m.replyToMessageId
+                      ? messageById.get(m.replyToMessageId) ?? null
+                      : null
+                  }
+                  onJumpToMessage={handleJumpToMessage}
+                  isReplyLinkedHighlight={
+                    linkedHighlightMessageIds.has(m.messageId) ||
+                    mentionedHighlightMessageIds.has(m.messageId)
+                  }
+                  isJumpTarget={jumpTargetMessageId === m.messageId}
+                  onPin={handlePinMessage}
+                  onForward={setForwardSourceMessage}
+                  isPinned={pinnedMessageIds?.has(m.messageId) ?? false}
+                  onShowDeleteDialog={() => { /* state already set by MessageItem via useDelete */ }}
+                />
+              )}
             </div>
           ))
         )}
       </div>
+
+      <ForwardMessageModal
+        open={Boolean(forwardSourceMessage)}
+        sourceMessage={forwardSourceMessage}
+        currentRoomId={roomId}
+        rooms={Object.values(roomsById)}
+        users={usersById}
+        onClose={() => setForwardSourceMessage(null)}
+        onConfirm={handleForwardConfirm}
+      />
 
       {deletingMessageId && deletingContent != null && (
         <ConfirmDeleteDialog
@@ -743,35 +861,3 @@ export default function MessageList({ roomId }: Props) {
   );
 }
 
-function groupMessages(messages: ChatMessage[]) {
-  if (!messages.length) return [] as Array<{ messages: ChatMessage[] }>;
-
-  const groups: Array<{ messages: ChatMessage[] }> = [];
-  let currentGroup: ChatMessage[] = [];
-
-  for (let i = 0; i < messages.length; i++) {
-    const current = messages[i];
-    const previous = i > 0 ? messages[i - 1] : null;
-
-    const shouldGroup =
-      previous !== null &&
-      current.senderId === previous.senderId &&
-      !(current.attachments?.length || previous.attachments?.length) &&
-      new Date(current.createdAt).getTime() -
-        new Date(previous.createdAt).getTime() <
-        2 * 60 * 1000;
-
-    if (!shouldGroup && currentGroup.length) {
-      groups.push({ messages: currentGroup });
-      currentGroup = [];
-    }
-
-    currentGroup.push(current);
-  }
-
-  if (currentGroup.length) {
-    groups.push({ messages: currentGroup });
-  }
-
-  return groups;
-}

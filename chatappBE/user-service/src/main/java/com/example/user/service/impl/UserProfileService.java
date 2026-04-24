@@ -220,10 +220,13 @@ public class UserProfileService implements IUserProfileService {
     }
 
     @Override
-    public UserBasicProfile searchByUsername(String username) {
-        UserProfile profile = repo.findByUsernameIgnoreCase(username)
-                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "User not found"));
-        return toBasicResponse(profile);
+    public List<UserBasicProfile> searchByUsername(String username) {
+        List<UserProfile> profiles =
+                repo.findTop10ByUsernameContainingIgnoreCaseOrderByUsernameAsc(username);
+
+        return profiles.stream()
+                .map(this::toBasicResponse)
+                .toList();
     }
 
     private UploadAssetMetadata toUploadAssetMetadata(AvatarMetadataRequest request) {

@@ -83,4 +83,27 @@ class NotificationCommandServiceTest {
         assertThat(deleted).hasSize(5);
         assertThat(deleted).containsExactlyElementsOf(oldestFirst.subList(0, 5));
     }
+
+    @Test
+    void markAllRead_usesAtomicRepositoryUpdateAndPushesUnread() {
+        UUID userId = UUID.randomUUID();
+        when(repository.markAllReadByUserId(userId)).thenReturn(3);
+
+        service.markAllRead(userId);
+
+        verify(repository).markAllReadByUserId(userId);
+        verify(pushService).pushUnreadCount(userId);
+    }
+
+    @Test
+    void clearRoom_callsRepositoryAndPushesUnreadCount() {
+        UUID userId = UUID.randomUUID();
+        UUID roomId = UUID.randomUUID();
+        when(repository.clearRoomByUserId(userId, roomId)).thenReturn(2);
+
+        service.clearRoom(userId, roomId);
+
+        verify(repository).clearRoomByUserId(userId, roomId);
+        verify(pushService).pushUnreadCount(userId);
+    }
 }

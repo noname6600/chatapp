@@ -13,10 +13,12 @@ import com.example.chat.modules.room.service.IRoomQueryService;
 import com.example.common.redis.api.ITimeRedisCacheManager;
 import com.example.common.redis.exception.CreateCacheException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -25,6 +27,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
+@Slf4j
 public class RoomQueryService implements IRoomQueryService {
 
     private static final Duration TTL = Duration.ofMinutes(5);
@@ -52,9 +55,31 @@ public class RoomQueryService implements IRoomQueryService {
             } catch (Exception ignore) {}
         }
 
-        List<RoomResponse> result = roomRepo.findRoomsOfUserAdvanced(userId)
+        List<RoomRow> rows = roomRepo.findRoomsOfUserAdvanced(userId);
+
+        Map<UUID, RoomResponse> byRoomId = new LinkedHashMap<>();
+        int duplicateCount = 0;
+
+        for (RoomRow row : rows) {
+            RoomResponse candidate = mapToResponse(row, userId);
+            UUID roomId = candidate.getId();
+            if (byRoomId.putIfAbsent(roomId, candidate) != null) {
+                duplicateCount++;
+            }
+        }
+
+        if (duplicateCount > 0) {
+            log.warn(
+                    "Suppressed duplicate room rows for userId={}, duplicateCount={}, rawRows={}, uniqueRooms={}",
+                    userId,
+                    duplicateCount,
+                    rows.size(),
+                    byRoomId.size()
+            );
+        }
+
+        List<RoomResponse> result = byRoomId.values()
                 .stream()
-                .map(row -> mapToResponse(row, userId))
                 .collect(Collectors.toList());
 
         try {

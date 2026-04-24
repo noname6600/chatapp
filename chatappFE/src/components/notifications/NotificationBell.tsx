@@ -14,7 +14,13 @@ interface NotificationBellProps {
 }
 
 const isRoomNotification = (notification: Notification) => {
-  return notification.type === "MESSAGE" || notification.type === "MENTION"
+  return (
+    notification.type === "MESSAGE" ||
+    notification.type === "MENTION" ||
+    notification.type === "REPLY" ||
+    notification.type === "REACTION" ||
+    notification.type === "GROUP_INVITE"
+  )
 }
 
 const NotificationBell = ({ compact = false }: NotificationBellProps) => {
@@ -24,7 +30,10 @@ const NotificationBell = ({ compact = false }: NotificationBellProps) => {
   const {
     notifications,
     unreadCount,
+    hasMoreNotifications,
+    isLoadingMoreNotifications,
     fetchNotifications,
+    loadMoreNotifications,
     markRead,
     markAllRead,
   } = useNotifications()
@@ -93,18 +102,19 @@ const NotificationBell = ({ compact = false }: NotificationBellProps) => {
   }, [isOpen])
 
   const badgeText = useMemo(() => {
-    const totalUnread = unreadCount + unreadFriendRequests
-    if (totalUnread <= 0) return ""
-    if (totalUnread > 99) return "99+"
-    return String(totalUnread)
-  }, [unreadCount, unreadFriendRequests])
+    // unreadCount from the notification store already includes unresolved
+    // friend-request notifications, so do not add unreadFriendRequests again.
+    if (unreadCount <= 0) return ""
+    if (unreadCount > 99) return "99+"
+    return String(unreadCount)
+  }, [unreadCount])
 
   const handleMarkAllRead = async () => {
     await markAllRead()
   }
 
   const handleNotificationClick = async (notification: Notification) => {
-    if (!notification.isRead) {
+    if (!notification.isRead && !notification.actionRequired && notification.type !== "FRIEND_REQUEST") {
       await markRead(notification.id)
     }
 
@@ -136,8 +146,16 @@ const NotificationBell = ({ compact = false }: NotificationBellProps) => {
       >
         <Bell size={18} />
         {badgeText && (
-          <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-semibold text-white">
-            {badgeText}
+          <span
+            className="absolute -right-1 -top-1 flex flex-col items-end gap-1"
+            data-testid="notification-badge-anchor"
+          >
+            <span
+              data-testid="notification-badge"
+              className="min-w-5 rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-semibold text-white"
+            >
+              {badgeText}
+            </span>
           </span>
         )}
       </button>
@@ -149,8 +167,12 @@ const NotificationBell = ({ compact = false }: NotificationBellProps) => {
               <NotificationPanel
                 notifications={notifications}
                 unreadCount={unreadCount}
+                unreadFriendRequests={unreadFriendRequests}
                 onMarkAllRead={handleMarkAllRead}
                 onNotificationClick={handleNotificationClick}
+                hasMore={hasMoreNotifications}
+                isLoadingMore={isLoadingMoreNotifications}
+                onLoadMore={loadMoreNotifications}
                 panelClassName="absolute z-[130]"
                 panelStyle={panelPosition ? { top: panelPosition.top, left: panelPosition.left } : undefined}
               />

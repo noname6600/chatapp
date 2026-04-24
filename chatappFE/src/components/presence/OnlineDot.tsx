@@ -1,11 +1,6 @@
 import { usePresenceStore } from "../../store/presence.store";
 import type { PresenceStatus } from "../../types/presence";
-
-const statusColorMap = {
-  ONLINE: "bg-green-500",
-  AWAY: "bg-amber-400",
-  OFFLINE: "bg-gray-400",
-} as const;
+import { getStatusDotClass } from "../../utils/presenceStatus";
 
 export default function OnlineDot({
   userId,
@@ -30,9 +25,7 @@ export default function OnlineDot({
 
   return (
     <span
-      className={`w-2.5 h-2.5 rounded-full ${
-        statusColorMap[status]
-      }`}
+      className={`w-2.5 h-2.5 rounded-full ${getStatusDotClass(status)}`}
     />
   );
 }

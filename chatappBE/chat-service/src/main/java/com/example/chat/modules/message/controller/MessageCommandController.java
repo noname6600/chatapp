@@ -3,6 +3,7 @@ package com.example.chat.modules.message.controller;
 import com.example.chat.modules.message.application.command.IMessageCommandService;
 import com.example.chat.modules.message.application.dto.request.DeleteMessageRequest;
 import com.example.chat.modules.message.application.dto.request.EditMessageRequest;
+import com.example.chat.modules.message.application.dto.request.ForwardMessageRequest;
 import com.example.chat.modules.message.application.dto.request.SendMessageRequest;
 import com.example.chat.modules.message.application.dto.response.MessageResponse;
 import com.example.common.web.controller.BaseController;
@@ -63,5 +64,18 @@ public class MessageCommandController extends BaseController {
 
         return ResponseEntity.ok(ApiResponse.success());
     }
+
+        @PostMapping("/forward")
+        public ResponseEntity<ApiResponse<MessageResponse>> forwardMessage(
+                        @AuthenticationPrincipal Jwt jwt,
+                        @RequestBody @Valid ForwardMessageRequest request
+        ) {
+                request.setActorId(currentUserId(jwt));
+
+                MessageResponse response =
+                                messageCommandService.forwardMessage(request);
+
+                return ResponseEntity.ok(ApiResponse.success(response));
+        }
 }
 

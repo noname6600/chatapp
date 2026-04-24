@@ -2,6 +2,7 @@ export type MessageType =
   | "TEXT"
   | "ATTACHMENT"
   | "MIXED"
+  | "SYSTEM"
 
 export type MessageBlockType =
   | "TEXT"
@@ -61,6 +62,10 @@ export interface ChatMessage {
 
   content: string | null
   replyToMessageId: string | null
+  forwardedFromMessageId?: string | null
+  systemEventType?: "JOIN" | "PIN" | null
+  actorUserId?: string | null
+  targetMessageId?: string | null
 
   clientMessageId?: string | null
 
@@ -82,6 +87,8 @@ export interface MessagePage {
   messages: ChatMessage[]
   hasMore: boolean
 }
+
+export type PinnedMessage = ChatMessage
 
 export type SendMessagePayload = {
   roomId: string

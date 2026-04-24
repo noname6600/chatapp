@@ -27,14 +27,22 @@ export default function RoomList() {
   );
 
   const hasNoRooms = groupRoomIds.length === 0 && privateRoomIds.length === 0;
+  const hasGroups = groupRoomIds.length > 0;
+  const hasPrivateRooms = privateRoomIds.length > 0;
+  const shouldBalanceSections =
+    hasGroups && hasPrivateRooms && groupsOpen && dmsOpen;
+  const groupsUsesAvailableHeight =
+    hasGroups && groupsOpen && (!hasPrivateRooms || !dmsOpen);
+  const dmsUsesAvailableHeight =
+    dmsOpen && (shouldBalanceSections || !hasGroups || !groupsOpen);
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex h-full min-h-0 flex-col bg-white">
       {/* Find or Start Conversation Button */}
-      <div className="px-3 pt-3 pb-2">
+      <div className="border-b border-slate-200/80 px-3 pb-3 pt-3">
         <button
           onClick={() => setShowConversationModal(true)}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-medium text-sm hover:from-blue-600 hover:to-blue-700 transition-all shadow-sm hover:shadow-md"
+          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-500 via-blue-600 to-cyan-500 px-4 py-3 text-sm font-medium text-white transition-all hover:from-blue-600 hover:via-blue-700 hover:to-cyan-600 hover:shadow-md"
         >
           <MessageSquarePlus size={16} />
           Find or start a conversation
@@ -55,30 +63,45 @@ export default function RoomList() {
 
       {/* Rooms List */}
       {!hasNoRooms && (
-        <div className="flex-1 overflow-hidden flex flex-col border-t border-gray-100">
-
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-3 py-3">
           {/* Groups Section */}
-          {groupRoomIds.length > 0 && (
-            <div className="flex flex-col border-b border-gray-100">
-              {/* Groups Header */}
+          {hasGroups && (
+            <section
+              data-testid="room-list-groups-section"
+              className={`flex flex-col rounded-2xl border border-slate-200/80 bg-slate-50/80 shadow-sm shadow-slate-200/50 ${
+                shouldBalanceSections
+                  ? "min-h-0 max-h-[45%] shrink-0"
+                  : groupsUsesAvailableHeight
+                    ? "min-h-0 flex-1"
+                    : "shrink-0"
+              }`}
+            >
               <button
+                type="button"
+                aria-expanded={groupsOpen}
                 onClick={() => setGroupsOpen((o) => !o)}
-                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider hover:bg-gray-50 transition-colors w-full text-left select-none"
+                className="flex w-full items-center gap-2 rounded-2xl px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 transition-colors hover:bg-white/70"
               >
                 {groupsOpen ? (
-                  <ChevronDown size={13} className="text-gray-400 flex-shrink-0" />
+                  <ChevronDown size={14} className="shrink-0 text-slate-400" />
                 ) : (
-                  <ChevronRight size={13} className="text-gray-400 flex-shrink-0" />
+                  <ChevronRight size={14} className="shrink-0 text-slate-400" />
                 )}
                 <span>Groups</span>
-                <span className="ml-auto text-gray-400 font-normal normal-case tracking-normal">
+                <span className="ml-auto rounded-full bg-white px-2 py-0.5 text-[11px] font-medium normal-case tracking-normal text-slate-500 ring-1 ring-slate-200">
                   {groupRoomIds.length}
                 </span>
               </button>
 
-              {/* Groups Content */}
               {groupsOpen && (
-                <div className="flex flex-col overflow-y-auto">
+                <div
+                  data-testid="room-list-groups-body"
+                  className={`min-h-0 px-2 pb-2 ${
+                    shouldBalanceSections || groupsUsesAvailableHeight
+                      ? "overflow-y-auto"
+                      : "overflow-visible"
+                  }`}
+                >
                   {groupRoomIds.map((roomId) => {
                     const room = roomsById[roomId];
                     if (!room) return null;
@@ -93,30 +116,40 @@ export default function RoomList() {
                   })}
                 </div>
               )}
-            </div>
+            </section>
           )}
 
           {/* Direct Messages Section */}
-          <div className="flex flex-col flex-1 min-h-0">
-            {/* DMs Header */}
+          <section
+            data-testid="room-list-dms-section"
+            className={`flex min-h-0 flex-col rounded-2xl border border-slate-200/80 bg-white shadow-sm shadow-slate-200/50 ${
+              dmsUsesAvailableHeight ? "flex-1" : "shrink-0"
+            }`}
+          >
             <button
+              type="button"
+              aria-expanded={dmsOpen}
               onClick={() => setDmsOpen((o) => !o)}
-              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider hover:bg-gray-50 transition-colors w-full text-left select-none flex-shrink-0"
+              className="flex w-full items-center gap-2 rounded-2xl px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 transition-colors hover:bg-slate-50"
             >
               {dmsOpen ? (
-                <ChevronDown size={13} className="text-gray-400 flex-shrink-0" />
+                <ChevronDown size={14} className="shrink-0 text-slate-400" />
               ) : (
-                <ChevronRight size={13} className="text-gray-400 flex-shrink-0" />
+                <ChevronRight size={14} className="shrink-0 text-slate-400" />
               )}
               <span>Direct Messages</span>
-              <span className="ml-auto text-gray-400 font-normal normal-case tracking-normal">
+              <span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium normal-case tracking-normal text-slate-500 ring-1 ring-slate-200/80">
                 {privateRoomIds.length}
               </span>
             </button>
 
-            {/* DMs Content */}
             {dmsOpen && (
-              <div className="flex-1 overflow-y-auto">
+              <div
+                data-testid="room-list-dms-body"
+                className={`min-h-0 px-2 pb-2 ${
+                  dmsUsesAvailableHeight ? "flex-1 overflow-y-auto" : ""
+                }`}
+              >
                 {privateRoomIds.length > 0 ? (
                   privateRoomIds.map((roomId) => {
                     const room = roomsById[roomId];
@@ -131,10 +164,10 @@ export default function RoomList() {
                     );
                   })
                 ) : (
-                  <div className="flex items-center justify-center px-4 py-8 text-center">
+                  <div className="flex items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-8 text-center">
                     <div className="space-y-1">
-                      <p className="text-gray-400 text-sm">No direct messages yet.</p>
-                      <p className="text-gray-300 text-xs">
+                      <p className="text-sm text-slate-500">No direct messages yet.</p>
+                      <p className="text-xs text-slate-400">
                         Use the button above to start a conversation!
                       </p>
                     </div>
@@ -142,8 +175,7 @@ export default function RoomList() {
                 )}
               </div>
             )}
-          </div>
-
+          </section>
         </div>
       )}
 

@@ -13,6 +13,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Optional;
+import java.time.Instant;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.eq;
@@ -42,6 +43,7 @@ class FriendRequestEventConsumerTest {
                 .senderId(sender)
                 .recipientId(recipient)
                 .requestId(requestId)
+                .senderDisplayName("Sender Name")
                 .type(FriendRequestEvent.Type.SENT)
                 .build();
 
@@ -58,8 +60,12 @@ class FriendRequestEventConsumerTest {
                 eq(NotificationType.FRIEND_REQUEST),
                 eq(sender),
                 eq(null),
+                eq(sender),
+                eq("Sender Name"),
                 eq(null),
-                eq("New friend request")
+                eq("New friend request"),
+                eq(null),
+                eq(true)
         );
     }
 
@@ -73,6 +79,7 @@ class FriendRequestEventConsumerTest {
                 .senderId(sender)
                 .recipientId(recipient)
                 .requestId(requestId)
+                .senderDisplayName("Sender Name")
                 .type(FriendRequestEvent.Type.SENT)
                 .build();
 
@@ -89,8 +96,77 @@ class FriendRequestEventConsumerTest {
                 eq(NotificationType.FRIEND_REQUEST),
                 eq(sender),
                 eq(null),
+                eq(sender),
+                eq("Sender Name"),
                 eq(null),
-                eq("New friend request")
+                eq("New friend request"),
+                eq(null),
+                eq(true)
         );
+    }
+
+    @Test
+    void accepted_resolvesStickyRequestForAccepter_andCreatesAcceptedNotificationForOtherSide() {
+        UUID accepterUserId = UUID.randomUUID();
+        UUID otherUserId = UUID.randomUUID();
+        UUID requestId = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-04-17T10:00:00Z");
+
+        FriendRequestEvent payload = FriendRequestEvent.builder()
+                .senderId(accepterUserId)
+                .recipientId(otherUserId)
+                .requestId(requestId)
+                .senderDisplayName("Accepter Name")
+                .type(FriendRequestEvent.Type.ACCEPTED)
+                .createdAt(createdAt)
+                .build();
+
+        Notification sticky = Notification.builder().id(UUID.randomUUID()).build();
+        when(notificationRepository.findFirstByUserIdAndTypeAndReferenceIdAndIsReadFalse(
+                accepterUserId,
+                NotificationType.FRIEND_REQUEST,
+                otherUserId
+        )).thenReturn(Optional.of(sticky));
+
+        consumer.listen(FriendRequestKafkaEvent.of("friendship-service", payload));
+
+        verify(notificationCommandService).resolveActionRequired(sticky.getId(), accepterUserId);
+        verify(notificationCommandService).createNotification(
+                eq(otherUserId),
+                eq(NotificationType.FRIEND_REQUEST_ACCEPTED),
+                eq(accepterUserId),
+                eq(null),
+                eq(accepterUserId),
+                eq("Accepter Name"),
+                eq(null),
+                eq("Friend request accepted"),
+                eq(createdAt)
+        );
+    }
+
+    @Test
+    void declined_resolvesStickyRequestForOriginalRecipient() {
+        UUID sender = UUID.randomUUID();
+        UUID recipient = UUID.randomUUID();
+        UUID requestId = UUID.randomUUID();
+
+        FriendRequestEvent payload = FriendRequestEvent.builder()
+                .senderId(sender)
+                .recipientId(recipient)
+                .requestId(requestId)
+                .senderDisplayName("Sender Name")
+                .type(FriendRequestEvent.Type.DECLINED)
+                .build();
+
+        Notification sticky = Notification.builder().id(UUID.randomUUID()).build();
+        when(notificationRepository.findFirstByUserIdAndTypeAndReferenceIdAndIsReadFalse(
+                recipient,
+                NotificationType.FRIEND_REQUEST,
+                sender
+        )).thenReturn(Optional.of(sticky));
+
+        consumer.listen(FriendRequestKafkaEvent.of("friendship-service", payload));
+
+        verify(notificationCommandService).resolveActionRequired(sticky.getId(), recipient);
     }
 }

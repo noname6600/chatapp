@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect } from "react";
-import { AlertCircle, Eye, FileText, Image as ImageIcon, LoaderCircle, Paperclip, Send, Video, X } from "lucide-react";
+import { AlertCircle, FileText, Image as ImageIcon, LoaderCircle, Paperclip, Send, Video, X } from "lucide-react";
 import ReplyPreview from "./ReplyPreview";
 import EditPreview from "./EditPreview";
 import MentionAutocomplete from "./MentionAutocomplete";
-import DraftReviewModal from "./DraftReviewModal";
+import EmojiPicker from "./EmojiPicker";
 import {
   sendTyping,
   sendStopTyping,
@@ -52,10 +52,8 @@ function getAttachmentIcon(type?: string) {
 }
 
 export default function MessageInput({ roomId }: Props) {
-  const [pendingText, setPendingText] = useState("");
-  const [reviewText, setReviewText] = useState("");
-  const [reviewOriginalText, setReviewOriginalText] = useState("");
-  const [isReviewOpen, setIsReviewOpen] = useState(false);
+  // hasText drives Send button disabled; updated cheaply without full re-render per keystroke
+  const [hasText, setHasText] = useState(false);
   const [draftBlocks, setDraftBlocks] = useState<DraftBlock[]>([]);
   const [editingDraftBlockId, setEditingDraftBlockId] = useState<string | null>(null);
   const [editingDraftContent, setEditingDraftContent] = useState("");
@@ -68,6 +66,9 @@ export default function MessageInput({ roomId }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const draftBlocksRef = useRef<DraftBlock[]>([]);
+  // Per-room draft persistence
+  const draftsByRoom = useRef<Record<string, string>>({});
+  const prevRoomIdRef = useRef<string>(roomId);
 
   const typingTimeoutRef = useRef<number | null>(null);
   const isTypingRef = useRef(false);
@@ -116,13 +117,40 @@ export default function MessageInput({ roomId }: Props) {
     };
   }, [roomId, fetchUsers]);
 
-  // Load message content when editing starts
+  // Load message content when editing starts and auto-focus textarea
   useEffect(() => {
     if (editingMessage && editingMessage.content) {
-      setPendingText(editingMessage.content);
+      if (textareaRef.current) textareaRef.current.value = editingMessage.content;
+      setHasText(editingMessage.content.trim().length > 0);
       setDraftBlocks([]);
+      textareaRef.current?.focus();
     }
   }, [editingMessage]);
+
+  // Auto-focus textarea when reply context is activated
+  useEffect(() => {
+    if (replyingTo) {
+      textareaRef.current?.focus();
+    }
+  }, [replyingTo]);
+
+  // Save and restore per-room draft text when roomId changes
+  useEffect(() => {
+    const prevRoomId = prevRoomIdRef.current;
+    if (prevRoomId === roomId) return;
+    // Save outgoing room draft
+    const currentText = textareaRef.current?.value ?? "";
+    if (currentText) {
+      draftsByRoom.current[prevRoomId] = currentText;
+    } else {
+      delete draftsByRoom.current[prevRoomId];
+    }
+    // Restore incoming room draft
+    const savedDraft = draftsByRoom.current[roomId] ?? "";
+    if (textareaRef.current) textareaRef.current.value = savedDraft;
+    setHasText(savedDraft.trim().length > 0);
+    prevRoomIdRef.current = roomId;
+  }, [roomId]);
 
   useEffect(() => {
     draftBlocksRef.current = draftBlocks;
@@ -172,10 +200,10 @@ export default function MessageInput({ roomId }: Props) {
   };
 
   const handleChange = (newText: string) => {
-    setPendingText(newText);
-
     // Detect @ mentions
     detectMention(newText, newText.length);
+    // Track text presence cheaply for Send button state
+    setHasText(newText.trim().length > 0);
 
     // Send typing indicator for non-empty content
     if (newText.trim().length > 0) {
@@ -218,16 +246,18 @@ export default function MessageInput({ roomId }: Props) {
       return;
     }
 
-    const atIndex = pendingText.lastIndexOf("@");
+    const currentText = textareaRef.current?.value ?? "";
+    const atIndex = currentText.lastIndexOf("@");
     if (atIndex === -1) {
       return;
     }
 
-    const before = pendingText.substring(0, atIndex);
-    const after = pendingText.substring(atIndex).replace(/^@\S*/, "");
+    const before = currentText.substring(0, atIndex);
+    const after = currentText.substring(atIndex).replace(/^@\S*/, "");
     const newText = `${before}@${token} ${after}`;
 
-    setPendingText(newText);
+    if (textareaRef.current) textareaRef.current.value = newText;
+    setHasText(newText.trim().length > 0);
 
     setPendingMentions((prev) => ({
       ...prev,
@@ -310,14 +340,16 @@ export default function MessageInput({ roomId }: Props) {
       return;
     }
 
+    const currentText = textareaRef.current?.value ?? "";
     const placeholders = createUploadingAssetPlaceholders(
       draftBlocksRef.current,
-      pendingText,
+      currentText,
       accepted
     );
 
-    setDraftBlocks((prev) => [...appendTextBlock(prev, pendingText), ...placeholders]);
-    setPendingText("");
+    setDraftBlocks((prev) => [...appendTextBlock(prev, currentText), ...placeholders]);
+    if (textareaRef.current) textareaRef.current.value = "";
+    setHasText(false);
     setMentionOpen(false);
     stopTyping();
     setUploadingCount((count) => count + placeholders.length);
@@ -460,28 +492,24 @@ export default function MessageInput({ roomId }: Props) {
     }
   };
 
-  const openDraftReview = () => {
-    if (editingDraftBlockId) {
-      setDraftBlocks((prev) => applyDraftTextEdit(prev, editingDraftBlockId, editingDraftContent));
-      setEditingDraftBlockId(null);
-      setEditingDraftContent("");
-    }
+  const insertEmojiIntoPendingText = (emoji: string) => {
+    const textarea = textareaRef.current;
+    const currentText = textarea?.value ?? "";
+    const start = textarea?.selectionStart ?? currentText.length;
+    const end = textarea?.selectionEnd ?? currentText.length;
+    const nextText = `${currentText.slice(0, start)}${emoji}${currentText.slice(end)}`;
+    if (textarea) textarea.value = nextText;
+    setHasText(nextText.trim().length > 0);
 
-    setReviewText(pendingText);
-    setReviewOriginalText(pendingText);
-    setIsReviewOpen(true);
-  };
-
-  const closeDraftReview = () => {
-    setIsReviewOpen(false);
-  };
-
-  const restoreReviewText = () => {
-    setReviewText(reviewOriginalText);
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      const nextCursor = start + emoji.length;
+      textareaRef.current?.setSelectionRange(nextCursor, nextCursor);
+    });
   };
 
   const send = async (textOverride?: string) => {
-    const textForSend = textOverride ?? pendingText;
+    const textForSend = textOverride ?? textareaRef.current?.value ?? "";
     const draftBlocksForSend = editingDraftBlockId
       ? applyDraftTextEdit(draftBlocks, editingDraftBlockId, editingDraftContent)
       : draftBlocks;
@@ -531,10 +559,9 @@ export default function MessageInput({ roomId }: Props) {
         clearReply();
       }
 
-      setPendingText("");
-      setReviewText("");
-      setReviewOriginalText("");
-      setIsReviewOpen(false);
+      if (textareaRef.current) textareaRef.current.value = "";
+      setHasText(false);
+      delete draftsByRoom.current[roomId];
       draftBlocksRef.current.forEach(revokePreviewUrl);
       setDraftBlocks([]);
       setPendingMentions({});
@@ -551,22 +578,7 @@ export default function MessageInput({ roomId }: Props) {
   };
 
   return (
-    <div className="shrink-0 p-3 border-t bg-white space-y-2">
-      <DraftReviewModal
-        isOpen={isReviewOpen}
-        draftText={reviewText}
-        originalText={reviewOriginalText}
-        attachmentCount={getAssetCount(draftBlocks)}
-        replyToMessageId={replyingTo?.messageId}
-        sending={sendingRef.current}
-        onDraftTextChange={setReviewText}
-        onCancel={closeDraftReview}
-        onRestoreOriginal={restoreReviewText}
-        onSend={() => {
-          void send(reviewText);
-        }}
-      />
-
+    <div className="shrink-0 space-y-2 border-t border-gray-200 bg-white p-3 md:p-4">
       {editingMessage && (
         <EditPreview
           message={editingMessage}
@@ -686,9 +698,9 @@ export default function MessageInput({ roomId }: Props) {
               )
             ))}
 
-            {pendingText.trim().length > 0 && (
+            {hasText && (
               <div className="rounded-lg border border-dashed border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 whitespace-pre-wrap break-words">
-                {pendingText}
+                {textareaRef.current?.value}
               </div>
             )}
           </div>
@@ -703,8 +715,10 @@ export default function MessageInput({ roomId }: Props) {
       >
         <div
           className={[
-            "rounded-lg border bg-white p-2 transition-colors",
-            isDragOver ? "border-blue-500 bg-blue-50" : "border-gray-300",
+            "rounded-2xl border bg-white p-2.5 shadow-sm transition-colors",
+            isDragOver
+              ? "border-blue-500 bg-blue-50"
+              : "border-gray-300 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100",
           ].join(" ")}
         >
           <input
@@ -717,7 +731,7 @@ export default function MessageInput({ roomId }: Props) {
             disabled={uploadingCount > 0}
           />
 
-          <div className="flex items-end gap-2">
+          <div className="flex flex-wrap items-end gap-2 sm:flex-nowrap">
             <Button
               type="button"
               variant="ghost"
@@ -732,44 +746,37 @@ export default function MessageInput({ roomId }: Props) {
 
             <textarea
               ref={textareaRef}
-              value={pendingText}
               onChange={(e) => handleChange(e.target.value)}
               onKeyDown={handleTextareaKeyDown}
               onPaste={handlePaste}
-              placeholder="Type a message, then paste or attach images/files (Enter to send, Alt+Enter for new line)"
-              className="min-h-12 max-h-40 w-full resize-none rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-400"
+              placeholder="Message…"
+              className="min-h-12 max-h-40 w-full flex-1 resize-none bg-transparent px-3 py-2 text-sm text-gray-900 outline-none"
               rows={2}
             />
 
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={openDraftReview}
+            <EmojiPicker
+              onEmojiSelect={insertEmojiIntoPendingText}
               disabled={
-                (pendingText.trim().length === 0 && draftBlocks.length === 0) ||
                 sendingRef.current ||
                 uploadingCount > 0 ||
                 hasUploadingBlocks(draftBlocks) ||
                 hasFailedBlocks(draftBlocks)
               }
-              className="gap-2"
-            >
-              <Eye size={16} />
-              Review
-            </Button>
+              triggerClassName="h-9 w-9 rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-800"
+              className="self-center"
+            />
 
             <Button
               onClick={() => void send()}
               disabled={
-                (pendingText.trim().length === 0 && draftBlocks.length === 0) ||
+                (!hasText && draftBlocks.length === 0) ||
                 sendingRef.current ||
                 uploadingCount > 0 ||
                 hasUploadingBlocks(draftBlocks) ||
                 hasFailedBlocks(draftBlocks)
               }
               size="sm"
-              className="gap-2"
+              className="gap-2 self-center px-3.5"
             >
               <Send size={16} />
               Send

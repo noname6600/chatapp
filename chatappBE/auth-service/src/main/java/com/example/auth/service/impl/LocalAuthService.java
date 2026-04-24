@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.Map;
@@ -33,22 +34,19 @@ public class LocalAuthService implements ILocalAuthService {
     private final AccountCreatedEventProducer accountCreatedEventProducer;
 
     @Override
+    @Transactional
     public UUID register(String email, String password) {
-
-        if (accountRepo.existsByEmail(email)) {
-            // Provide a consistent error regardless of verification state
-            // to avoid leaking whether the account is verified
-            throw new BusinessException(
-                    ErrorCode.CONFLICT,
-                    "Email already registered"
-            );
+        Account existing = accountRepo.findByEmail(email).orElse(null);
+        if (existing != null) {
+            return reuseExistingRegistration(existing, password);
         }
 
+        String passwordHash = passwordEncoder.encode(password);
         try {
             Account account = accountRepo.save(
                     Account.builder()
                             .email(email)
-                            .passwordHash(passwordEncoder.encode(password))
+                            .passwordHash(passwordHash)
                             .enabled(true)
                             .emailVerified(false)
                             .createdAt(Instant.now())
@@ -61,16 +59,23 @@ public class LocalAuthService implements ILocalAuthService {
                     email
             );
 
-                        boolean published = accountCreatedEventProducer.publish(account);
-                        if (!published) {
-                                log.warn("auth_registration_incomplete reason=account_created_event_not_published accountId={} email={}",
-                                                account.getId(), email);
-                                throw incompleteAccountException();
-                        }
+            boolean published = accountCreatedEventProducer.publish(account);
+            if (!published) {
+                log.warn(
+                        "auth_registration_incomplete reason=account_created_event_not_published accountId={} email={}",
+                        account.getId(),
+                        email
+                );
+                throw incompleteAccountException();
+            }
 
             return account.getId();
 
         } catch (DataIntegrityViolationException ex) {
+            Account concurrent = accountRepo.findByEmail(email).orElse(null);
+            if (concurrent != null) {
+                return reuseExistingRegistration(concurrent, password);
+            }
             throw new BusinessException(
                     ErrorCode.CONFLICT,
                     "Email already registered"
@@ -99,20 +104,47 @@ public class LocalAuthService implements ILocalAuthService {
         return account.getId();
     }
 
-        private BusinessException invalidCredentialsException() {
-                log.info("auth_failure reason=invalid_credentials");
-                return new BusinessException(
-                                ErrorCode.UNAUTHORIZED,
-                                INVALID_CREDENTIALS_MESSAGE,
-                                Map.of("authCode", "invalid_credentials")
-                );
+    private BusinessException invalidCredentialsException() {
+        log.info("auth_failure reason=invalid_credentials");
+        return new BusinessException(
+                ErrorCode.UNAUTHORIZED,
+                INVALID_CREDENTIALS_MESSAGE,
+                Map.of("authCode", "invalid_credentials")
+        );
+    }
+
+    private UUID reuseExistingRegistration(Account account, String password) {
+        if (account.getPasswordHash() == null || !passwordEncoder.matches(password, account.getPasswordHash())) {
+            throw new BusinessException(
+                    ErrorCode.CONFLICT,
+                    "Email already registered"
+            );
         }
 
-        private BusinessException incompleteAccountException() {
-                return new BusinessException(
-                                ErrorCode.INCOMPLETE_ACCOUNT,
-                                INCOMPLETE_ACCOUNT_MESSAGE,
-                                Map.of("authCode", "incomplete_account")
-                );
+        idpService.linkIfAbsent(
+                account.getId(),
+                AuthProvider.LOCAL,
+                account.getEmail()
+        );
+
+        boolean published = accountCreatedEventProducer.publish(account);
+        if (!published) {
+            log.warn(
+                    "auth_registration_incomplete reason=account_created_event_not_published accountId={} email={}",
+                    account.getId(),
+                    account.getEmail()
+            );
+            throw incompleteAccountException();
         }
+
+        return account.getId();
+    }
+
+    private BusinessException incompleteAccountException() {
+        return new BusinessException(
+                ErrorCode.INCOMPLETE_ACCOUNT,
+                INCOMPLETE_ACCOUNT_MESSAGE,
+                Map.of("authCode", "incomplete_account")
+        );
+    }
 }

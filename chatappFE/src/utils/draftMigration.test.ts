@@ -65,7 +65,7 @@ describe('Draft Migration', () => {
       const migrated = migrateLegacyDraft(roomId, legacyDraft)
 
       expect(migrated.blocks).toHaveLength(1)
-      expect(migrated.blocks[0].content).toBe('  \n  Hello  \n  ') // Preserves original content
+      expect((migrated.blocks[0] as { content: string }).content).toBe('  \n  Hello  \n  ') // Preserves original content
     })
   })
 

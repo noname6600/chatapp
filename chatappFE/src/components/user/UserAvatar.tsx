@@ -1,15 +1,21 @@
 import { useRef } from "react";
 import { useUserOverlay } from "../../store/userOverlay.store";
 import type {OverlaySource} from "../../store/userOverlay.store";
+import { usePresenceStore } from "../../store/presence.store";
+import type { PresenceStatus } from "../../types/presence";
+import UserStatusFrame from "../presence/UserStatusFrame";
+import AvatarImage from "./AvatarImage";
 interface Props {
   userId: string;
   avatar?: string | null;
   size?: number;
+  status?: PresenceStatus;
 }
 
-export default function UserAvatar({ userId, avatar, size = 32 }: Props) {
-  const ref = useRef<HTMLImageElement>(null);
+export default function UserAvatar({ userId, avatar, size = 32, status }: Props) {
+  const ref = useRef<HTMLSpanElement>(null);
   const open = useUserOverlay((s) => s.open);
+  const resolvedStatus = usePresenceStore((s) => status ?? s.getUserStatus(userId));
 
   const handleClick = () => {
     if (!ref.current) return;
@@ -27,13 +33,15 @@ export default function UserAvatar({ userId, avatar, size = 32 }: Props) {
   };
 
   return (
-    <img
-      ref={ref}
-      src={avatar || "/default-avatar.png"}
-      draggable={false}
-      onClick={handleClick}
-      style={{ width: size, height: size }}
-      className="rounded-full cursor-pointer"
-    />
+    <UserStatusFrame status={resolvedStatus} size={size}>
+      <AvatarImage
+        ref={ref}
+        src={avatar || "/default-avatar.png"}
+        alt={`${userId} avatar`}
+        size={size}
+        onClick={handleClick}
+        draggable={false}
+      />
+    </UserStatusFrame>
   );
 }

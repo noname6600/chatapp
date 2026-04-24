@@ -69,6 +69,10 @@ export const connectNotificationSocket = () => {
 
   manualClose = false
   let didOpen = false
+  console.log("[notification-socket] Attempting connection", {
+    endpoint: WS_URL,
+    failureCount: reconnectFailureCount,
+  })
   socket = new WebSocket(`${WS_URL}?token=${token}`)
   connectionStartTime = Date.now()
 
@@ -100,9 +104,14 @@ export const connectNotificationSocket = () => {
   socket.onmessage = (event) => {
     try {
       const data: NotificationWsEvent = JSON.parse(event.data)
+      console.log("[notification-socket] Message received", {
+        type: data.type,
+        rawPayload: data.data,
+        handlerCount: eventHandlers.size,
+      })
       eventHandlers.forEach((handler) => handler(data))
     } catch {
-      // ignore malformed events
+      console.warn("[notification-socket] Failed to parse message — raw:", event.data)
     }
   }
 
@@ -116,6 +125,15 @@ export const connectNotificationSocket = () => {
     }
     
     const rapidClose = isRapidPostOpenClose()
+
+    console.warn("[notification-socket] Connection closed", {
+      code: event.code,
+      reason: event.reason || "(no reason)",
+      wasClean: event.wasClean,
+      didOpen,
+      rapidClose,
+      currentFailureCount: reconnectFailureCount,
+    })
 
     // Classify instability: pre-open closes AND rapid post-open closes (both within stability window)
     if (!manualClose && (!didOpen || rapidClose)) {

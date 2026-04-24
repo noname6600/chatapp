@@ -133,8 +133,6 @@ describe("notification.socket", () => {
     it("suppresses reconnect after 5 non-recoverable failures", async () => {
       const { connectNotificationSocket } = await import("./notification.socket")
       const errorSpy = vi.spyOn(console, "error")
-      const initialCount = MockWebSocket.instances.length
-
       // Trigger 5 consecutive failures
       for (let i = 0; i < 5; i++) {
         connectNotificationSocket()

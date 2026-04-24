@@ -14,4 +14,14 @@ public class NotificationListResponse {
     private List<NotificationResponse> notifications;
 
     private long unreadCount;
+
+    private Integer page;
+
+    private Integer size;
+
+    private boolean hasMore;
+
+    private Integer nextPage;
+
+    private String windowCreatedAt;
 }

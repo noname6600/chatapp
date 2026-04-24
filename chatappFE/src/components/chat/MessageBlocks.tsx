@@ -1,11 +1,9 @@
 import { Check, Copy, Download, FileText, Image as ImageIcon, Link2, Video } from "lucide-react"
 import { useState } from "react"
 import type { ReactNode } from "react"
-import { useNavigate } from "react-router-dom"
 
-import { joinRoomByInviteApi } from "../../api/room.service"
 import type { Attachment, MessageBlock } from "../../types/message"
-import { useChat } from "../../store/chat.store"
+import { useInviteJoin } from "../../hooks/useInviteJoin"
 import { useRooms } from "../../store/room.store"
 import Username from "../user/Username"
 
@@ -192,13 +190,9 @@ function AssetBlock({ attachment }: { attachment: Attachment }) {
 }
 
 function RoomInviteBlock({ block }: { block: MessageBlock }) {
-  const navigate = useNavigate()
-  const { loadRooms, roomsById } = useRooms()
-  const { setActiveRoom } = useChat()
-  const [joining, setJoining] = useState(false)
+  const { roomsById } = useRooms()
+  const { lifecycle, failureReason, joinRoom } = useInviteJoin()
   const [copied, setCopied] = useState(false)
-  const [joinError, setJoinError] = useState<string | null>(null)
-  const [joinUnavailable, setJoinUnavailable] = useState(false)
 
   const roomInvite = block.roomInvite
   if (!roomInvite) {
@@ -208,6 +202,17 @@ function RoomInviteBlock({ block }: { block: MessageBlock }) {
   const isJoined = Boolean(roomsById[roomInvite.roomId])
   const inviteLink = `${window.location.origin}/chat?join=${roomInvite.roomId}`
   const roomCode = roomInvite.roomId
+
+  const joining = lifecycle === "joining"
+  const joinUnavailable = lifecycle === "failed" && failureReason === "invalid"
+  const joinError =
+    lifecycle === "failed"
+      ? failureReason === "invalid"
+        ? "This invite is no longer valid."
+        : failureReason === "already-member"
+        ? "You are already a member."
+        : "Unable to join — please try again."
+      : null
 
   const handleCopyInviteLink = async () => {
     if (!navigator.clipboard) {
@@ -219,33 +224,9 @@ function RoomInviteBlock({ block }: { block: MessageBlock }) {
     window.setTimeout(() => setCopied(false), 1500)
   }
 
-  const handleJoin = async () => {
+  const handleJoin = () => {
     if (joining || isJoined) return
-
-    try {
-      setJoining(true)
-      setJoinError(null)
-      setJoinUnavailable(false)
-      await joinRoomByInviteApi(roomInvite.roomId)
-      await loadRooms()
-      await setActiveRoom(roomInvite.roomId)
-      navigate("/chat")
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to join this group"
-      setJoinError(message)
-
-      const lowered = message.toLowerCase()
-      if (
-        lowered.includes("not found") ||
-        lowered.includes("forbidden") ||
-        lowered.includes("cannot join") ||
-        lowered.includes("private")
-      ) {
-        setJoinUnavailable(true)
-      }
-    } finally {
-      setJoining(false)
-    }
+    void joinRoom(roomInvite.roomId)
   }
 
   return (
@@ -278,7 +259,7 @@ function RoomInviteBlock({ block }: { block: MessageBlock }) {
         </button>
         <button
           type="button"
-          onClick={() => void handleJoin()}
+          onClick={handleJoin}
           disabled={joining || isJoined || joinUnavailable}
           className="rounded-lg border border-blue-300 bg-white px-2.5 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
         >

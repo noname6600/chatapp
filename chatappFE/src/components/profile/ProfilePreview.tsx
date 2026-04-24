@@ -21,6 +21,7 @@ export default function ProfilePreview({ draft }: Props) {
         className="w-72"
         headerClassName="h-16"
         avatarClassName="h-16 w-16"
+        avatarSize={64}
         compact
         bodyClassName="text-center"
       >

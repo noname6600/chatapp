@@ -7,11 +7,16 @@ import com.example.common.kafka.Topics;
 import com.example.common.kafka.api.KafkaEventPublisher;
 import com.example.common.kafka.event.FriendRequestKafkaEvent;
 import com.example.common.kafka.event.FriendshipEvent;
+import com.example.common.web.response.ApiResponse;
+import com.example.friendship.client.UserClient;
+import com.example.friendship.dto.UserProfileResponse;
 import com.example.friendship.entity.Friendship;
 import lombok.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 @Component
@@ -19,6 +24,7 @@ import java.util.UUID;
 public class FriendshipEventProducer {
 
     private final KafkaEventPublisher kafkaEventPublisher;
+    private final UserClient userClient;
 
     @Value("${spring.application.name}")
     private String sourceService;
@@ -46,10 +52,14 @@ public class FriendshipEventProducer {
                 FriendRequestEvent.Type type
             ) {
 
+            String senderDisplayName = resolveSenderDisplayName(senderId);
+
             FriendRequestEvent payload = FriendRequestEvent.builder()
                 .senderId(senderId)
                 .recipientId(recipientId)
                 .requestId(requestId)
+                .senderDisplayName(senderDisplayName)
+                .createdAt(Instant.now())
                 .type(type)
                 .build();
 
@@ -59,6 +69,30 @@ public class FriendshipEventProducer {
                 FriendRequestKafkaEvent.of(sourceService, payload)
             );
             }
+
+    private String resolveSenderDisplayName(UUID senderId) {
+        if (senderId == null) return null;
+
+        try {
+            ApiResponse<List<UserProfileResponse>> response = userClient.getUsersBulk(List.of(senderId));
+            List<UserProfileResponse> rows = response == null ? null : response.getData();
+            if (rows == null || rows.isEmpty()) {
+                return senderId.toString();
+            }
+
+            UserProfileResponse me = rows.stream()
+                    .filter(u -> u != null && senderId.equals(u.getAccountId()))
+                    .findFirst()
+                    .orElse(null);
+
+            if (me == null) return senderId.toString();
+            if (me.getDisplayName() != null && !me.getDisplayName().isBlank()) return me.getDisplayName();
+            if (me.getUsername() != null && !me.getUsername().isBlank()) return me.getUsername();
+            return senderId.toString();
+        } catch (Exception ignored) {
+            return senderId.toString();
+        }
+    }
 }
 
 

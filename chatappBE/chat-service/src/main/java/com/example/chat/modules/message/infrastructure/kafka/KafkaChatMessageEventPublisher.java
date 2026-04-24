@@ -7,8 +7,11 @@ import com.example.chat.modules.message.domain.entity.ChatMessage;
 import com.example.chat.modules.message.event.factory.ChatMessagePayloadFactory;
 import com.example.chat.modules.message.event.factory.MessageDeletedPayloadFactory;
 import com.example.chat.modules.message.event.factory.MessageUpdatedPayloadFactory;
+import com.example.chat.modules.room.entity.Room;
 import com.example.chat.modules.room.entity.RoomMember;
+import com.example.chat.modules.room.enums.RoomType;
 import com.example.chat.modules.room.repository.RoomMemberRepository;
+import com.example.chat.modules.room.repository.RoomRepository;
 import com.example.common.integration.chat.ChatMessagePayload;
 import com.example.common.integration.chat.MessageDeletedPayload;
 import com.example.common.integration.chat.MessageUpdatedPayload;
@@ -35,6 +38,7 @@ public class KafkaChatMessageEventPublisher
     private final MessageUpdatedPayloadFactory updatedFactory;
     private final MessageDeletedPayloadFactory deletedFactory;
     private final RoomMemberRepository roomMemberRepository;
+    private final RoomRepository roomRepository;
 
     @Value("${spring.application.name}")
     private String sourceService;
@@ -52,8 +56,13 @@ public class KafkaChatMessageEventPublisher
                 .filter(userId -> !userId.equals(message.getSenderId()))
                 .toList();
 
+        boolean isDirect = roomRepository.findById(message.getRoomId())
+                .map(Room::getType)
+                .map(type -> type == RoomType.PRIVATE)
+                .orElse(false);
+
         ChatMessagePayload payload =
-                payloadFactory.from(message, attachments, mentionedUserIds, recipientUserIds);
+                payloadFactory.from(message, attachments, mentionedUserIds, recipientUserIds, isDirect);
 
         ChatMessageSentEvent event =
                 ChatMessageSentEvent.from(sourceService, payload);

@@ -96,6 +96,7 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
         LEFT JOIN RoomMember other
             ON other.roomId = r.id
             AND other.userId <> me.userId
+            AND r.type = com.example.chat.modules.room.enums.RoomType.PRIVATE
 
         WHERE me.userId = :userId
     """)

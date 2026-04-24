@@ -1,6 +1,7 @@
 package com.example.chat.modules.message.domain.entity;
 
 import com.example.chat.modules.message.domain.enums.MessageType;
+import com.example.chat.modules.message.domain.enums.SystemEventType;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -50,6 +51,15 @@ public class ChatMessage {
 
     @Column(columnDefinition = "TEXT")
     private String blocksJson;
+
+    private UUID forwardedFromMessageId;
+
+    @Enumerated(EnumType.STRING)
+    private SystemEventType systemEventType;
+
+    private UUID actorUserId;
+
+    private UUID targetMessageId;
 
     private UUID replyToMessageId;
 

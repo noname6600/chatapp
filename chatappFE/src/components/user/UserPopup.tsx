@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Check, User, UserPlus } from "lucide-react";
 import { useUserOverlay } from "../../store/userOverlay.store";
 import { useUserStore } from "../../store/user.store";
 import { useFriendStore } from "../../store/friend.store";
@@ -17,6 +18,7 @@ import { startPrivateChatApi } from "../../api/room.service";
 import { getUserByIdApi } from "../../api/user.service";
 import { resolveProfilePresentation } from "../../utils/profilePresentation";
 import ProfileIdentityCard from "../profile/ProfileIdentityCard";
+import EmojiPicker from "../chat/EmojiPicker";
 
 type FriendshipStatus =
   | "NONE"
@@ -25,6 +27,14 @@ type FriendshipStatus =
   | "REQUEST_RECEIVED"
   | "BLOCKED_BY_ME"
   | "BLOCKED_ME";
+
+type FriendActionState = {
+  label: string;
+  disabled: boolean;
+  style: "primary" | "pending" | "neutral";
+  icon: React.ReactNode;
+  ariaLabel: string;
+};
 
 export default function UserPopup() {
   const { userId, rect, source, close } = useUserOverlay();
@@ -54,15 +64,14 @@ export default function UserPopup() {
   const [hoverInviteToGroup, setHoverInviteToGroup] = useState(false);
   const [showRemove, setShowRemove] = useState(false);
   const [dmText, setDmText] = useState("");
+  const dmInputRef = useRef<HTMLInputElement>(null);
 
   const isSelf = userId === myId;
-  const isPending = status === "REQUEST_SENT";
   const presentation = resolveProfilePresentation(user ?? {}, { fallbackAbout: false });
   const inviteableGroups = Object.values(roomsById)
     .filter((room) => room.type === "GROUP")
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  /* ================= RESET WHEN SWITCH USER ================= */
   useEffect(() => {
     setMenuOpen(false);
     setHoverInviteToGroup(false);
@@ -70,7 +79,6 @@ export default function UserPopup() {
     setDmText("");
   }, [userId]);
 
-  /* ================= LOAD USER + FRIEND STATUS ================= */
   useEffect(() => {
     if (!userId) return;
 
@@ -81,7 +89,6 @@ export default function UserPopup() {
   useEffect(() => {
     if (!userId) return;
 
-    // Bulk user fetches can omit profile fields like about/background; hydrate on-demand.
     if (user?.aboutMe != null && user?.backgroundColor != null) return;
 
     let cancelled = false;
@@ -101,7 +108,6 @@ export default function UserPopup() {
     };
   }, [userId, user?.aboutMe, user?.backgroundColor, updateUserLocal]);
 
-  /* ================= CLICK OUTSIDE ================= */
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       if (
@@ -116,7 +122,6 @@ export default function UserPopup() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [close]);
 
-  /* ================= ESC CLOSE ================= */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") close();
@@ -127,7 +132,6 @@ export default function UserPopup() {
 
   if (!userId || !rect) return null;
 
-  /* ================= SMART POSITION ================= */
   const width = 320;
   const height = 420;
   const margin = 12;
@@ -168,7 +172,72 @@ export default function UserPopup() {
     zIndex: 9999,
   };
 
-  /* ================= HELPERS ================= */
+  const showPresence = source !== "FRIEND_SEARCH";
+
+  const friendAction: FriendActionState = (() => {
+    if (isSelf) {
+      return {
+        label: "Self",
+        disabled: true,
+        style: "neutral",
+        icon: <User size={16} />,
+        ariaLabel: "Your profile",
+      };
+    }
+
+    switch (status) {
+      case "NONE":
+        return {
+          label: "Add Friend",
+          disabled: loading,
+          style: "primary",
+          icon: <UserPlus size={16} />,
+          ariaLabel: "Add Friend",
+        };
+      case "REQUEST_SENT":
+        return {
+          label: "Pending",
+          disabled: true,
+          style: "pending",
+          icon: <User size={16} />,
+          ariaLabel: "Pending friend request",
+        };
+      case "FRIENDS":
+        return {
+          label: "Friends",
+          disabled: loading,
+          style: "neutral",
+          icon: <Check size={16} />,
+          ariaLabel: "Friends",
+        };
+      case "REQUEST_RECEIVED":
+        return {
+          label: "Request Received",
+          disabled: true,
+          style: "neutral",
+          icon: <User size={16} />,
+          ariaLabel: "Friend request received",
+        };
+      case "BLOCKED_BY_ME":
+      case "BLOCKED_ME":
+        return {
+          label: "Unavailable",
+          disabled: true,
+          style: "neutral",
+          icon: <User size={16} />,
+          ariaLabel: "Friend request unavailable",
+        };
+      default:
+        return {
+          label: "Loading...",
+          disabled: true,
+          style: "neutral",
+          icon: <User size={16} />,
+          ariaLabel: "Loading friend status",
+        };
+    }
+  })();
+
   const runAsync = async (fn: () => Promise<void>) => {
     if (loading) return;
 
@@ -185,8 +254,12 @@ export default function UserPopup() {
 
     if (status === "NONE") {
       runAsync(async () => {
-        await sendFriendRequestApi(userId);
-        setStatus(userId, "REQUEST_SENT");
+        try {
+          await sendFriendRequestApi(userId);
+          setStatus(userId, "REQUEST_SENT");
+        } catch (error) {
+          console.error("Failed to send friend request", error);
+        }
       });
     }
 
@@ -196,7 +269,6 @@ export default function UserPopup() {
     }
   };
 
-  /* ================= START PRIVATE CHAT ================= */
   const startMiniDM = async () => {
     const trimmed = dmText.trim();
     if (!trimmed || !userId || isSelf) return;
@@ -220,6 +292,20 @@ export default function UserPopup() {
   const openProfileSettings = () => {
     navigate("/settings");
     close();
+  };
+
+  const insertPopupEmoji = (emoji: string) => {
+    const input = dmInputRef.current;
+    const start = input?.selectionStart ?? dmText.length;
+    const end = input?.selectionEnd ?? dmText.length;
+    const nextText = `${dmText.slice(0, start)}${emoji}${dmText.slice(end)}`;
+    setDmText(nextText);
+
+    requestAnimationFrame(() => {
+      dmInputRef.current?.focus();
+      const nextCursor = start + emoji.length;
+      dmInputRef.current?.setSelectionRange(nextCursor, nextCursor);
+    });
   };
 
   const sendGroupInvite = (groupRoomId: string) => {
@@ -255,22 +341,30 @@ export default function UserPopup() {
     });
   };
 
+  const friendActionClass =
+    friendAction.style === "primary"
+      ? "border-indigo-500 bg-indigo-500 text-white shadow-sm hover:bg-indigo-600"
+      : friendAction.style === "pending"
+        ? "border-amber-300 bg-amber-50 text-amber-700"
+        : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50";
+
   const topActions = (
-    <>
+    <div className="flex max-w-[190px] flex-wrap items-center justify-end gap-2">
       {!isSelf && (
         <div className="relative">
           <button
-            disabled={loading || isPending}
+            disabled={friendAction.disabled}
             onClick={handleFriendClick}
             onMouseEnter={() => setHoverFriend(true)}
             onMouseLeave={() => setHoverFriend(false)}
-            className="w-9 h-9 rounded-lg border text-lg hover:bg-gray-100 transition"
-            aria-label="Friend actions"
+            className={`inline-flex h-9 max-w-[150px] items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition ${friendActionClass} ${friendAction.disabled ? "cursor-not-allowed" : ""}`}
+            aria-label={friendAction.ariaLabel}
           >
-            {status === "FRIENDS" ? "✔" : "➕"}
+            {friendAction.icon}
+            <span className="truncate">{friendAction.label}</span>
           </button>
 
-          {hoverFriend && <Tooltip>Friend</Tooltip>}
+          {hoverFriend && <Tooltip>{friendAction.label}</Tooltip>}
 
           {showRemove && (
             <div className="absolute right-0 top-11 z-20 w-40 rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
@@ -299,10 +393,10 @@ export default function UserPopup() {
           }}
           onMouseEnter={() => setHoverMore(true)}
           onMouseLeave={() => setHoverMore(false)}
-          className="w-9 h-9 rounded-lg border text-lg hover:bg-gray-100 transition"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-300 bg-white text-lg text-gray-700 transition hover:bg-gray-50"
           aria-label="More actions"
         >
-          ⋯
+          ...
         </button>
 
         {hoverMore && <Tooltip>More</Tooltip>}
@@ -354,7 +448,7 @@ export default function UserPopup() {
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 
   return (
@@ -367,6 +461,9 @@ export default function UserPopup() {
         presentation={presentation}
         className="shadow-xl overflow-visible"
         topActions={topActions}
+        userId={userId}
+        avatarSize={80}
+        showPresence={showPresence}
       >
         {isSelf ? (
           <button
@@ -376,9 +473,10 @@ export default function UserPopup() {
             Go to Profile Settings
           </button>
         ) : (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
+          <div className="space-y-2.5">
+            <div className="flex flex-wrap items-end gap-2">
               <input
+                ref={dmInputRef}
                 value={dmText}
                 onChange={(e) => setDmText(e.target.value)}
                 onKeyDown={(e) => {
@@ -388,16 +486,14 @@ export default function UserPopup() {
                   }
                 }}
                 placeholder="Send a message..."
-                className="w-full rounded-xl border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="min-w-0 flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
-              <button
-                type="button"
-                aria-label="Insert emoji"
-                onClick={() => setDmText((prev) => `${prev}🙂`)}
-                className="h-10 w-10 rounded-xl border text-lg hover:bg-gray-100 transition"
-              >
-                🙂
-              </button>
+              <EmojiPicker
+                onEmojiSelect={insertPopupEmoji}
+                disabled={loading}
+                className="self-center"
+                triggerClassName="h-10 w-10 rounded-xl border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-800"
+              />
             </div>
             <p className="text-xs text-gray-500">Press Enter to jump into full chat.</p>
           </div>
@@ -407,14 +503,12 @@ export default function UserPopup() {
   );
 }
 
-/* ================= UI ================= */
-
 function Tooltip({ children }: { children: React.ReactNode }) {
   return (
     <div className="absolute bottom-11 left-1/2 -translate-x-1/2">
-      <div className="relative px-2 py-1 text-xs bg-gray-900 text-white rounded-md shadow whitespace-nowrap">
+      <div className="relative whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-xs text-white shadow">
         {children}
-        <div className="absolute left-1/2 -translate-x-1/2 top-full w-2 h-2 bg-gray-900 rotate-45" />
+        <div className="absolute left-1/2 top-full h-2 w-2 -translate-x-1/2 rotate-45 bg-gray-900" />
       </div>
     </div>
   );
@@ -432,10 +526,11 @@ function MenuItem({
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left px-3 py-2 text-sm transition ${danger
-        ? "text-red-600 hover:bg-red-50"
-        : "hover:bg-gray-50"
-        }`}
+      className={`w-full px-3 py-2 text-left text-sm transition ${
+        danger
+          ? "text-red-600 hover:bg-red-50"
+          : "hover:bg-gray-50"
+      }`}
     >
       {children}
     </button>

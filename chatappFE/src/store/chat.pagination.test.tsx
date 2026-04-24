@@ -47,6 +47,12 @@ vi.mock("../api/user.service", () => ({
   getMyProfileApi: mocks.getMyProfileApi,
 }))
 
+vi.mock("./auth.store", () => ({
+  useAuth: () => ({
+    userId: "me",
+  }),
+}))
+
 function makeMessage(seq: number, overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {
     messageId: `message-${seq}`,
@@ -624,5 +630,154 @@ describe("chat pagination behavior", () => {
     expect(sessionA.chat.messagesByRoom["room-1"].map((message) => message.seq)).toEqual(
       sessionB.chat.messagesByRoom["room-1"].map((message) => message.seq)
     )
+  })
+
+  it("deduplicates duplicate SYSTEM websocket events by messageId", async () => {
+    mocks.getLatestMessages.mockResolvedValueOnce({
+      messages: [],
+      hasMore: false,
+    })
+
+    const harness = await renderChatProvider()
+
+    await act(async () => {
+      await harness.chat.setActiveRoom("room-1")
+    })
+
+    const systemEventPayload = makeMessage(1, {
+      messageId: "system-1",
+      type: "SYSTEM",
+      content: "User A joined the group.",
+      actorUserId: "user-a",
+      systemEventType: "JOIN",
+    })
+
+    await act(async () => {
+      chatEventHandler?.({
+        type: ChatEventType.MESSAGE_SENT,
+        payload: systemEventPayload,
+      })
+      chatEventHandler?.({
+        type: ChatEventType.MESSAGE_SENT,
+        payload: { ...systemEventPayload, content: "User A joined the group." },
+      })
+    })
+
+    expect(harness.chat.messagesByRoom["room-1"]).toHaveLength(1)
+    expect(harness.chat.messagesByRoom["room-1"][0].messageId).toBe("system-1")
+    expect(harness.chat.messagesByRoom["room-1"][0].type).toBe("SYSTEM")
+  })
+
+  it("does not replay historical SYSTEM pin rows after user sends", async () => {
+    mocks.getLatestMessages.mockResolvedValueOnce({
+      messages: [],
+      hasMore: false,
+    })
+
+    let nextSeq = 4
+    mocks.sendMessageApi.mockImplementation(async (payload: {
+      roomId: string
+      content: string
+      replyToMessageId?: string
+      clientMessageId?: string
+    }) => {
+      const message = makeMessage(nextSeq, {
+        messageId: `user-${nextSeq}`,
+        roomId: payload.roomId,
+        senderId: "me",
+        content: payload.content,
+        replyToMessageId: payload.replyToMessageId ?? null,
+        clientMessageId: payload.clientMessageId ?? null,
+      })
+      nextSeq += 1
+      return message
+    })
+
+    const harness = await renderChatProvider()
+
+    await act(async () => {
+      await harness.chat.setActiveRoom("room-1")
+    })
+
+    const pinBase = {
+      type: "SYSTEM" as const,
+      systemEventType: "PIN" as const,
+      actorUserId: "user-a",
+      targetMessageId: "target-99",
+      content: "User A pinned a message",
+      senderId: "system",
+      roomId: "room-1",
+    }
+
+    await act(async () => {
+      chatEventHandler?.({
+        type: ChatEventType.MESSAGE_SENT,
+        payload: makeMessage(1, {
+          ...pinBase,
+          messageId: "system-pin-1",
+          targetMessageId: "target-1",
+          createdAt: "2026-04-23T10:00:00.000Z",
+        }),
+      })
+      chatEventHandler?.({
+        type: ChatEventType.MESSAGE_SENT,
+        payload: makeMessage(2, {
+          ...pinBase,
+          messageId: "system-pin-2",
+          targetMessageId: "target-2",
+          createdAt: "2026-04-23T10:00:01.000Z",
+        }),
+      })
+      chatEventHandler?.({
+        type: ChatEventType.MESSAGE_SENT,
+        payload: makeMessage(3, {
+          ...pinBase,
+          messageId: "system-pin-3",
+          targetMessageId: "target-3",
+          createdAt: "2026-04-23T10:00:02.000Z",
+        }),
+      })
+    })
+
+    await act(async () => {
+      await harness.chat.sendMessage("room-1", "hello-1")
+
+      // Simulate replay-like websocket duplicates with different message IDs.
+      chatEventHandler?.({
+        type: ChatEventType.MESSAGE_SENT,
+        payload: makeMessage(1, {
+          ...pinBase,
+          messageId: "system-pin-1-replay",
+          targetMessageId: "target-1",
+          createdAt: "2026-04-23T10:00:00.000Z",
+        }),
+      })
+
+      await harness.chat.sendMessage("room-1", "hello-2")
+      chatEventHandler?.({
+        type: ChatEventType.MESSAGE_SENT,
+        payload: makeMessage(2, {
+          ...pinBase,
+          messageId: "system-pin-2-replay",
+          targetMessageId: "target-2",
+          createdAt: "2026-04-23T10:00:01.000Z",
+        }),
+      })
+    })
+
+    const roomMessages = harness.chat.messagesByRoom["room-1"]
+    const systemPins = roomMessages.filter(
+      (message) => message.type === "SYSTEM" && message.systemEventType === "PIN"
+    )
+
+    expect(systemPins).toHaveLength(3)
+    expect(roomMessages.map((message) => message.seq)).toEqual([1, 2, 3, 4, 5])
+    expect(roomMessages.map((message) => message.messageId)).toEqual([
+      "system-pin-1",
+      "system-pin-2",
+      "system-pin-3",
+      "user-4",
+      "user-5",
+    ])
   })
 })

@@ -24,9 +24,10 @@ import {
 } from "../websocket/chat.socket";
 import { ChatEventType } from "../constants/chatEvents";
 
-import { getMyProfileApi } from "../api/user.service";
+import { useAuth } from "./auth.store";
 import { isFeatureEnabled } from "../config/featureFlags";
 import { isAtBottom, batchScrollToBottom } from "../utils/scrollUtils";
+import { mergeTimelineMessages } from "./chatTimeline";
 
 const MAX_WINDOW = 500;
 const OPTIMISTIC_CONFIRM_TIMEOUT_MS = 15_000;
@@ -92,7 +93,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }>>({});
 
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const { userId: currentUserId } = useAuth();
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const activeRoomIdRef = useRef<string | null>(null);
   activeRoomIdRef.current = activeRoomId;
@@ -197,13 +198,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
-  // ================= USER =================
-  useEffect(() => {
-    getMyProfileApi()
-      .then((u) => setCurrentUserId(u.accountId))
-      .catch(() => {});
-  }, []);
-
   // ================= UPSERT =================
   const upsertMessage = useCallback((msg: ChatMessage) => {
     const isOptimisticTemp = msg.messageId.startsWith("temp-");
@@ -255,7 +249,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             }
       );
 
-      const next = Array.from(map.values()).sort((a, b) => a.seq - b.seq);
+      const next = mergeTimelineMessages(Array.from(map.values()));
       const trimmed = next.length > MAX_WINDOW ? next.slice(-MAX_WINDOW) : next;
 
       oldestSeqByRoom.current[msg.roomId] = trimmed[0]?.seq ?? null;
@@ -299,7 +293,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   // ================= SET ROOM =================
   const setActiveRoom = useCallback(async (roomId: string, unreadCount = 0) => {
-    if (!roomId) return;
+    if (!roomId) {
+      setActiveRoomId(null);
+      setReplyingTo(null);
+      return;
+    }
     if (activatingByRoom.current[roomId]) {
       return;
     }
@@ -347,7 +345,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             sortedAround.forEach((message) => {
               mergedMap.set(message.messageId, message);
             });
-            windowMessages = Array.from(mergedMap.values()).sort((a, b) => a.seq - b.seq);
+            windowMessages = mergeTimelineMessages(Array.from(mergedMap.values()));
           }
         }
       }
@@ -386,12 +384,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         optimisticCarryCount: optimisticCarry.length,
       });
 
-      const mergedForView = [...windowMessages, ...optimisticCarry].sort((a, b) => {
-        if (a.seq === b.seq) {
-          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-        }
-        return a.seq - b.seq;
-      });
+      const mergedForView = mergeTimelineMessages([...windowMessages, ...optimisticCarry]);
 
       const trimmed =
         mergedForView.length > MAX_WINDOW
@@ -439,6 +432,56 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   // current setActiveRoom and upsertMessage without re-registering on their changes.
   useEffect(() => {
     return onChatEvent((event) => {
+      if (event.type === ChatEventType.MESSAGE_EDITED) {
+        const payload = event.payload;
+        setMessagesByRoom((prev) => {
+          const current = prev[payload.roomId] || [];
+          let changed = false;
+
+          const next = current.map((message) => {
+            if (message.messageId !== payload.messageId) return message;
+            changed = true;
+            return {
+              ...message,
+              content: payload.content,
+              editedAt: payload.editedAt,
+            };
+          });
+
+          if (!changed) return prev;
+          return {
+            ...prev,
+            [payload.roomId]: next,
+          };
+        });
+        return;
+      }
+
+      if (event.type === ChatEventType.MESSAGE_DELETED) {
+        const payload = event.payload;
+        setMessagesByRoom((prev) => {
+          const current = prev[payload.roomId] || [];
+          let changed = false;
+
+          const next = current.map((message) => {
+            if (message.messageId !== payload.messageId) return message;
+            changed = true;
+            return {
+              ...message,
+              deleted: true,
+              editedAt: null,
+            };
+          });
+
+          if (!changed) return prev;
+          return {
+            ...prev,
+            [payload.roomId]: next,
+          };
+        });
+        return;
+      }
+
       if (event.type !== ChatEventType.MESSAGE_SENT) return;
 
       try {
@@ -505,6 +548,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       if (!roomId) return;
 
       logSendFlow("socket_open_reconcile_active_room", { roomId });
+      // Always re-send JOIN on (re)connect: module-level subscribedRooms is
+      // cleared on disconnect, so the store-ref guard cannot be relied on.
+      subscribeRoom(roomId);
       void setActiveRoomRef.current(roomId).catch(() => {});
     });
   }, []);
@@ -538,7 +584,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         const map = new Map(current.map((m) => [m.messageId, m]));
         sorted.forEach((m) => map.set(m.messageId, m));
 
-        const next = Array.from(map.values()).sort((a, b) => a.seq - b.seq);
+        const next = mergeTimelineMessages(Array.from(map.values()));
         const trimmed = next.length > MAX_WINDOW ? next.slice(-MAX_WINDOW) : next;
 
         oldestSeqByRoom.current[roomId] = trimmed[0]?.seq ?? null;
@@ -593,7 +639,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         const map = new Map(current.map((m) => [m.messageId, m]));
         sorted.forEach((m) => map.set(m.messageId, m));
 
-        const next = Array.from(map.values()).sort((a, b) => a.seq - b.seq);
+        const next = mergeTimelineMessages(Array.from(map.values()));
         const trimmed = next.length > MAX_WINDOW ? next.slice(-MAX_WINDOW) : next;
 
         oldestSeqByRoom.current[roomId] = trimmed[0]?.seq ?? null;
@@ -623,7 +669,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   // ================= LOAD AROUND =================
   const loadMessagesAround = useCallback(async (roomId: string, messageId: string) => {
     const messages = await getMessagesAround(roomId, messageId);
-    const sorted = messages.sort((a, b) => a.seq - b.seq);
+    const sorted = mergeTimelineMessages(messages);
     const trimmed = sorted.length > MAX_WINDOW ? sorted.slice(-MAX_WINDOW) : sorted;
 
     if (trimmed.length) {

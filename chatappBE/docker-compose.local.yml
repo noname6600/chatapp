@@ -165,8 +165,8 @@ services:
       AUTH_DATABASE_USER: ${AUTH_DATABASE_USER:-auth_user}
       AUTH_DATABASE_PASSWORD: ${AUTH_DATABASE_PASSWORD:-auth_password}
       KAFKA_SERVERS: kafka:9092
-      MAIL_USERNAME: ${MAIL_USERNAME}
-      MAIL_PASSWORD: ${MAIL_PASSWORD}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      RESEND_FROM: ${RESEND_FROM}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
@@ -235,8 +235,18 @@ services:
     container_name: chatapp-presence
     depends_on:
       auth-service:
-        condition: service_started
+        condition: service_healthy
       redis:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+      chat-service:
+        condition: service_healthy
+      friendship-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+      upload-service:
         condition: service_healthy
       kafka:
         condition: service_started
@@ -351,6 +361,12 @@ services:
       - "8080:8080"
     networks:
       - chatapp-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health/readiness || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
 networks:
   chatapp-net:

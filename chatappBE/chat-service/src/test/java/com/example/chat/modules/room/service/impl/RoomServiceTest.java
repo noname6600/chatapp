@@ -10,6 +10,7 @@ import com.example.chat.modules.room.repository.RoomRepository;
 import com.example.common.redis.api.ITimeRedisCacheManager;
 import com.example.common.web.exception.BusinessException;
 import com.example.common.web.exception.ErrorCode;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,6 +26,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
 
 @ExtendWith(MockitoExtension.class)
 class RoomServiceTest {
@@ -99,6 +101,22 @@ class RoomServiceTest {
 				.type(RoomType.GROUP)
 				.build()));
 		when(memberRepo.existsByRoomIdAndUserId(roomId, userId)).thenReturn(false);
+
+		roomService.joinByInviteRoomId(userId, roomId);
+
+		verify(memberRepo).save(any(RoomMember.class));
+	}
+
+	@Test
+	void joinByInviteRoomId_isIdempotent_whenSaveHitsUniqueConstraintRace() {
+		when(roomRepo.findById(roomId)).thenReturn(Optional.of(Room.builder()
+				.id(roomId)
+				.type(RoomType.GROUP)
+				.build()));
+		when(memberRepo.existsByRoomIdAndUserId(roomId, userId)).thenReturn(false);
+		doThrow(new DataIntegrityViolationException("duplicate key"))
+				.when(memberRepo)
+				.save(any(RoomMember.class));
 
 		roomService.joinByInviteRoomId(userId, roomId);
 

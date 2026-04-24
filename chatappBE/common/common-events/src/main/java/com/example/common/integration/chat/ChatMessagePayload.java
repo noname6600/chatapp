@@ -30,7 +30,19 @@ public final class ChatMessagePayload {
 
     private final UUID replyToMessageId;
 
+    private final UUID forwardedFromMessageId;
+
+    private final String systemEventType;
+
+    private final UUID actorUserId;
+
+    private final UUID targetMessageId;
+
+    private final UUID replyToAuthorId;
+
     private final Instant createdAt;
+
+    private final String senderDisplayName;
 
     private final String preview;
 
@@ -44,6 +56,12 @@ public final class ChatMessagePayload {
 
     private final List<UUID> recipientUserIds;
 
+    /**
+     * True when this message was sent in a direct (2-person PRIVATE) room.
+     * Defaults to false when deserializing events from older producers that do not include this field.
+     */
+    private final boolean isDirect;
+
     @JsonCreator
     public ChatMessagePayload(
             @JsonProperty("messageId") UUID messageId,
@@ -53,13 +71,20 @@ public final class ChatMessagePayload {
             @JsonProperty("type") MessageType type,
             @JsonProperty("content") String content,
             @JsonProperty("replyToMessageId") UUID replyToMessageId,
+            @JsonProperty("forwardedFromMessageId") UUID forwardedFromMessageId,
+            @JsonProperty("systemEventType") String systemEventType,
+            @JsonProperty("actorUserId") UUID actorUserId,
+            @JsonProperty("targetMessageId") UUID targetMessageId,
+            @JsonProperty("replyToAuthorId") UUID replyToAuthorId,
             @JsonProperty("createdAt") Instant createdAt,
+            @JsonProperty("senderDisplayName") String senderDisplayName,
             @JsonProperty("preview") String preview,
             @JsonProperty("attachments") List<AttachmentPayload> attachments,
             @JsonProperty("blocks") List<MessageBlockPayload> blocks,
             @JsonProperty("clientMessageId") String clientMessageId,
             @JsonProperty("mentionedUserIds") List<UUID> mentionedUserIds,
-            @JsonProperty("recipientUserIds") List<UUID> recipientUserIds
+            @JsonProperty("recipientUserIds") List<UUID> recipientUserIds,
+            @JsonProperty("isDirect") boolean isDirect
     ) {
         this.messageId = messageId;
         this.roomId = roomId;
@@ -68,12 +93,19 @@ public final class ChatMessagePayload {
         this.type = type;
         this.content = content;
         this.replyToMessageId = replyToMessageId;
+        this.forwardedFromMessageId = forwardedFromMessageId;
+        this.systemEventType = systemEventType;
+        this.actorUserId = actorUserId;
+        this.targetMessageId = targetMessageId;
+        this.replyToAuthorId = replyToAuthorId;
         this.createdAt = createdAt;
+        this.senderDisplayName = senderDisplayName;
         this.preview = preview;
         this.attachments = attachments;
         this.blocks = blocks;
         this.clientMessageId = clientMessageId;
         this.mentionedUserIds = mentionedUserIds;
         this.recipientUserIds = recipientUserIds;
+        this.isDirect = isDirect;
     }
 }

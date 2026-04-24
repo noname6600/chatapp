@@ -91,7 +91,7 @@ describe("friend.store - Badge and Status", () => {
 
       store.map["user-1"] = "FRIENDS"
       store.map["user-2"] = "REQUEST_SENT"
-      store.map["user-3"] = undefined
+      delete (store.map as Record<string, unknown>)["user-3"]
 
       const state = useFriendStore.getState()
       expect(state.map["user-1"]).toBe("FRIENDS")

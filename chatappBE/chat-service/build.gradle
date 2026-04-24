@@ -41,6 +41,7 @@ dependencies {
     implementation project(':common:common-redis-cache')
     implementation project(':common:common-events')
     implementation project(':common:common-websocket')
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation project(':common:common-core')
     implementation 'org.springframework.boot:spring-boot-starter-websocket'
     implementation 'org.springframework.boot:spring-boot-starter-security'
