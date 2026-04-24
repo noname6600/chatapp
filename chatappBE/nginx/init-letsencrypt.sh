@@ -14,6 +14,7 @@ DOMAINS=("chatweb.nani.id.vn" "api.chatweb.nani.id.vn")
 RSA_KEY_SIZE=4096
 DATA_PATH="./certbot"
 COMPOSE_ARGS=( -f docker-compose.yml --env-file .env.production )
+TOKEN_REL_PATH=".well-known/acme-challenge/preflight-token"
 
 compose() {
   docker compose "${COMPOSE_ARGS[@]}" "$@"
@@ -30,30 +31,108 @@ fail_with_hint() {
   echo "- Confirm HTTP (port 80) is reachable from internet."
   echo "- Confirm nginx uses the same webroot mount as certbot: ./certbot/www -> /var/www/certbot"
   echo "- Confirm challenge file is readable via domain URL before issuance."
+  echo "- Compare local Host-header check versus public-domain check to detect ingress-source mismatch."
+  echo "- Check listener ownership for :80/:443 (expected docker-proxy for this stack)."
   exit 1
 }
 
+fingerprint_request() {
+  local label="$1"
+  local url="$2"
+  local host_header="${3:-}"
+  local headers_file body_file status content_type server body_snippet
+
+  headers_file="$(mktemp)"
+  body_file="$(mktemp)"
+
+  if [ -n "$host_header" ]; then
+    status="$(curl -sS -m 15 -D "$headers_file" -o "$body_file" -w '%{http_code}' -H "Host: ${host_header}" "$url" || true)"
+  else
+    status="$(curl -sS -m 15 -D "$headers_file" -o "$body_file" -w '%{http_code}' "$url" || true)"
+  fi
+
+  content_type="$(grep -i '^Content-Type:' "$headers_file" | tail -n 1 | cut -d':' -f2- | xargs || true)"
+  server="$(grep -i '^Server:' "$headers_file" | tail -n 1 | cut -d':' -f2- | xargs || true)"
+  body_snippet="$(head -c 120 "$body_file" | tr '\n' ' ' | tr '\r' ' ')"
+
+  echo "  > ${label}"
+  echo "    status=${status:-n/a} server=${server:-<none>} content-type=${content_type:-<none>}"
+  echo "    body='${body_snippet:-<empty>}'"
+
+  rm -f "$headers_file" "$body_file"
+}
+
+verify_token_request() {
+  local url="$1"
+  local expected="$2"
+  local host_header="${3:-}"
+  local status body
+
+  if [ -n "$host_header" ]; then
+    status="$(curl -sS -m 15 -o /tmp/acme_init_verify_body.$$ -w '%{http_code}' -H "Host: ${host_header}" "$url" || true)"
+  else
+    status="$(curl -sS -m 15 -o /tmp/acme_init_verify_body.$$ -w '%{http_code}' "$url" || true)"
+  fi
+  body="$(cat /tmp/acme_init_verify_body.$$ 2>/dev/null || true)"
+  rm -f /tmp/acme_init_verify_body.$$ || true
+
+  [ "$status" = "200" ] && [ "$body" = "$expected" ]
+}
+
+print_listener_snapshot() {
+  echo "- Port listeners (:80 and :443)"
+  if command -v ss >/dev/null 2>&1; then
+    ss -ltnp '( sport = :80 or sport = :443 )' || true
+  else
+    netstat -ltnp 2>/dev/null | grep -E ':80|:443' || true
+  fi
+}
+
 preflight_probe() {
-  local token_file token_value domain url body
-  token_file="${DATA_PATH}/www/.well-known/acme-challenge/preflight-token"
+  local token_file token_value domain local_ok public_ok
+  token_file="${DATA_PATH}/www/${TOKEN_REL_PATH}"
   token_value="acme-preflight-$(date +%s)"
+  local_ok=1
+  public_ok=1
 
   mkdir -p "$(dirname "$token_file")"
   printf '%s\n' "$token_value" > "$token_file"
 
   for domain in "${DOMAINS[@]}"; do
-    url="http://${domain}/.well-known/acme-challenge/preflight-token"
-    echo "### Preflight probe for ${domain} ..."
-    body="$(curl -fsS --max-time 15 "$url" || true)"
-    if [ "$body" != "$token_value" ]; then
-      echo "Expected token: $token_value"
-      echo "Received body: ${body:-<empty>}"
-      fail_with_hint "ACME preflight probe failed for ${url}"
+    if ! verify_token_request "http://127.0.0.1/${TOKEN_REL_PATH}" "$token_value" "$domain"; then
+      local_ok=0
+    fi
+
+    if ! verify_token_request "http://${domain}/${TOKEN_REL_PATH}" "$token_value"; then
+      public_ok=0
     fi
   done
 
+  if [ "$local_ok" -ne 1 ] || [ "$public_ok" -ne 1 ]; then
+    echo "### ACME ingress-source diagnostics"
+    echo "- Local Host-header route fingerprints"
+    for domain in "${DOMAINS[@]}"; do
+      fingerprint_request "local:${domain}" "http://127.0.0.1/${TOKEN_REL_PATH}" "$domain"
+    done
+
+    echo "- Public domain fingerprints"
+    for domain in "${DOMAINS[@]}"; do
+      fingerprint_request "public:${domain}" "http://${domain}/${TOKEN_REL_PATH}"
+    done
+
+    print_listener_snapshot
+
+    if [ "$local_ok" -ne 1 ] && [ "$public_ok" -ne 1 ]; then
+      fail_with_hint "Route-source checks failed for both local Host-header and public-domain paths"
+    elif [ "$local_ok" -ne 1 ]; then
+      fail_with_hint "Local Host-header route check failed (likely host ingress source mismatch)"
+    else
+      fail_with_hint "Public-domain route check failed (likely DNS/CDN/proxy upstream mismatch)"
+    fi
+  fi
+
   rm -f "$token_file"
-  echo "### ACME preflight probe passed for all domains"
+  echo "### ACME preflight probe passed (local Host-header + public-domain checks)"
 }
 
 verify_https_certs() {

@@ -123,17 +123,22 @@ If ACME preflight fails, the script prints automatic diagnostics (local Host-hea
 cd chatappBE
 mkdir -p certbot/www/.well-known/acme-challenge
 echo "preflight-ok" > certbot/www/.well-known/acme-challenge/preflight-token
+curl -fsS -H "Host: chatweb.nani.id.vn" http://127.0.0.1/.well-known/acme-challenge/preflight-token
+curl -fsS -H "Host: api.chatweb.nani.id.vn" http://127.0.0.1/.well-known/acme-challenge/preflight-token
 curl -fsS http://chatweb.nani.id.vn/.well-known/acme-challenge/preflight-token
 curl -fsS http://api.chatweb.nani.id.vn/.well-known/acme-challenge/preflight-token
 rm -f certbot/www/.well-known/acme-challenge/preflight-token
 ```
-Expected: both curl commands print `preflight-ok`.
+Expected: all four curl commands print `preflight-ok`.
+
+These checks are mandatory before retrying certificate issuance after an ACME 404.
 
 If you get 404, verify all of the following before retrying certbot:
 - Nginx is serving the same webroot path as certbot (`./certbot/www:/var/www/certbot`).
 - You are running commands from `chatappBE` (project-root path mismatches cause wrong bind mounts).
 - DNS for both domains points to the same VPS public IP.
 - Port 80 is reachable from internet.
+- Port listeners on `:80/:443` are owned by the expected edge runtime (`docker-proxy` in this deployment model).
 
 ### 2.6 Missing-variable failure behavior
 - If required env variables are missing, compose startup or service boot will fail.
@@ -234,11 +239,30 @@ Expected: coherent CORS headers, no duplicated `Access-Control-Allow-Origin` val
 ```bash
 mkdir -p certbot/www/.well-known/acme-challenge
 echo "probe" > certbot/www/.well-known/acme-challenge/probe
+curl -i -H "Host: chatweb.nani.id.vn" http://127.0.0.1/.well-known/acme-challenge/probe
+curl -i -H "Host: api.chatweb.nani.id.vn" http://127.0.0.1/.well-known/acme-challenge/probe
 curl -i http://chatweb.nani.id.vn/.well-known/acme-challenge/probe
 curl -i http://api.chatweb.nani.id.vn/.well-known/acme-challenge/probe
 rm -f certbot/www/.well-known/acme-challenge/probe
 ```
-Expected: HTTP 200 with body `probe`.
+Expected: all four checks return HTTP 200 with body `probe`.
+
+7. Confirm listener ownership and edge port mapping:
+```bash
+ss -ltnp '( sport = :80 or sport = :443 )'
+docker ps --filter name=chatapp-nginx --format "table {{.Names}}\t{{.Ports}}"
+```
+
+### 5.1.1 ACME 404 remediation matrix
+- Symptom: local Host-header check fails and public check fails
+  - Likely cause: traffic on host is not reaching intended edge responder
+  - Action: resolve host-level ingress ownership conflict on `:80/:443`, then re-run preflight
+- Symptom: local Host-header check passes but public check fails
+  - Likely cause: DNS/CDN/proxy sends traffic to different upstream
+  - Action: fix DNS target and disable/bypass CDN proxying during issuance, then retry
+- Symptom: local and public checks pass but certbot still fails
+  - Likely cause: certbot webroot mount/path mismatch or stale runtime path
+  - Action: verify `./certbot/www:/var/www/certbot` mount in running containers and re-run issuance
 
 ### 5.2 Ordered rollback actions
 1. Restore previous git revision for deployment files.
@@ -251,6 +275,7 @@ cp .env.production.backup .env.production
 docker compose --env-file .env.production -f docker-compose.yml up -d --build
 ```
 4. Re-run the deterministic verification checks from section 4.
+5. Re-run ACME preflight checks in section 2.5.1 before issuing certificates again.
 
 ---
 
@@ -289,3 +314,20 @@ If dry-run fails:
 docker compose --env-file .env.production -f docker-compose.yml up -d --build nginx certbot-renew
 ```
 4. Re-run ACME preflight probe and retry dry-run only after HTTP challenge URL is reachable.
+
+### 6.3 Deterministic post-fix validation before rerunning one-command deploy
+```bash
+mkdir -p certbot/www/.well-known/acme-challenge
+echo "postfix-ok" > certbot/www/.well-known/acme-challenge/postfix-token
+curl -fsS -H "Host: chatweb.nani.id.vn" http://127.0.0.1/.well-known/acme-challenge/postfix-token
+curl -fsS -H "Host: api.chatweb.nani.id.vn" http://127.0.0.1/.well-known/acme-challenge/postfix-token
+curl -fsS http://chatweb.nani.id.vn/.well-known/acme-challenge/postfix-token
+curl -fsS http://api.chatweb.nani.id.vn/.well-known/acme-challenge/postfix-token
+ss -ltnp '( sport = :80 or sport = :443 )'
+docker ps --filter name=chatapp-nginx --format "table {{.Names}}\t{{.Ports}}"
+rm -f certbot/www/.well-known/acme-challenge/postfix-token
+```
+Expected:
+- all local Host-header and public-domain checks return `postfix-ok`
+- listeners on `:80/:443` match expected edge ownership
+- chatapp-nginx publishes both `80:80` and `443:443`
