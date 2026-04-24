@@ -165,6 +165,10 @@ fi
 echo "### Starting full production stack"
 "${COMPOSE[@]}" up -d --build
 
+echo "### Verifying CORS env and preflight contract"
+chmod +x scripts/verify-cors-contract.sh
+ENV_FILE=.env.production COMPOSE_FILE=docker-compose.yml ./scripts/verify-cors-contract.sh
+
 echo "### Basic post-deploy checks"
 "${COMPOSE[@]}" ps
 for domain in "${DOMAINS[@]}"; do

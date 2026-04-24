@@ -69,4 +69,27 @@ class GatewayCorsIntegrationTest {
         assertThat(corsConfiguration.getAllowedOrigins())
                 .containsExactly("http://localhost:5173", "http://localhost:5174");
     }
+
+    @Test
+    void preflight_allowsProductionFrontendOrigin() {
+        GatewayConfig config = new GatewayConfig();
+        ReflectionTestUtils.setField(
+                config,
+                "allowedOriginsRaw",
+                "https://chatweb.nani.id.vn,https://api.chatweb.nani.id.vn"
+        );
+
+        CorsConfigurationSource source = config.corsConfigurationSource();
+        CorsConfiguration corsConfiguration = source.getCorsConfiguration(MockServerWebExchange.from(
+                MockServerHttpRequest.options("/api/v1/users/me")
+                        .header(HttpHeaders.ORIGIN, "https://chatweb.nani.id.vn")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET")
+                        .build()
+        ));
+
+        assertThat(corsConfiguration).isNotNull();
+        assertThat(corsConfiguration.checkOrigin("https://chatweb.nani.id.vn"))
+                .isEqualTo("https://chatweb.nani.id.vn");
+        assertThat(corsConfiguration.checkHttpMethod(HttpMethod.GET)).contains(HttpMethod.GET);
+    }
 }

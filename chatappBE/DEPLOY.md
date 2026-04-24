@@ -101,6 +101,22 @@ Complete all items before the one-command startup.
 Migration note:
 - Existing deployments using shared Postgres admin-style DB aliases must migrate to canonical service-scoped DB keys before rollout.
 
+### 2.4.2 CORS env parity contract (all backend services)
+- [ ] `CORS_ALLOWED_ORIGINS` is set in `chatappBE/.env.production` with production domains only (no localhost)
+- [ ] The following services all receive the same runtime CORS value:
+  - `auth-service`, `user-service`, `chat-service`, `presence-service`, `friendship-service`, `notification-service`, `upload-service`, `gateway-service`
+
+Runtime parity check:
+```bash
+cd chatappBE
+chmod +x scripts/verify-cors-contract.sh
+ENV_FILE=.env.production COMPOSE_FILE=docker-compose.yml ./scripts/verify-cors-contract.sh
+```
+Expected:
+- service-by-service runtime CORS env values all match `CORS_ALLOWED_ORIGINS`
+- preflight checks pass for each configured origin
+- an evidence log is written to `chatappBE/build/cors-verification-*.log`
+
 ### 2.5 TLS certificates (first deploy only)
 ```bash
 cd chatappBE
@@ -225,6 +241,17 @@ curl -sI -X OPTIONS https://api.chatweb.nani.id.vn/api/v1/auth/login \
 ```
 Expected: coherent CORS headers, no duplicated `Access-Control-Allow-Origin` value.
 
+### 4.6 CORS contract end-to-end check (recommended)
+```bash
+cd chatappBE
+ENV_FILE=.env.production COMPOSE_FILE=docker-compose.yml ./scripts/verify-cors-contract.sh
+```
+Expected:
+- runtime `CORS_ALLOWED_ORIGINS` parity across all CORS-enforcing backend services
+- successful preflight for all configured origins
+- auth login endpoint reachable (non-5xx)
+- evidence file generated under `build/`
+
 ---
 
 ## 5. Failure Triage and Rollback
@@ -253,6 +280,14 @@ ss -ltnp '( sport = :80 or sport = :443 )'
 docker ps --filter name=chatapp-nginx --format "table {{.Names}}\t{{.Ports}}"
 ```
 
+8. If browser reports `Invalid CORS request`, run contract verifier and inspect evidence:
+```bash
+cd chatappBE
+ENV_FILE=.env.production COMPOSE_FILE=docker-compose.yml ./scripts/verify-cors-contract.sh
+ls -1t build/cors-verification-*.log | head -1
+```
+If this fails, fix the reported service-level missing/mismatched env values and recreate affected services.
+
 ### 5.1.1 ACME 404 remediation matrix
 - Symptom: local Host-header check fails and public check fails
   - Likely cause: traffic on host is not reaching intended edge responder
@@ -276,6 +311,20 @@ docker compose --env-file .env.production -f docker-compose.yml up -d --build
 ```
 4. Re-run the deterministic verification checks from section 4.
 5. Re-run ACME preflight checks in section 2.5.1 before issuing certificates again.
+
+### 5.3 CORS-specific rollback path
+Use this when a deploy introduces cross-service CORS mismatch:
+1. Restore previous `chatappBE/docker-compose.yml` and previous `.env.production` snapshot.
+2. Recreate CORS-enforcing services:
+```bash
+docker compose --env-file .env.production -f docker-compose.yml up -d --force-recreate \
+  auth-service user-service chat-service presence-service friendship-service notification-service upload-service gateway-service
+```
+3. Re-run CORS verifier:
+```bash
+ENV_FILE=.env.production COMPOSE_FILE=docker-compose.yml ./scripts/verify-cors-contract.sh
+```
+4. Confirm browser login flow no longer shows CORS errors.
 
 ---
 

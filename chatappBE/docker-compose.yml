@@ -157,6 +157,7 @@ services:
       KAFKA_SERVERS: kafka:9092
       USER_SERVICE_BASE_URL: http://user-service:8082/api/v1/users
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM: ${RESEND_FROM:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}

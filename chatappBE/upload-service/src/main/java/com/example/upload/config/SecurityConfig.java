@@ -14,7 +14,6 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -64,10 +63,12 @@ public class SecurityConfig {
 
         if (Objects.nonNull(cors)) {
             if (Objects.nonNull(cors.getAllowedOrigins())) {
-                List<String> origins = new ArrayList<>();
-                for (String allowedOrigin : cors.getAllowedOrigins()) {
-                    origins.addAll(Arrays.asList(allowedOrigin.split("\\s*,\\s*")));
-                }
+                List<String> origins = cors.getAllowedOrigins().stream()
+                        .filter(Objects::nonNull)
+                        .flatMap(allowedOrigin -> Arrays.stream(allowedOrigin.split("\\s*,\\s*")))
+                        .map(String::trim)
+                        .filter(origin -> !origin.isBlank())
+                        .toList();
                 configuration.setAllowedOrigins(origins);
             }
 
