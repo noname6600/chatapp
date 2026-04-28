@@ -48,6 +48,8 @@ public class CheckBlockedPairStep
         try {
             var response = friendshipClient.getStatus(otherId);
             String status = response != null ? response.getData() : null;
+
+            // Allow send for all statuses except explicit BLOCKED.
             if ("BLOCKED".equals(status)) {
                 throw new BusinessException(
                         ErrorCode.BLOCKED_SEND,
@@ -58,7 +60,7 @@ public class CheckBlockedPairStep
             throw e;
         } catch (Exception e) {
             // Fail closed so private-room sends cannot bypass blocked-pair protection.
-            log.warn("[CheckBlockedPairStep] Could not check block status for roomId={}, otherId={}: {}",
+                log.warn("[CheckBlockedPairStep] Could not check block status for roomId={}, otherId={}: {}",
                     roomId, otherId, e.getMessage());
             throw new BusinessException(
                     ErrorCode.BLOCKED_SEND,

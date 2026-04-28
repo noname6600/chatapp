@@ -28,6 +28,9 @@ public class ChatSessionRegistry
     private final Map<String, UUID> sessionUsers =
             new ConcurrentHashMap<>();
 
+    private final Map<UUID, Set<String>> userSessions =
+            new ConcurrentHashMap<>();
+
     private final Map<UUID, Set<String>> roomSessions =
             new ConcurrentHashMap<>();
 
@@ -46,6 +49,11 @@ public class ChatSessionRegistry
 
         sessions.put(sessionId, session);
         sessionUsers.put(sessionId, userId);
+        if (userId != null) {
+            userSessions
+                .computeIfAbsent(userId, k -> ConcurrentHashMap.newKeySet())
+                .add(sessionId);
+        }
 
         log.info("[CHAT] CONNECT user={} session={}", userId, sessionId);
     }
@@ -56,7 +64,17 @@ public class ChatSessionRegistry
         String sessionId = session.getId();
 
         sessions.remove(sessionId);
-        sessionUsers.remove(sessionId);
+        UUID userId = sessionUsers.remove(sessionId);
+
+        if (userId != null) {
+            Set<String> userSet = userSessions.get(userId);
+            if (userSet != null) {
+                userSet.remove(sessionId);
+                if (userSet.isEmpty()) {
+                    userSessions.remove(userId);
+                }
+            }
+        }
 
         Set<UUID> rooms = sessionRooms.remove(sessionId);
 
@@ -128,6 +146,20 @@ public class ChatSessionRegistry
     public Collection<WebSocketSession> getRoomSessions(UUID roomId) {
 
         Set<String> ids = roomSessions.get(roomId);
+
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+
+        return ids.stream()
+                .map(sessions::get)
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
+    public Collection<WebSocketSession> getUserSessions(UUID userId) {
+
+        Set<String> ids = userSessions.get(userId);
 
         if (ids == null || ids.isEmpty()) {
             return List.of();

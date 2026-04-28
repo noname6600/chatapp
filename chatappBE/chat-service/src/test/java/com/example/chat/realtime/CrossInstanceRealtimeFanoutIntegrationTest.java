@@ -15,6 +15,7 @@ import com.example.common.integration.websocket.WsEvent;
 import com.example.common.redis.api.IRedisPublisher;
 import com.example.common.redis.message.RedisMessage;
 import com.example.common.websocket.session.IRoomBroadcaster;
+import com.example.common.websocket.session.IUserBroadcaster;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -42,6 +43,12 @@ class CrossInstanceRealtimeFanoutIntegrationTest {
 
     @Mock
     private IRoomBroadcaster instanceBBroadcaster;
+
+        @Mock
+        private IUserBroadcaster instanceAUserBroadcaster;
+
+        @Mock
+        private IUserBroadcaster instanceBUserBroadcaster;
 
     private ChatRedisPublisher chatRedisPublisher;
 
@@ -190,8 +197,10 @@ class CrossInstanceRealtimeFanoutIntegrationTest {
     ) {
         RedisMessage<ChatMessagePayload> publishedMessage = capturePublishedMessageSent(payload);
 
-        ChatMessageSentRedisSubscriber instanceASubscriber = new ChatMessageSentRedisSubscriber(instanceABroadcaster);
-        ChatMessageSentRedisSubscriber instanceBSubscriber = new ChatMessageSentRedisSubscriber(instanceBBroadcaster);
+        ChatMessageSentRedisSubscriber instanceASubscriber =
+                new ChatMessageSentRedisSubscriber(instanceABroadcaster, instanceAUserBroadcaster);
+        ChatMessageSentRedisSubscriber instanceBSubscriber =
+                new ChatMessageSentRedisSubscriber(instanceBBroadcaster, instanceBUserBroadcaster);
 
         instanceASubscriber.onMessage(publishedMessage);
         instanceBSubscriber.onMessage(publishedMessage);
@@ -199,7 +208,13 @@ class CrossInstanceRealtimeFanoutIntegrationTest {
         assertMessageSentDelivered(instanceABroadcaster, roomId, expectedType, expectedForwardedFromMessageId, expectedSystemEventType, expectedActorUserId, expectedTargetMessageId);
         assertMessageSentDelivered(instanceBBroadcaster, roomId, expectedType, expectedForwardedFromMessageId, expectedSystemEventType, expectedActorUserId, expectedTargetMessageId);
 
-        clearInvocations(instanceABroadcaster, instanceBBroadcaster, redisPublisher);
+        clearInvocations(
+                instanceABroadcaster,
+                instanceBBroadcaster,
+                instanceAUserBroadcaster,
+                instanceBUserBroadcaster,
+                redisPublisher
+        );
     }
 
     private RedisMessage<ChatMessagePayload> capturePublishedMessageSent(ChatMessagePayload payload) {

@@ -94,6 +94,25 @@ class CheckBlockedPairStepTest {
     }
 
     @Test
+        void execute_allowsSend_whenStatusIsNone() {
+        when(roomRepository.findById(roomId)).thenReturn(Optional.of(
+                Room.builder().id(roomId).type(RoomType.PRIVATE).build()
+        ));
+        PrivateRoom privateRoom = PrivateRoom.builder()
+                .id(UUID.randomUUID())
+                .roomId(roomId)
+                .user1Id(senderId)
+                .user2Id(otherId)
+                .build();
+        when(privateRoomRepository.findByRoomId(roomId)).thenReturn(Optional.of(privateRoom));
+
+        ApiResponse<String> response = ApiResponse.success("NONE");
+        when(friendshipClient.getStatus(otherId)).thenReturn(response);
+
+        assertThatCode(() -> step.execute(context)).doesNotThrowAnyException();
+    }
+
+    @Test
     void execute_allowsSend_whenStatusIsFriends() {
         when(roomRepository.findById(roomId)).thenReturn(Optional.of(
                 Room.builder().id(roomId).type(RoomType.PRIVATE).build()
