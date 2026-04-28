@@ -1,7 +1,7 @@
 services:
   # Infrastructure
   auth-db:
-    image: postgres:18-alpine
+    image: postgres:17-alpine
     container_name: chatapp-auth-db
     environment:
       POSTGRES_DB: ${AUTH_DATABASE_NAME:-auth_service}
@@ -22,7 +22,7 @@ services:
       retries: 5
 
   user-db:
-    image: postgres:18-alpine
+    image: postgres:17-alpine
     container_name: chatapp-user-db
     environment:
       POSTGRES_DB: ${USER_DATABASE_NAME:-user_service}
@@ -43,7 +43,7 @@ services:
       retries: 5
 
   chat-db:
-    image: postgres:18-alpine
+    image: postgres:17-alpine
     container_name: chatapp-chat-db
     environment:
       POSTGRES_DB: ${CHAT_DATABASE_NAME:-chat_service}
@@ -64,7 +64,7 @@ services:
       retries: 5
 
   friendship-db:
-    image: postgres:18-alpine
+    image: postgres:17-alpine
     container_name: chatapp-friendship-db
     environment:
       POSTGRES_DB: ${FRIENDSHIP_DATABASE_NAME:-friendship_service}
@@ -85,7 +85,7 @@ services:
       retries: 5
 
   notification-db:
-    image: postgres:18-alpine
+    image: postgres:17-alpine
     container_name: chatapp-notification-db
     environment:
       POSTGRES_DB: ${NOTIFICATION_DATABASE_NAME:-notification_service}
