@@ -162,6 +162,7 @@ services:
       RESEND_FROM: ${RESEND_FROM:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      OAUTH2_REDIRECT_BASE_URL: ${OAUTH2_REDIRECT_BASE_URL:-http://localhost:8080}
     networks:
       - chatapp-net
     restart: unless-stopped
