@@ -3,10 +3,12 @@ package com.example.auth.service.impl;
 import com.example.auth.entity.Account;
 import com.example.auth.entity.IdentityProvider;
 import com.example.auth.enums.AuthProvider;
+import com.example.auth.kafka.AccountCreatedEventProducer;
 import com.example.auth.repository.AccountRepository;
 import com.example.auth.service.IIdentityProviderService;
 import com.example.auth.service.IOAuthService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,6 +17,7 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @Transactional
 @RequiredArgsConstructor
@@ -22,6 +25,7 @@ public class OAuthAuthService implements IOAuthService {
 
     private final AccountRepository accountRepo;
     private final IIdentityProviderService idpService;
+    private final AccountCreatedEventProducer accountCreatedEventProducer;
 
     @Override
     public UUID loginGoogle(String googleSub, String email) {
@@ -46,19 +50,23 @@ public class OAuthAuthService implements IOAuthService {
     private IdentityProvider linkGoogleAccount(String sub, String email) {
 
         Account account;
+        boolean isNewAccount = false;
 
         try {
-            account = accountRepo.findByEmail(email)
-                    .orElseGet(() ->
-                            accountRepo.save(
-                                    Account.builder()
-                                            .email(email)
-                                            .enabled(true)
-                                            .emailVerified(true) // Google-verified emails are trusted
-                                            .createdAt(Instant.now())
-                                            .build()
-                            )
-                    );
+            Optional<Account> existing = accountRepo.findByEmail(email);
+            if (existing.isPresent()) {
+                account = existing.get();
+            } else {
+                account = accountRepo.save(
+                        Account.builder()
+                                .email(email)
+                                .enabled(true)
+                                .emailVerified(true)
+                                .createdAt(Instant.now())
+                                .build()
+                );
+                isNewAccount = true;
+            }
 
         } catch (DataIntegrityViolationException ex) {
             account = accountRepo.findByEmail(email)
@@ -75,11 +83,21 @@ public class OAuthAuthService implements IOAuthService {
             accountRepo.save(account);
         }
 
-        return idpService.linkIfAbsent(
+        IdentityProvider linked = idpService.linkIfAbsent(
                 account.getId(),
                 AuthProvider.GOOGLE,
                 sub
         );
+
+        if (isNewAccount) {
+            boolean published = accountCreatedEventProducer.publish(account);
+            if (!published) {
+                log.warn("oauth_registration_incomplete reason=account_created_event_not_published accountId={} email={}",
+                        account.getId(), email);
+            }
+        }
+
+        return linked;
     }
 }
 
