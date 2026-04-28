@@ -12,16 +12,19 @@ import ResetPasswordPage from "../pages/ResetPasswordPage";
 import VerifyEmailPage from "../pages/VerifyEmailPage";
 import GoogleOAuthCallbackPage from "../pages/GoogleOAuthCallbackPage";
 import RoomMemberManagementPage from "../pages/RoomMemberManagementPage";
+import PublicOnlyRoute from "./PublicOnlyRoute";
 
 
 const AppRoutes: React.FC = () => {
   return (
     <Routes>
       {/* Public */}
-      <Route path="/login" element={<AuthPage />} />
-      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-      <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
-      <Route path="/auth/verify-email" element={<VerifyEmailPage />} />
+      <Route element={<PublicOnlyRoute />}>
+        <Route path="/login" element={<AuthPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/auth/verify-email" element={<VerifyEmailPage />} />
+      </Route>
       <Route path="/auth/oauth/google/callback" element={<GoogleOAuthCallbackPage />} />
 
       {/* Private */}

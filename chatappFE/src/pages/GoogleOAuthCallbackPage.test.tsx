@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
 
 import GoogleOAuthCallbackPage from "./GoogleOAuthCallbackPage"
@@ -12,6 +12,7 @@ const authServiceMocks = vi.hoisted(() => ({
 
 const loginMock = vi.hoisted(() => vi.fn())
 const navigateMock = vi.hoisted(() => vi.fn())
+const accessTokenMock = vi.hoisted(() => ({ value: null as string | null }))
 
 vi.mock("../api/auth.service", () => ({
   exchangeGoogleOAuthCodeApi: authServiceMocks.exchangeGoogleOAuthCodeApi,
@@ -20,6 +21,7 @@ vi.mock("../api/auth.service", () => ({
 vi.mock("../hooks/useAuth", () => ({
   useAuth: () => ({
     login: loginMock,
+    accessToken: accessTokenMock.value,
   }),
 }))
 
@@ -41,6 +43,8 @@ const renderPage = (initialEntry: string) =>
 describe("GoogleOAuthCallbackPage", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    accessTokenMock.value = null
+    sessionStorage.clear()
   })
 
   afterEach(() => {
@@ -95,5 +99,52 @@ describe("GoogleOAuthCallbackPage", () => {
       expect(screen.getByText("Google login failed. Please try again.")).toBeTruthy()
     })
     expect(authServiceMocks.exchangeGoogleOAuthCodeApi).not.toHaveBeenCalled()
+  })
+
+  it("supports retry after failed exchange", async () => {
+    authServiceMocks.exchangeGoogleOAuthCodeApi
+      .mockRejectedValueOnce(new Error("OAuth login code is invalid or expired"))
+      .mockResolvedValueOnce({
+        accessToken: "new-access-token",
+        refreshToken: "new-refresh-token",
+      })
+    loginMock.mockResolvedValue(undefined)
+
+    renderPage("/auth/oauth/google/callback?code=retry-code")
+
+    await waitFor(() => {
+      expect(screen.getByText("OAuth login code is invalid or expired")).toBeTruthy()
+    })
+
+    fireEvent.click(screen.getByText("Retry Google Login"))
+
+    await waitFor(() => {
+      expect(authServiceMocks.exchangeGoogleOAuthCodeApi).toHaveBeenCalledTimes(2)
+    })
+    expect(loginMock).toHaveBeenCalledWith("new-access-token", "new-refresh-token")
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith("/chat", { replace: true })
+    })
+  })
+
+  it("shows already-used message when callback code was previously processed", async () => {
+    sessionStorage.setItem("oauth_google_processed:used-once", "1")
+
+    renderPage("/auth/oauth/google/callback?code=used-once")
+
+    await waitFor(() => {
+      expect(screen.getByText("OAuth code was already used. Please try login again.")).toBeTruthy()
+    })
+    expect(authServiceMocks.exchangeGoogleOAuthCodeApi).not.toHaveBeenCalled()
+  })
+
+  it("redirects straight to chat when already authenticated", async () => {
+    accessTokenMock.value = "existing-token"
+
+    renderPage("/auth/oauth/google/callback?code=any")
+
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith("/chat", { replace: true })
+    })
   })
 })
