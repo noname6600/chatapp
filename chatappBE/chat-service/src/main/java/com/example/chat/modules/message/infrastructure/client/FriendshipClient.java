@@ -4,7 +4,7 @@ import com.example.chat.config.FeignConfig;
 import com.example.common.web.response.ApiResponse;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.UUID;
 
@@ -15,6 +15,9 @@ import java.util.UUID;
 )
 public interface FriendshipClient {
 
-    @GetMapping("/api/v1/friends/status/{userId}")
-    ApiResponse<String> getStatus(@PathVariable UUID userId);
+    @GetMapping("/api/v1/internal/friends/blocked-between")
+    ApiResponse<Boolean> isBlockedBetween(
+            @RequestParam UUID user1,
+            @RequestParam UUID user2
+    );
 }

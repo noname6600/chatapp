@@ -62,6 +62,10 @@ public class FriendQueryService implements IFriendQueryService {
                 .orElse(null);
     }
 
+    public boolean existsBlockBetween(UUID user1, UUID user2) {
+        return repository.existsBlockBetween(user1, user2);
+    }
+
     public long getUnreadFriendRequestCount(UUID userId) {
         return repository.countUnreadFriendRequests(userId);
     }

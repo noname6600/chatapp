@@ -46,11 +46,10 @@ public class CheckBlockedPairStep
                 : privateRoom.getUser1Id();
 
         try {
-            var response = friendshipClient.getStatus(otherId);
-            String status = response != null ? response.getData() : null;
+            var response = friendshipClient.isBlockedBetween(senderId, otherId);
+            Boolean blocked = response != null ? response.getData() : null;
 
-            // Allow send for all statuses except explicit BLOCKED.
-            if ("BLOCKED".equals(status)) {
+            if (Boolean.TRUE.equals(blocked)) {
                 throw new BusinessException(
                         ErrorCode.BLOCKED_SEND,
                         "You cannot send messages to this user."

@@ -84,8 +84,8 @@ class CheckBlockedPairStepTest {
                 .build();
         when(privateRoomRepository.findByRoomId(roomId)).thenReturn(Optional.of(privateRoom));
 
-        ApiResponse<String> response = ApiResponse.success("BLOCKED");
-        when(friendshipClient.getStatus(otherId)).thenReturn(response);
+        ApiResponse<Boolean> response = ApiResponse.success(true);
+        when(friendshipClient.isBlockedBetween(senderId, otherId)).thenReturn(response);
 
         assertThatThrownBy(() -> step.execute(context))
                 .isInstanceOf(BusinessException.class)
@@ -106,8 +106,8 @@ class CheckBlockedPairStepTest {
                 .build();
         when(privateRoomRepository.findByRoomId(roomId)).thenReturn(Optional.of(privateRoom));
 
-        ApiResponse<String> response = ApiResponse.success("NONE");
-        when(friendshipClient.getStatus(otherId)).thenReturn(response);
+        ApiResponse<Boolean> response = ApiResponse.success(false);
+        when(friendshipClient.isBlockedBetween(senderId, otherId)).thenReturn(response);
 
         assertThatCode(() -> step.execute(context)).doesNotThrowAnyException();
     }
@@ -125,8 +125,8 @@ class CheckBlockedPairStepTest {
                 .build();
         when(privateRoomRepository.findByRoomId(roomId)).thenReturn(Optional.of(privateRoom));
 
-        ApiResponse<String> response = ApiResponse.success("FRIENDS");
-        when(friendshipClient.getStatus(otherId)).thenReturn(response);
+        ApiResponse<Boolean> response = ApiResponse.success(false);
+        when(friendshipClient.isBlockedBetween(senderId, otherId)).thenReturn(response);
 
         assertThatCode(() -> step.execute(context)).doesNotThrowAnyException();
     }
@@ -143,7 +143,7 @@ class CheckBlockedPairStepTest {
                 .user2Id(senderId)
                 .build();
         when(privateRoomRepository.findByRoomId(roomId)).thenReturn(Optional.of(privateRoom));
-        when(friendshipClient.getStatus(otherId)).thenThrow(new RuntimeException("service unavailable"));
+        when(friendshipClient.isBlockedBetween(senderId, otherId)).thenThrow(new RuntimeException("service unavailable"));
 
         assertThatThrownBy(() -> step.execute(context))
                 .isInstanceOf(BusinessException.class)
@@ -163,9 +163,9 @@ class CheckBlockedPairStepTest {
                 .user2Id(otherId)
                 .build();
         when(privateRoomRepository.findByRoomId(roomId)).thenReturn(Optional.of(privateRoom));
-        when(friendshipClient.getStatus(otherId))
-                .thenReturn(ApiResponse.success("FRIENDS"))
-                .thenReturn(ApiResponse.success("BLOCKED"));
+        when(friendshipClient.isBlockedBetween(senderId, otherId))
+                .thenReturn(ApiResponse.success(false))
+                .thenReturn(ApiResponse.success(true));
 
         assertThatCode(() -> step.execute(context)).doesNotThrowAnyException();
         assertThatThrownBy(() -> step.execute(context))
@@ -173,6 +173,6 @@ class CheckBlockedPairStepTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.BLOCKED_SEND);
 
-        verify(friendshipClient, times(2)).getStatus(otherId);
+                verify(friendshipClient, times(2)).isBlockedBetween(senderId, otherId);
     }
 }

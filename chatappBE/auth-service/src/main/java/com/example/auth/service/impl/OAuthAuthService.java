@@ -7,6 +7,8 @@ import com.example.auth.kafka.AccountCreatedEventProducer;
 import com.example.auth.repository.AccountRepository;
 import com.example.auth.service.IIdentityProviderService;
 import com.example.auth.service.IOAuthService;
+import com.example.common.web.exception.BusinessException;
+import com.example.common.web.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -14,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -50,7 +53,6 @@ public class OAuthAuthService implements IOAuthService {
     private IdentityProvider linkGoogleAccount(String sub, String email) {
 
         Account account;
-        boolean isNewAccount = false;
 
         try {
             Optional<Account> existing = accountRepo.findByEmail(email);
@@ -65,7 +67,6 @@ public class OAuthAuthService implements IOAuthService {
                                 .createdAt(Instant.now())
                                 .build()
                 );
-                isNewAccount = true;
             }
 
         } catch (DataIntegrityViolationException ex) {
@@ -89,15 +90,22 @@ public class OAuthAuthService implements IOAuthService {
                 sub
         );
 
-        if (isNewAccount) {
-            boolean published = accountCreatedEventProducer.publish(account);
-            if (!published) {
-                log.warn("oauth_registration_incomplete reason=account_created_event_not_published accountId={} email={}",
-                        account.getId(), email);
-            }
+        boolean published = accountCreatedEventProducer.publish(account);
+        if (!published) {
+            log.warn("oauth_registration_incomplete reason=account_created_event_not_published accountId={} email={}",
+                    account.getId(), email);
+            throw incompleteAccountException();
         }
 
         return linked;
+    }
+
+    private BusinessException incompleteAccountException() {
+        return new BusinessException(
+                ErrorCode.INCOMPLETE_ACCOUNT,
+                "Account setup incomplete. Please try again in a few seconds.",
+                Map.of("authCode", "incomplete_account")
+        );
     }
 }
 
