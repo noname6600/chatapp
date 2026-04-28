@@ -86,7 +86,7 @@ services:
   user:
     url: ${SERVICES_USER_URL:http://localhost:8082}
   friendship:
-    url: ${SERVICES_FRIENDSHIP_URL:http://localhost:8083}
+    url: ${SERVICES_FRIENDSHIP_URL:http://localhost:8085}
 
 logging:
   pattern:

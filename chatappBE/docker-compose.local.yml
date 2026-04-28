@@ -226,6 +226,7 @@ services:
       SPRING_DATA_REDIS_PORT: 6379
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
       SERVICES_USER_URL: http://user-service:8082
+      SERVICES_FRIENDSHIP_URL: http://friendship-service:8085
     networks:
       - chatapp-net
 
