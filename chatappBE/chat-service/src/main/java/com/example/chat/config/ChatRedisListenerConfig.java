@@ -6,6 +6,7 @@ import com.example.common.redis.listener.DefaultRedisMessageListener;
 import com.example.common.redis.observability.IRedisPubSubLogger;
 import com.example.common.redis.serialization.IRedisMessageSerializer;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
@@ -21,6 +22,11 @@ public class ChatRedisListenerConfig {
     private final IRedisPubSubLogger logger;
 
     @Bean
+    @ConditionalOnProperty(
+            value = "chat.redis.listener.enabled",
+            havingValue = "true",
+            matchIfMissing = true
+    )
     public RedisMessageListenerContainer redisMessageListenerContainer(
             RedisConnectionFactory factory
     ) {

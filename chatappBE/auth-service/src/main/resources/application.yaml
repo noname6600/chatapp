@@ -1,5 +1,6 @@
 server:
   port: ${PORT:8081}
+  forward-headers-strategy: framework
 
 spring:
   application:
@@ -32,30 +33,33 @@ spring:
         jdbc:
           time_zone: UTC
 
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            scope: email,profile
+        provider:
+          google:
+            authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
+            token-uri: https://oauth2.googleapis.com/token
+            user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
+            user-name-attribute: email
+
 resend:
   api-key: ${RESEND_API_KEY}
   from: ${RESEND_FROM}
   base-url: ${RESEND_BASE_URL:https://api.resend.com}
 
-security:
-  oauth2:
-    client:
-      registration:
-        google:
-          client-id: ${GOOGLE_CLIENT_ID}
-          client-secret: ${GOOGLE_CLIENT_SECRET}
-          scope: email,profile
-      provider:
-        google:
-          authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
-          token-uri: https://oauth2.googleapis.com/token
-          user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
-          user-name-attribute: email
-
 auth:
   jwt:
     access-token-expiration-ms: 900000
     refresh-token-expiration-ms: 2592000000
+
+  oauth:
+    exchange-expiration-ms: ${AUTH_OAUTH_EXCHANGE_EXPIRATION_MS:120000}
 
   signing-key:
     algorithm: RSA
@@ -65,6 +69,7 @@ auth:
 
 app:
   frontend:
+    base-url: ${FRONTEND_URL:http://localhost:5173}
     reset-password-url: ${FRONTEND_URL:http://localhost:5173}
 
 user-service:

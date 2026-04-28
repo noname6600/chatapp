@@ -42,6 +42,18 @@ export const registerApi = async (
   }
 }
 
+export const exchangeGoogleOAuthCodeApi = async (code: string): Promise<TokenPair> => {
+  try {
+    const res = await authApi.post<ApiResponse<TokenPair>>(
+      "/oauth/google/exchange",
+      { code }
+    )
+    return unwrap(res)
+  } catch (error) {
+    throw new Error(extractErrorMessage(error))
+  }
+}
+
 export const refreshTokenApi = async (
   refreshToken: string
 ): Promise<TokenPair> => {

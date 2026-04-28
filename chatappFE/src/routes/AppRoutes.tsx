@@ -10,6 +10,8 @@ import ProfileSettingsPage from "../pages/ProfileSettingsPage";
 import ForgotPasswordPage from "../pages/ForgotPasswordPage";
 import ResetPasswordPage from "../pages/ResetPasswordPage";
 import VerifyEmailPage from "../pages/VerifyEmailPage";
+import GoogleOAuthCallbackPage from "../pages/GoogleOAuthCallbackPage";
+import RoomMemberManagementPage from "../pages/RoomMemberManagementPage";
 
 
 const AppRoutes: React.FC = () => {
@@ -20,12 +22,14 @@ const AppRoutes: React.FC = () => {
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
       <Route path="/auth/verify-email" element={<VerifyEmailPage />} />
+      <Route path="/auth/oauth/google/callback" element={<GoogleOAuthCallbackPage />} />
 
       {/* Private */}
       <Route element={<PrivateRoute />}>
         <Route element={<MainLayout />}>
           <Route path="/" element={<Navigate to="/chat" replace />} />
           <Route path="/chat" element={<ChatPageLayout />} />
+          <Route path="/chat/rooms/:roomId/members" element={<RoomMemberManagementPage />} />
           <Route path="/friends" element={<FriendsPage />} />
           <Route path="/settings" element={<ProfileSettingsPage />} />
           <Route path="/me" element={<Navigate to="/settings" replace />} />

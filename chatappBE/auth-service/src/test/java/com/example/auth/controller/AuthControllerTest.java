@@ -2,6 +2,7 @@ package com.example.auth.controller;
 
 import com.example.auth.dto.ChangePasswordRequest;
 import com.example.auth.dto.LoginRequest;
+import com.example.auth.dto.OAuthExchangeRequest;
 import com.example.auth.dto.RegisterRequest;
 import com.example.auth.dto.AuthResponse;
 import com.example.auth.dto.JwtPrincipal;
@@ -94,5 +95,22 @@ class AuthControllerTest {
         assertThat(response.getBody().getData().getAccessToken()).isNotBlank();
         assertThat(response.getBody().getData().getRefreshToken()).isNotBlank();
         verify(authService).register("bob@example.com", "Password1!");
+    }
+
+    @Test
+    void exchangeGoogleOAuthCode_returnsCanonicalTokens() {
+        OAuthExchangeRequest request = new OAuthExchangeRequest();
+        request.setCode("handoff-code");
+
+        when(authService.exchangeGoogleOAuthCode("handoff-code"))
+                .thenReturn(new AuthResponse("access-token", "refresh-token", 900));
+
+        var response = controller.exchangeGoogleOAuthCode(request);
+
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getData()).isNotNull();
+        assertThat(response.getBody().getData().getAccessToken()).isEqualTo("access-token");
+        assertThat(response.getBody().getData().getRefreshToken()).isEqualTo("refresh-token");
+        verify(authService).exchangeGoogleOAuthCode("handoff-code");
     }
 }

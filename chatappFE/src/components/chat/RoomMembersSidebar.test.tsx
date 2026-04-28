@@ -8,6 +8,12 @@ import { setFeatureFlag } from "../../config/featureFlags"
 import { ChatEventType } from "../../constants/chatEvents"
 import type { ChatSocketEvent } from "../../websocket/chat.socket"
 
+const navigateMock = vi.fn()
+
+vi.mock("react-router-dom", () => ({
+  useNavigate: () => navigateMock,
+}))
+
 const presenceState = {
   userStatuses: {
     owner: "ONLINE",
@@ -80,6 +86,7 @@ vi.mock("../../api/room.service", () => ({
     { userId: "away-user", role: "MEMBER" },
     { userId: "offline-user", role: "MEMBER" },
   ]),
+  removeMemberApi: vi.fn(async () => undefined),
 }))
 
 vi.mock("../user/UserAvatar", () => ({
@@ -109,7 +116,9 @@ describe("RoomMembersSidebar", () => {
   beforeEach(() => {
     localStorage.setItem("my_user_id", "owner")
     localStorage.removeItem("feature_flag_enableRoomMemberStatusGrouping")
+    localStorage.removeItem("feature_flag_enableRoomMemberManagementPage")
     setFeatureFlag("enableRoomMemberStatusGrouping", true)
+    setFeatureFlag("enableRoomMemberManagementPage", true)
     presenceState.userStatuses = {
       owner: "ONLINE",
       "online-user": "ONLINE",
@@ -118,6 +127,27 @@ describe("RoomMembersSidebar", () => {
       "new-user": "OFFLINE",
     }
     chatHandlers.length = 0
+    navigateMock.mockReset()
+  })
+
+  it("shows manage button when member management flag is enabled", async () => {
+    setFeatureFlag("enableRoomMemberManagementPage", true)
+
+    render(<RoomMembersSidebar roomId="room-1" />)
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Manage" })).toBeTruthy()
+    })
+  })
+
+  it("hides manage button when member management flag is disabled", async () => {
+    setFeatureFlag("enableRoomMemberManagementPage", false)
+
+    render(<RoomMembersSidebar roomId="room-1" />)
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Manage" })).toBeNull()
+    })
   })
 
   it("renders room members grouped by rich presence status", async () => {

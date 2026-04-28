@@ -7,6 +7,7 @@ export const ChatEventType = {
   REACTION_UPDATED: "chat.reaction.updated",
   MEMBER_JOINED: "chat.room.member.joined",
   MEMBER_LEFT: "chat.room.member.left",
+  MEMBER_REMOVED: "chat.room.member.removed",
 } as const
 
 export type ChatEventTypeValue =

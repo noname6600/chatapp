@@ -24,6 +24,13 @@ export const FEATURE_FLAGS = {
    */
   enableRoomMemberStatusGrouping:
     (import.meta.env.VITE_FEATURE_ROOM_MEMBER_STATUS_GROUPING ?? "true") === "true",
+
+  /**
+   * Enable dedicated room member management page entrypoint
+   * If false, sidebar keeps legacy behavior without Manage button
+   */
+  enableRoomMemberManagementPage:
+    (import.meta.env.VITE_FEATURE_ROOM_MEMBER_MANAGEMENT_PAGE ?? "true") === "true",
 };
 
 /**

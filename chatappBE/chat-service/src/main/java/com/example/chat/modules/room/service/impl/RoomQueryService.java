@@ -1,12 +1,17 @@
 package com.example.chat.modules.room.service.impl;
 
 import com.example.chat.modules.message.infrastructure.cache.CacheNames;
+import com.example.chat.modules.room.dto.PagedBannedMembersResponse;
 import com.example.chat.modules.room.dto.LastMessagePreview;
+import com.example.chat.modules.room.dto.PagedRoomMembersResponse;
 import com.example.chat.modules.room.dto.RoomMemberResponse;
 import com.example.chat.modules.room.dto.RoomResponse;
+import com.example.chat.modules.room.entity.RoomBan;
 import com.example.chat.modules.room.entity.Room;
+import com.example.chat.modules.room.entity.RoomMember;
 import com.example.chat.modules.room.enums.RoomType;
 import com.example.chat.modules.room.repository.RoomMemberRepository;
+import com.example.chat.modules.room.repository.RoomBanRepository;
 import com.example.chat.modules.room.repository.RoomRepository;
 import com.example.chat.modules.room.repository.projection.RoomRow;
 import com.example.chat.modules.room.service.IRoomQueryService;
@@ -14,6 +19,10 @@ import com.example.common.redis.api.ITimeRedisCacheManager;
 import com.example.common.redis.exception.CreateCacheException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +43,7 @@ public class RoomQueryService implements IRoomQueryService {
 
     private final RoomRepository roomRepo;
     private final RoomMemberRepository memberRepo;
+    private final RoomBanRepository roomBanRepository;
     private final ITimeRedisCacheManager cacheManager;
 
     @Override
@@ -90,16 +100,56 @@ public class RoomQueryService implements IRoomQueryService {
     }
 
     @Override
+        public PagedBannedMembersResponse bannedMembersOfRoom(UUID roomId, int page, int size) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(Math.max(1, size), 100);
+        Pageable pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "bannedAt"));
+
+        Page<RoomBan> resultPage = roomBanRepository.findByRoomId(roomId, pageable);
+        List<UUID> userIds = resultPage.getContent().stream()
+            .map(RoomBan::getUserId)
+            .collect(Collectors.toList());
+
+        return PagedBannedMembersResponse.builder()
+            .userIds(userIds)
+            .page(resultPage.getNumber())
+            .size(resultPage.getSize())
+            .shown(userIds.size())
+            .total(resultPage.getTotalElements())
+            .totalPages(resultPage.getTotalPages())
+            .build();
+        }
+
+        @Override
+        public PagedRoomMembersResponse membersOfRoom(UUID roomId, int page, int size, String query) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(Math.max(1, size), 100);
+        Pageable pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.ASC, "joinedAt"));
+
+        String trimmedQuery = query == null ? "" : query.trim();
+        Page<RoomMember> resultPage = trimmedQuery.isEmpty()
+            ? memberRepo.findByRoomId(roomId, pageable)
+            : memberRepo.findByRoomIdAndDisplayNameContainingIgnoreCase(roomId, trimmedQuery, pageable);
+
+        List<RoomMemberResponse> members = resultPage.getContent().stream()
+            .map(this::toRoomMemberResponse)
+            .collect(Collectors.toList());
+
+        return PagedRoomMembersResponse.builder()
+            .members(members)
+            .page(resultPage.getNumber())
+            .size(resultPage.getSize())
+            .shown(members.size())
+            .total(resultPage.getTotalElements())
+            .totalPages(resultPage.getTotalPages())
+            .build();
+        }
+
+        @Override
     public List<RoomMemberResponse> membersOfRoom(UUID roomId) {
-        return memberRepo.findMembersOfRoom(roomId)
+        return memberRepo.findByRoomId(roomId)
                 .stream()
-                .map(m -> RoomMemberResponse.builder()
-                        .userId(m.getUserId())
-                        .name(m.getDisplayName())
-                        .avatarUrl(m.getAvatarUrl())
-                        .role(m.getRole())
-                        .joinedAt(m.getJoinedAt())
-                        .build())
+            .map(this::toRoomMemberResponse)
                 .collect(Collectors.toList());
     }
 
@@ -107,18 +157,12 @@ public class RoomQueryService implements IRoomQueryService {
     public Map<UUID, List<RoomMemberResponse>> membersOfRooms(List<UUID> roomIds) {
         if (roomIds == null || roomIds.isEmpty()) return Map.of();
 
-        return memberRepo.findMembersOfRooms(roomIds)
+        return memberRepo.findByRoomIdIn(roomIds)
                 .stream()
                 .collect(Collectors.groupingBy(
                         m -> m.getRoomId(),
                         Collectors.mapping(
-                                m -> RoomMemberResponse.builder()
-                                        .userId(m.getUserId())
-                                        .name(m.getDisplayName())
-                                        .avatarUrl(m.getAvatarUrl())
-                                        .role(m.getRole())
-                                        .joinedAt(m.getJoinedAt())
-                                        .build(),
+                    this::toRoomMemberResponse,
                                 Collectors.toList()
                         )
                 ));
@@ -187,5 +231,15 @@ public class RoomQueryService implements IRoomQueryService {
 
     private String roomsKey(UUID userId) {
         return "rooms:user:" + userId;
+    }
+
+    private RoomMemberResponse toRoomMemberResponse(RoomMember member) {
+        return RoomMemberResponse.builder()
+                .userId(member.getUserId())
+                .name(member.getDisplayName())
+                .avatarUrl(member.getAvatarUrl())
+                .role(member.getRole())
+                .joinedAt(member.getJoinedAt())
+                .build();
     }
 }

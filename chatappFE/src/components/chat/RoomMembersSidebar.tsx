@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { usePresenceStore } from "../../store/presence.store";
 import { useUserStore } from "../../store/user.store";
-import { getRoomMembers } from "../../api/room.service";
+import { getRoomMembers, removeMemberApi } from "../../api/room.service";
 import { onChatEvent } from "../../websocket/chat.socket";
 import { ChatEventType } from "../../constants/chatEvents";
 
@@ -22,9 +23,13 @@ interface MemberRaw {
 }
 
 export default function RoomMembersSidebar({ roomId }: Props) {
+  const navigate = useNavigate();
   const [membersRaw, setMembersRaw] = useState<MemberRaw[]>([]);
   const [showOffline, setShowOffline] = useState(true);
   const groupingEnabled = isFeatureEnabled("enableRoomMemberStatusGrouping");
+  const memberManagementEnabled = isFeatureEnabled("enableRoomMemberManagementPage");
+
+  const currentUserId = localStorage.getItem("my_user_id");
 
   const userStatusesSnapshot = usePresenceStore((s) => s.userStatuses);
   const usersSnapshot = useUserStore((s) => s.users);
@@ -33,6 +38,18 @@ export default function RoomMembersSidebar({ roomId }: Props) {
   const userStatuses = userStatusesSnapshot ?? {};
 
   const getStatus = (userId: string) => userStatuses[userId] ?? "OFFLINE";
+
+  const isCurrentUserOwner = membersRaw.some(
+    (m) => m.userId === currentUserId && m.role === "OWNER"
+  );
+
+  const handleRemoveMember = async (userId: string) => {
+    try {
+      await removeMemberApi(roomId, userId);
+    } catch {
+      // removal broadcast will handle state update; local optimistic removal on success
+    }
+  };
 
   useEffect(() => {
     if (!roomId) return;
@@ -57,7 +74,10 @@ export default function RoomMembersSidebar({ roomId }: Props) {
           return [...prev, { userId: p.userId, role: p.role }];
         });
         fetchUsers([p.userId]);
-      } else if (event.type === ChatEventType.MEMBER_LEFT) {
+      } else if (
+        event.type === ChatEventType.MEMBER_LEFT ||
+        event.type === ChatEventType.MEMBER_REMOVED
+      ) {
         const p = event.payload;
         if (p.roomId !== roomId) return;
         setMembersRaw((prev) => prev.filter((m) => m.userId !== p.userId));
@@ -93,20 +113,38 @@ export default function RoomMembersSidebar({ roomId }: Props) {
 
   const renderMembers = (list: MemberRaw[]) =>
     list.map((m) => (
-      <MemberRow key={m.userId} {...m} roomId={roomId} status={getStatus(m.userId)} />
+      <MemberRow
+        key={m.userId}
+        {...m}
+        roomId={roomId}
+        status={getStatus(m.userId)}
+        canRemove={isCurrentUserOwner && m.role !== "OWNER"}
+        onRemove={handleRemoveMember}
+      />
     ));
 
   return (
     <div className="h-full flex flex-col bg-white">
       <div className="px-3 py-2.5 border-b flex items-center justify-between gap-2">
         <span className="font-semibold text-sm text-gray-700">Members</span>
-        <button
-          type="button"
-          onClick={() => setShowOffline((prev) => !prev)}
-          className="rounded border border-gray-200 px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-gray-600 hover:bg-gray-50"
-        >
-          {showOffline ? "Hide Offline" : "Show Offline"}
-        </button>
+        <div className="flex items-center gap-1">
+          {memberManagementEnabled && (
+            <button
+              type="button"
+              onClick={() => navigate(`/chat/rooms/${roomId}/members`)}
+              className="rounded border border-gray-200 px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-gray-600 hover:bg-gray-50"
+            >
+              Manage
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowOffline((prev) => !prev)}
+            className="rounded border border-gray-200 px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-gray-600 hover:bg-gray-50"
+          >
+            {showOffline ? "Hide Offline" : "Show Offline"}
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-2 py-3 space-y-4">
@@ -168,17 +206,21 @@ function MemberRow({
   role,
   roomId,
   status,
+  canRemove,
+  onRemove,
 }: {
   userId: string;
   role: string;
   roomId: string;
   status: PresenceStatus;
+  canRemove?: boolean;
+  onRemove?: (userId: string) => void;
 }) {
   const user = useUserStore((s) => s.users[userId]);
   const typing = usePresenceStore((s) => !!s.typingByRoom[roomId]?.[userId]);
 
   return (
-    <div className="flex items-center gap-2 px-1 py-1 rounded-md hover:bg-gray-50 transition-colors">
+    <div className="group flex items-center gap-2 px-1 py-1 rounded-md hover:bg-gray-50 transition-colors">
       <div className="relative flex-shrink-0">
         <UserAvatar userId={userId} avatar={user?.avatarUrl} size={28} status={status} />
       </div>
@@ -194,6 +236,17 @@ function MemberRow({
           {typing && <TypingDots className="ml-1 scale-75 origin-left" />}
         </span>
       </Username>
+
+      {canRemove && onRemove && (
+        <button
+          type="button"
+          onClick={() => onRemove(userId)}
+          className="ml-auto hidden group-hover:flex items-center justify-center w-5 h-5 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"
+          title="Remove member"
+        >
+          ×
+        </button>
+      )}
     </div>
   );
 }

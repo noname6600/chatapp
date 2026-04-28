@@ -41,6 +41,24 @@ export interface RoomMember {
   joinedAt: string
 }
 
+export interface PagedRoomMembers {
+  members: RoomMember[]
+  page: number
+  size: number
+  shown: number
+  total: number
+  totalPages: number
+}
+
+export interface PagedBannedMembers {
+  userIds: string[]
+  page: number
+  size: number
+  shown: number
+  total: number
+  totalPages: number
+}
+
 export interface RoomMemberJoinedPayload {
   roomId: string
   userId: string

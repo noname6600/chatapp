@@ -11,6 +11,7 @@ import java.util.UUID;
 public interface PrivateRoomRepository extends JpaRepository<PrivateRoom, UUID> {
 
     Optional<PrivateRoom> findByUser1IdAndUser2Id(UUID user1Id, UUID user2Id);
+    Optional<PrivateRoom> findByRoomId(UUID roomId);
     boolean existsByRoomIdAndUser1Id(UUID roomId, UUID userId);
 
     boolean existsByRoomIdAndUser2Id(UUID roomId, UUID userId);

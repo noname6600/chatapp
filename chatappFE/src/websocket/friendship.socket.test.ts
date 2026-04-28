@@ -2,11 +2,40 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-import { 
-  handleFriendshipEvent, 
+const mocks = vi.hoisted(() => {
+  const state = {
+    unreadFriendRequestCount: 0,
+    map: {} as Record<string, string>,
+    setStatus(userId: string, status: string) {
+      state.map[userId] = status
+    },
+    incrementUnreadFriendRequestCount() {
+      state.unreadFriendRequestCount += 1
+    },
+    decrementUnreadFriendRequestCount() {
+      state.unreadFriendRequestCount = Math.max(0, state.unreadFriendRequestCount - 1)
+    },
+  }
+
+  return {
+    state,
+    useFriendStore: {
+      getState: () => state,
+      setState: (partial: Partial<typeof state>) => Object.assign(state, partial),
+    },
+  }
+})
+
+vi.mock("../store/friend.store", () => ({
+  useFriendStore: mocks.useFriendStore,
+}))
+
+import {
+  handleFriendshipEvent,
+  onFriendshipEvent,
   processFriendshipEvent,
   FriendshipEventType,
-  type FriendshipWsEvent 
+  type FriendshipWsEvent,
 } from "./friendship.socket"
 import { useFriendStore } from "../store/friend.store"
 
@@ -17,6 +46,8 @@ describe("friendship.socket - Event Handling", () => {
       unreadFriendRequestCount: 0,
       map: {},
     })
+
+    localStorage.setItem("my_user_id", "me")
 
     // Mock console methods to avoid spam
     vi.spyOn(console, "log").mockImplementation(() => {})
@@ -93,6 +124,59 @@ describe("friendship.socket - Event Handling", () => {
         initialCount
       )
     })
+
+    it("maps FRIEND_BLOCKED to BLOCKED_BY_ME when I initiated block", () => {
+      const event: FriendshipWsEvent = {
+        type: FriendshipEventType.FRIEND_STATUS_CHANGED,
+        data: {
+          eventType: "FRIEND_BLOCKED",
+          actionUserId: "me",
+          userLow: "me",
+          userHigh: "other-user",
+          newStatus: "BLOCKED",
+        },
+      }
+
+      processFriendshipEvent(event)
+
+      expect(useFriendStore.getState().map["other-user"]).toBe("BLOCKED_BY_ME")
+    })
+
+    it("maps FRIEND_BLOCKED to BLOCKED_ME when other user initiated block", () => {
+      const event: FriendshipWsEvent = {
+        type: FriendshipEventType.FRIEND_STATUS_CHANGED,
+        data: {
+          eventType: "FRIEND_BLOCKED",
+          actionUserId: "other-user",
+          userLow: "me",
+          userHigh: "other-user",
+          newStatus: "BLOCKED",
+        },
+      }
+
+      processFriendshipEvent(event)
+
+      expect(useFriendStore.getState().map["other-user"]).toBe("BLOCKED_ME")
+    })
+
+    it("maps FRIEND_UNBLOCKED to NONE", () => {
+      useFriendStore.getState().setStatus("other-user", "BLOCKED_BY_ME")
+
+      const event: FriendshipWsEvent = {
+        type: FriendshipEventType.FRIEND_STATUS_CHANGED,
+        data: {
+          eventType: "FRIEND_UNBLOCKED",
+          actionUserId: "me",
+          userLow: "me",
+          userHigh: "other-user",
+          newStatus: "NONE",
+        },
+      }
+
+      processFriendshipEvent(event)
+
+      expect(useFriendStore.getState().map["other-user"]).toBe("NONE")
+    })
   })
 
   describe("handleFriendshipEvent", () => {
@@ -101,6 +185,7 @@ describe("friendship.socket - Event Handling", () => {
         useFriendStore.getState(),
         "incrementUnreadFriendRequestCount"
       )
+      const unsubscribe = onFriendshipEvent(processFriendshipEvent)
 
       const msg = {
         type: FriendshipEventType.FRIEND_REQUEST_RECEIVED,
@@ -110,6 +195,7 @@ describe("friendship.socket - Event Handling", () => {
       handleFriendshipEvent(msg)
 
       expect(incrementSpy).toHaveBeenCalled()
+      unsubscribe()
       incrementSpy.mockRestore()
     })
 

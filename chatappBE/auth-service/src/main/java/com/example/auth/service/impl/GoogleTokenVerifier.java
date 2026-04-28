@@ -22,7 +22,7 @@ public class GoogleTokenVerifier implements IGoogleTokenVerifier {
     private final GoogleIdTokenVerifier verifier;
 
     public GoogleTokenVerifier(
-            @Value("${security.oauth2.client.registration.google.client-id}")
+            @Value("${spring.security.oauth2.client.registration.google.client-id}")
             String clientId
     ) {
 

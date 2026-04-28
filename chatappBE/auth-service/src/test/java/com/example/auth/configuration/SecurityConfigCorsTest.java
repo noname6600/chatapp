@@ -40,6 +40,11 @@ class SecurityConfigCorsTest {
         cors.setAllowedHeaders(List.of("*"));
         properties.setCors(cors);
 
-        return new SecurityConfig(mock(JwtAuthenticationFilter.class), properties);
+        return new SecurityConfig(
+            mock(JwtAuthenticationFilter.class),
+            properties,
+            mock(GoogleOAuthAuthenticationSuccessHandler.class),
+            mock(GoogleOAuthAuthenticationFailureHandler.class)
+        );
     }
 }

@@ -4,6 +4,10 @@ import com.example.chat.config.InviteCodeGenerator;
 import com.example.chat.modules.message.application.service.ISystemMessageService;
 import com.example.chat.modules.message.infrastructure.client.UserClient;
 import com.example.chat.modules.room.entity.Room;
+import com.example.chat.modules.room.entity.RoomBan;
+import com.example.chat.modules.room.entity.RoomMember;
+import com.example.chat.modules.room.enums.Role;
+import com.example.chat.modules.room.repository.RoomBanRepository;
 import com.example.chat.modules.room.repository.RoomMemberRepository;
 import com.example.chat.modules.room.repository.RoomRepository;
 import com.example.chat.modules.room.enums.RoomType;
@@ -48,6 +52,9 @@ class RoomServiceInviteJoinIntegrationTest {
     @Autowired
     private RoomMemberRepository roomMemberRepository;
 
+        @Autowired
+        private RoomBanRepository roomBanRepository;
+
     private RoomService roomService;
 
     @BeforeEach
@@ -55,6 +62,7 @@ class RoomServiceInviteJoinIntegrationTest {
         roomService = new RoomService(
                 roomRepository,
                 roomMemberRepository,
+                roomBanRepository,
                 mock(UserClient.class),
                 mock(InviteCodeGenerator.class),
                 mock(GroupAvatarGenerator.class),
@@ -112,6 +120,60 @@ class RoomServiceInviteJoinIntegrationTest {
         assertThat(roomMemberRepository.findByRoomId(room.getId()))
                 .filteredOn(member -> userId.equals(member.getUserId()))
                 .hasSize(1);
+    }
+
+    @Test
+    void joinByInviteRoomId_rejectsBannedUser() {
+        UUID userId = UUID.randomUUID();
+
+        Room room = roomRepository.save(Room.builder()
+                .type(RoomType.GROUP)
+                .name("Moderation")
+                .createdBy(UUID.randomUUID())
+                .build());
+
+        roomBanRepository.save(RoomBan.builder()
+                .roomId(room.getId())
+                .userId(userId)
+                .bannedBy(UUID.randomUUID())
+                .build());
+
+        assertThatThrownBy(() -> roomService.joinByInviteRoomId(userId, room.getId()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FORBIDDEN);
+    }
+
+    @Test
+    void moderationBanUnbanFlow_supportsRejoinAfterUnban() {
+        UUID ownerId = UUID.randomUUID();
+        UUID targetId = UUID.randomUUID();
+
+        Room room = roomRepository.save(Room.builder()
+                .type(RoomType.GROUP)
+                .name("Moderation Flow")
+                .createdBy(ownerId)
+                .build());
+
+        roomMemberRepository.save(RoomMember.builder()
+                .roomId(room.getId())
+                .userId(ownerId)
+                .role(Role.OWNER)
+                .build());
+
+        roomService.joinByInviteRoomId(targetId, room.getId());
+        assertThat(roomMemberRepository.existsByRoomIdAndUserId(room.getId(), targetId)).isTrue();
+
+        roomService.banMember(room.getId(), ownerId, targetId);
+
+        assertThat(roomMemberRepository.existsByRoomIdAndUserId(room.getId(), targetId)).isFalse();
+        assertThat(roomBanRepository.existsByRoomIdAndUserId(room.getId(), targetId)).isTrue();
+
+        roomService.unbanMember(room.getId(), ownerId, targetId);
+        assertThat(roomBanRepository.existsByRoomIdAndUserId(room.getId(), targetId)).isFalse();
+
+        roomService.joinByInviteRoomId(targetId, room.getId());
+        assertThat(roomMemberRepository.existsByRoomIdAndUserId(room.getId(), targetId)).isTrue();
     }
 
         @Test

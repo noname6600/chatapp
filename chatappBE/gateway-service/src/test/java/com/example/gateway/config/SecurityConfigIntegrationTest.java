@@ -57,6 +57,28 @@ class SecurityConfigIntegrationTest {
     }
 
     @Test
+    void oauthAuthorizationEndpoint_doesNotReturn401_withoutAuthorizationHeader() {
+        webTestClient.get()
+                .uri("/oauth2/authorization/google")
+                .exchange()
+                .expectStatus()
+                .value(status -> org.assertj.core.api.Assertions.assertThat(status).isNotEqualTo(401));
+    }
+
+    @Test
+    void oauthCallbackEndpoint_doesNotReturn401_withoutAuthorizationHeader() {
+        webTestClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/login/oauth2/code/google")
+                        .queryParam("code", "sample-code")
+                        .queryParam("state", "sample-state")
+                        .build())
+                .exchange()
+                .expectStatus()
+                .value(status -> org.assertj.core.api.Assertions.assertThat(status).isNotEqualTo(401));
+    }
+
+    @Test
     void protectedEndpoint_returns401_whenAuthorizationMissing() {
         webTestClient.get()
                 .uri("/api/users/ping")

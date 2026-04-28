@@ -122,6 +122,18 @@ public class RoomController extends BaseController {
         ));
     }
 
+    @GetMapping("/{roomId}/members/page")
+    public ResponseEntity<ApiResponse<PagedRoomMembersResponse>> getMembersPaged(
+            @PathVariable UUID roomId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String query
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(
+                roomQueryService.membersOfRoom(roomId, page, size, query)
+        ));
+    }
+
     @PostMapping("/members/bulk")
     public ResponseEntity<ApiResponse<Map<UUID, List<RoomMemberResponse>>>> getMembersBulk(
             @RequestBody List<UUID> roomIds
@@ -148,6 +160,77 @@ public class RoomController extends BaseController {
         roomService.leaveRoom(roomId, currentUserId(jwt));
         return ResponseEntity.ok(ApiResponse.success(null));
     }
+
+    @DeleteMapping("/{roomId}/members/{userId}")
+    public ResponseEntity<ApiResponse<Void>> removeMember(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID roomId,
+            @PathVariable UUID userId
+    ) {
+        roomService.removeMember(roomId, currentUserId(jwt), userId);
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+        @PostMapping("/{roomId}/members/{userId}/kick")
+        public ResponseEntity<ApiResponse<Void>> kickMember(
+                        @AuthenticationPrincipal Jwt jwt,
+                        @PathVariable UUID roomId,
+                        @PathVariable UUID userId
+        ) {
+                roomService.removeMember(roomId, currentUserId(jwt), userId);
+                return ResponseEntity.ok(ApiResponse.success(null));
+        }
+
+        @PostMapping("/{roomId}/members/{userId}/ban")
+        public ResponseEntity<ApiResponse<Void>> banMember(
+                        @AuthenticationPrincipal Jwt jwt,
+                        @PathVariable UUID roomId,
+                        @PathVariable UUID userId
+        ) {
+                roomService.banMember(roomId, currentUserId(jwt), userId);
+                return ResponseEntity.ok(ApiResponse.success(null));
+        }
+
+        @DeleteMapping("/{roomId}/members/{userId}/ban")
+        public ResponseEntity<ApiResponse<Void>> unbanMember(
+                        @AuthenticationPrincipal Jwt jwt,
+                        @PathVariable UUID roomId,
+                        @PathVariable UUID userId
+        ) {
+                roomService.unbanMember(roomId, currentUserId(jwt), userId);
+                return ResponseEntity.ok(ApiResponse.success(null));
+        }
+
+        @PostMapping("/{roomId}/members/ban-bulk")
+        public ResponseEntity<ApiResponse<Void>> bulkBanMembers(
+                        @AuthenticationPrincipal Jwt jwt,
+                        @PathVariable UUID roomId,
+                        @Valid @RequestBody BulkMemberModerationRequest request
+        ) {
+                roomService.bulkBanMembers(roomId, currentUserId(jwt), request.getUserIds());
+                return ResponseEntity.ok(ApiResponse.success(null));
+        }
+
+        @PostMapping("/{roomId}/members/{userId}/transfer-ownership")
+        public ResponseEntity<ApiResponse<Void>> transferOwnership(
+                        @AuthenticationPrincipal Jwt jwt,
+                        @PathVariable UUID roomId,
+                        @PathVariable UUID userId
+        ) {
+                roomService.transferOwnership(roomId, currentUserId(jwt), userId);
+                return ResponseEntity.ok(ApiResponse.success(null));
+        }
+
+        @GetMapping("/{roomId}/members/banned/page")
+        public ResponseEntity<ApiResponse<PagedBannedMembersResponse>> getBannedMembersPaged(
+                        @PathVariable UUID roomId,
+                        @RequestParam(defaultValue = "0") int page,
+                        @RequestParam(defaultValue = "20") int size
+        ) {
+                return ResponseEntity.ok(ApiResponse.success(
+                                roomQueryService.bannedMembersOfRoom(roomId, page, size)
+                ));
+        }
 
         @PostMapping("/{roomId}/read")
         public ResponseEntity<ApiResponse<Void>> markRoomRead(

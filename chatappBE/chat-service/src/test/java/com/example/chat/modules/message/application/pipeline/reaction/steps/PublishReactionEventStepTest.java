@@ -5,6 +5,7 @@ import com.example.chat.modules.message.application.service.IReactionEventPublis
 import com.example.chat.modules.message.domain.entity.ChatMessage;
 import com.example.chat.modules.message.domain.repository.ChatMessageRepository;
 import com.example.chat.modules.message.domain.enums.MessageType;
+import com.example.chat.modules.room.repository.RoomMemberRepository;
 import com.example.common.integration.chat.ReactionPayload;
 import com.example.common.integration.enums.ReactionAction;
 import org.junit.jupiter.api.Test;
@@ -32,6 +33,9 @@ class PublishReactionEventStepTest {
     @Mock
     private ChatMessageRepository messageRepository;
 
+    @Mock
+    private RoomMemberRepository roomMemberRepository;
+
     @InjectMocks
     private PublishReactionEventStep step;
 
@@ -57,6 +61,8 @@ class PublishReactionEventStepTest {
                 .build();
 
         when(messageRepository.findById(messageId)).thenReturn(Optional.of(message));
+        when(roomMemberRepository.findByRoomIdAndUserId(roomId, context.getUserId()))
+            .thenReturn(Optional.empty());
 
         step.execute(context);
 

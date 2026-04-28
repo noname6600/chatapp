@@ -9,6 +9,7 @@ import com.example.chat.modules.message.application.pipeline.send.SendMessagePip
 import com.example.chat.modules.message.application.service.IMessageEventPublisher;
 import com.example.chat.modules.message.domain.entity.ChatAttachment;
 import com.example.chat.modules.message.domain.entity.ChatMessage;
+import com.example.chat.modules.message.domain.enums.AttachmentType;
 import com.example.chat.modules.message.domain.enums.MessageType;
 import com.example.chat.modules.message.domain.repository.ChatAttachmentRepository;
 import com.example.chat.modules.message.domain.repository.ChatMessageRepository;
@@ -116,6 +117,46 @@ class MessageCommandServiceForwardIntegrationTest {
 
         List<ChatAttachment> forwardedAttachments = attachmentRepository.findByMessageId(forwarded.getId());
         assertThat(forwardedAttachments).isEmpty();
+    }
+
+    @Test
+    void forwardMessage_happyPathCopiesImageAttachmentMetadata() {
+        UUID actorId = UUID.randomUUID();
+        UUID sourceRoomId = createRoomId();
+        UUID targetRoomId = createRoomId();
+        addMember(targetRoomId, actorId);
+
+        UUID sourceMessageId = createMessage(sourceRoomId, UUID.randomUUID(), 10L, false, MessageType.ATTACHMENT, null);
+        attachmentRepository.save(ChatAttachment.builder()
+                .messageId(sourceMessageId)
+                .type(AttachmentType.IMAGE)
+                .url("https://res.cloudinary.com/demo/image/upload/v1/chat/attachments/a.jpg")
+                .publicId("chat/attachments/a")
+                .width(200)
+                .height(120)
+                .build());
+
+        ForwardMessageRequest request = ForwardMessageRequest.builder()
+                .actorId(actorId)
+                .sourceMessageId(sourceMessageId)
+                .targetRoomId(targetRoomId)
+                .build();
+
+        MessageResponse response = messageCommandService.forwardMessage(request);
+
+        assertThat(response.getForwardedFromMessageId()).isEqualTo(sourceMessageId);
+
+        List<ChatMessage> targetMessages = messageRepository.findRange(targetRoomId, 1L, 100L);
+        assertThat(targetMessages).hasSize(1);
+
+        ChatMessage forwarded = targetMessages.get(0);
+        List<ChatAttachment> forwardedAttachments = attachmentRepository.findByMessageId(forwarded.getId());
+
+        assertThat(forwardedAttachments).hasSize(1);
+        assertThat(forwardedAttachments.get(0).getType()).isEqualTo(AttachmentType.IMAGE);
+        assertThat(forwardedAttachments.get(0).getUrl())
+                .isEqualTo("https://res.cloudinary.com/demo/image/upload/v1/chat/attachments/a.jpg");
+        assertThat(forwardedAttachments.get(0).getPublicId()).isEqualTo("chat/attachments/a");
     }
 
     @Test

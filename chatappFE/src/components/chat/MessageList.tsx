@@ -35,6 +35,7 @@ const chatDebug = (...args: unknown[]) => {
 };
 
 const MAX_REPLY_JUMP_BACKFILL_ATTEMPTS = 6;
+const TEMP_MESSAGE_PREFIX = "temp-";
 
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -137,6 +138,12 @@ export default function MessageList({ roomId, pinnedMessageIds }: Props) {
   const handleConfirmDelete = useCallback(async (messageId: string) => {
     setDeleteLoading(true);
     try {
+      // Failed optimistic placeholders use temporary IDs and are never persisted.
+      // Remove them locally instead of calling delete API with invalid IDs.
+      if (messageId.startsWith(TEMP_MESSAGE_PREFIX)) {
+        removeMessage(messageId, roomId);
+        return;
+      }
       await deleteMessageApi(messageId);
       removeMessage(messageId, roomId);
     } catch (error) {

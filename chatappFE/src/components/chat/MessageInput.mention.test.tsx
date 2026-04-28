@@ -238,4 +238,36 @@ describe("MessageInput mention flow", () => {
       expect(document.activeElement).toBe(textarea)
     })
   })
+
+  it("shows blocked-send composer error when send fails with blocked message", async () => {
+    mocks.sendMessage.mockRejectedValueOnce(
+      new Error("You cannot send messages to this user.")
+    )
+
+    render(<MessageInput roomId="room-1" />)
+
+    const textarea = (await screen.findByPlaceholderText(/Message/i)) as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: "hello" } })
+    fireEvent.click(screen.getByRole("button", { name: /Send/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText("You cannot send messages to this user.")).toBeTruthy()
+    })
+  })
+
+  it("shows removed-group composer error when send fails with removed message", async () => {
+    mocks.sendMessage.mockRejectedValueOnce(
+      new Error("You have been removed from this group.")
+    )
+
+    render(<MessageInput roomId="room-1" />)
+
+    const textarea = (await screen.findByPlaceholderText(/Message/i)) as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: "hello" } })
+    fireEvent.click(screen.getByRole("button", { name: /Send/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText("You have been removed from this group.")).toBeTruthy()
+    })
+  })
 })

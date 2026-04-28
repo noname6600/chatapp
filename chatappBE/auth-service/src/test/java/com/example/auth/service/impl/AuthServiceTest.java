@@ -35,6 +35,8 @@ class AuthServiceTest {
     private IEmailService emailService;
     private IUserProfileReadinessService userProfileReadinessService;
     private AccountRepository accountRepository;
+    private AuthSessionService authSessionService;
+    private BrowserOAuthService browserOAuthService;
 
     private AuthService authService;
 
@@ -49,6 +51,8 @@ class AuthServiceTest {
         emailService = mock(IEmailService.class);
         userProfileReadinessService = mock(IUserProfileReadinessService.class);
         accountRepository = mock(AccountRepository.class);
+        authSessionService = mock(AuthSessionService.class);
+        browserOAuthService = mock(BrowserOAuthService.class);
 
         authService = new AuthService(
                 localAuthService,
@@ -58,8 +62,9 @@ class AuthServiceTest {
                 passwordService,
                 verificationTokenService,
                 emailService,
-                userProfileReadinessService,
-                accountRepository
+            accountRepository,
+            authSessionService,
+            browserOAuthService
         );
     }
 
@@ -67,7 +72,8 @@ class AuthServiceTest {
     void register_blocksTokenIssuance_whenUserProfileNotReady() {
         UUID accountId = UUID.randomUUID();
         when(localAuthService.register("new@example.com", "Password1!")).thenReturn(accountId);
-        when(userProfileReadinessService.waitUntilReady(accountId)).thenReturn(false);
+        when(authSessionService.issueTokensWhenProfileReady(accountId))
+            .thenThrow(new BusinessException(ErrorCode.INCOMPLETE_ACCOUNT));
 
         assertThatThrownBy(() -> authService.register("new@example.com", "Password1!"))
                 .isInstanceOf(BusinessException.class)
@@ -75,15 +81,16 @@ class AuthServiceTest {
                 .isEqualTo(ErrorCode.INCOMPLETE_ACCOUNT);
 
         verify(localAuthService).register("new@example.com", "Password1!");
-        verify(userProfileReadinessService).waitUntilReady(accountId);
-        verifyNoInteractions(tokenServiceFacade);
+        verify(authSessionService).issueTokensWhenProfileReady(accountId);
+        verifyNoInteractions(tokenServiceFacade, browserOAuthService);
     }
 
     @Test
     void login_blocksTokenIssuance_whenUserProfileNotReady() {
         UUID accountId = UUID.randomUUID();
         when(localAuthService.login("user@example.com", "Password1!")).thenReturn(accountId);
-        when(userProfileReadinessService.waitUntilReady(accountId)).thenReturn(false);
+        when(authSessionService.issueTokensWhenProfileReady(accountId))
+            .thenThrow(new BusinessException(ErrorCode.INCOMPLETE_ACCOUNT));
 
         assertThatThrownBy(() -> authService.login("user@example.com", "Password1!"))
                 .isInstanceOf(BusinessException.class)
@@ -91,8 +98,8 @@ class AuthServiceTest {
                 .isEqualTo(ErrorCode.INCOMPLETE_ACCOUNT);
 
         verify(localAuthService).login("user@example.com", "Password1!");
-        verify(userProfileReadinessService).waitUntilReady(accountId);
-        verifyNoInteractions(tokenServiceFacade);
+        verify(authSessionService).issueTokensWhenProfileReady(accountId);
+        verifyNoInteractions(tokenServiceFacade, browserOAuthService);
     }
 
     @Test
@@ -101,12 +108,11 @@ class AuthServiceTest {
         AuthResponse expected = new AuthResponse("access-token", "refresh-token", 900L);
 
         when(localAuthService.login("user@example.com", "Password1!")).thenReturn(accountId);
-        when(userProfileReadinessService.waitUntilReady(accountId)).thenReturn(true);
-        when(tokenServiceFacade.issue(accountId)).thenReturn(expected);
+        when(authSessionService.issueTokensWhenProfileReady(accountId)).thenReturn(expected);
 
         AuthResponse actual = authService.login("user@example.com", "Password1!");
 
         assertThat(actual).isEqualTo(expected);
-        verify(tokenServiceFacade).issue(accountId);
+        verify(authSessionService).issueTokensWhenProfileReady(accountId);
     }
 }

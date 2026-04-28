@@ -2,6 +2,7 @@ package com.example.gateway.health;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.actuate.health.Health;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.ExchangeFunction;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -22,9 +23,9 @@ class DownstreamReadinessIndicatorTest {
 
         ExchangeFunction exchangeFunction = request -> {
             if (request.url().toString().contains("auth")) {
-                return Mono.just(ClientResponse.create(200).build());
+                return Mono.just(ClientResponse.create(HttpStatus.OK).build());
             }
-            return Mono.just(ClientResponse.create(503).build());
+            return Mono.just(ClientResponse.create(HttpStatus.SERVICE_UNAVAILABLE).build());
         };
 
         DownstreamReadinessIndicator indicator = new DownstreamReadinessIndicator(
@@ -46,7 +47,7 @@ class DownstreamReadinessIndicatorTest {
         props.setTimeout(Duration.ofSeconds(1));
 
         ExchangeFunction exchangeFunction = request ->
-                Mono.just(ClientResponse.create(200).build());
+            Mono.just(ClientResponse.create(HttpStatus.OK).build());
 
         DownstreamReadinessIndicator indicator = new DownstreamReadinessIndicator(
                 WebClient.builder().exchangeFunction(exchangeFunction),

@@ -6,6 +6,7 @@ import com.example.chat.modules.message.domain.entity.ChatMessage;
 import com.example.chat.modules.message.domain.enums.MessageType;
 import com.example.chat.modules.message.domain.enums.SystemEventType;
 import com.example.chat.modules.message.domain.repository.ChatMessageRepository;
+import com.example.chat.modules.message.domain.service.IMessageSequenceService;
 import com.example.chat.modules.room.entity.RoomMember;
 import com.example.chat.modules.room.repository.RoomMemberRepository;
 import lombok.RequiredArgsConstructor;
@@ -16,7 +17,6 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -24,8 +24,9 @@ import java.util.UUID;
 @Transactional
 public class SystemMessageService implements ISystemMessageService {
 
-    private final ChatMessageRepository chatMessageRepository;
+        private final ChatMessageRepository chatMessageRepository;
     private final RoomMemberRepository roomMemberRepository;
+        private final IMessageSequenceService messageSequenceService;
     private final IMessageEventPublisher messageEventPublisher;
 
     @Override
@@ -45,8 +46,7 @@ public class SystemMessageService implements ISystemMessageService {
             case PIN -> actorName + " pinned a message. See all pinned messages.";
         };
 
-        Long nextSeq = Optional.ofNullable(chatMessageRepository.findMaxSeqByRoomId(roomId))
-                .orElse(0L) + 1;
+        long nextSeq = messageSequenceService.nextSeq(roomId);
 
         ChatMessage systemMessage = ChatMessage.builder()
                 .id(UUID.randomUUID())

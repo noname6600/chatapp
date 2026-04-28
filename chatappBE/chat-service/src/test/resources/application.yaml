@@ -50,3 +50,8 @@ cloudinary:
 services:
   user:
     url: http://localhost:8082
+
+chat:
+  redis:
+    listener:
+      enabled: false

@@ -3,7 +3,7 @@ import { unwrap } from "../utils/unwrap"
 import { extractErrorMessage } from "../utils/error"
 
 import type { ApiResponse } from "../types/api"
-import type { Room, RoomMember } from "../types/room"
+import type { PagedBannedMembers, PagedRoomMembers, Room, RoomMember } from "../types/room"
 
 // =========================
 // CREATE ROOM
@@ -212,6 +212,17 @@ export const getRoomMembersBulk = async (
   }
 }
 
+export const removeMemberApi = async (
+  roomId: string,
+  userId: string
+): Promise<void> => {
+  try {
+    await chatApi.delete(`/rooms/${roomId}/members/${userId}`)
+  } catch (error) {
+    throw new Error(extractErrorMessage(error))
+  }
+}
+
 // =========================
 // MEMBER COUNT
 // =========================
@@ -241,6 +252,113 @@ export const inviteMemberApi = async (
       `/rooms/${roomId}/invite`,
       null,
       { params: { userId } }
+    )
+    unwrap(res)
+  } catch (error) {
+    throw new Error(extractErrorMessage(error))
+  }
+}
+
+export const getRoomMembersPaged = async (
+  roomId: string,
+  page = 0,
+  size = 20,
+  query?: string
+): Promise<PagedRoomMembers> => {
+  try {
+    const res = await chatApi.get<ApiResponse<PagedRoomMembers>>(
+      `/rooms/${roomId}/members/page`,
+      {
+        params: {
+          page,
+          size,
+          query: query?.trim() ? query.trim() : undefined,
+        },
+      }
+    )
+    return unwrap(res)
+  } catch (error) {
+    throw new Error(extractErrorMessage(error))
+  }
+}
+
+export const getBannedRoomMembersPaged = async (
+  roomId: string,
+  page = 0,
+  size = 20
+): Promise<PagedBannedMembers> => {
+  try {
+    const res = await chatApi.get<ApiResponse<PagedBannedMembers>>(
+      `/rooms/${roomId}/members/banned/page`,
+      { params: { page, size } }
+    )
+    return unwrap(res)
+  } catch (error) {
+    throw new Error(extractErrorMessage(error))
+  }
+}
+
+export const kickMemberApi = async (
+  roomId: string,
+  userId: string
+): Promise<void> => {
+  try {
+    const res = await chatApi.post<ApiResponse<void>>(
+      `/rooms/${roomId}/members/${userId}/kick`
+    )
+    unwrap(res)
+  } catch (error) {
+    throw new Error(extractErrorMessage(error))
+  }
+}
+
+export const banMemberApi = async (
+  roomId: string,
+  userId: string
+): Promise<void> => {
+  try {
+    const res = await chatApi.post<ApiResponse<void>>(
+      `/rooms/${roomId}/members/${userId}/ban`
+    )
+    unwrap(res)
+  } catch (error) {
+    throw new Error(extractErrorMessage(error))
+  }
+}
+
+export const unbanMemberApi = async (
+  roomId: string,
+  userId: string
+): Promise<void> => {
+  try {
+    await chatApi.delete(`/rooms/${roomId}/members/${userId}/ban`)
+  } catch (error) {
+    throw new Error(extractErrorMessage(error))
+  }
+}
+
+export const transferOwnershipApi = async (
+  roomId: string,
+  userId: string
+): Promise<void> => {
+  try {
+    const res = await chatApi.post<ApiResponse<void>>(
+      `/rooms/${roomId}/members/${userId}/transfer-ownership`
+    )
+    unwrap(res)
+  } catch (error) {
+    throw new Error(extractErrorMessage(error))
+  }
+}
+
+export const bulkBanMembersApi = async (
+  roomId: string,
+  userIds: string[]
+): Promise<void> => {
+  try {
+    const res = await chatApi.post<ApiResponse<void>>(
+      `/rooms/${roomId}/members/ban-bulk`,
+      { userIds }
     )
     unwrap(res)
   } catch (error) {

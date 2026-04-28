@@ -225,8 +225,20 @@ export function processFriendshipEvent(event: FriendshipWsEvent) {
 
     case FriendshipEventType.FRIEND_STATUS_CHANGED: {
       // Handle friendship status changes (unfriend, block, unblock)
-      if (counterpartyId && event.data.eventType === "FRIEND_UNFRIENDED") {
-        state.setStatus(counterpartyId, "NONE");
+      if (counterpartyId) {
+        const eventType = event.data.eventType as string;
+        if (eventType === "FRIEND_UNFRIENDED") {
+          state.setStatus(counterpartyId, "NONE");
+        } else if (eventType === "FRIEND_BLOCKED") {
+          const myId = getCurrentUserId();
+          if (event.data.actionUserId === myId) {
+            state.setStatus(counterpartyId, "BLOCKED_BY_ME");
+          } else {
+            state.setStatus(counterpartyId, "BLOCKED_ME");
+          }
+        } else if (eventType === "FRIEND_UNBLOCKED") {
+          state.setStatus(counterpartyId, "NONE");
+        }
       }
       console.log(
         "[friendship] Status changed:",

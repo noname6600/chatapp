@@ -777,7 +777,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         });
 
         upsertMessage(real);
-      } catch {
+      } catch (error) {
         clearPendingTimeout(clientMessageId);
         updateDeliveryStatusByClientMessageId(roomId, clientMessageId, "failed");
         logChatTelemetry("send_failed", { roomId, clientMessageId });
@@ -786,6 +786,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           tempId,
           clientMessageId,
         });
+        throw error;
       }
     },
     [

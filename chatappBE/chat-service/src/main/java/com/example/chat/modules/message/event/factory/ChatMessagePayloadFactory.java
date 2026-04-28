@@ -13,6 +13,8 @@ import com.example.chat.modules.message.event.mapper.MessageTypeMapper;
 import com.example.chat.modules.room.entity.RoomMember;
 import com.example.common.integration.chat.AttachmentPayload;
 import com.example.common.integration.chat.ChatMessagePayload;
+import com.example.common.integration.chat.MessageBlockPayload;
+import lombok.extern.slf4j.Slf4j;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -20,6 +22,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Component
+@Slf4j
 @RequiredArgsConstructor
 public class ChatMessagePayloadFactory {
 
@@ -72,6 +75,18 @@ public class ChatMessagePayloadFactory {
             }
         }
 
+        List<MessageBlockPayload> blocksPayloads;
+        try {
+            blocksPayloads = messageBlockMapper.toPayloads(message.getBlocksJson());
+        } catch (IllegalStateException ex) {
+            log.warn(
+                    "Failed to decode message blocks for payload; falling back to empty blocks. messageId={}",
+                    message.getId(),
+                    ex
+            );
+            blocksPayloads = List.of();
+        }
+
         return ChatMessagePayload.builder()
                 .messageId(message.getId())
                 .roomId(message.getRoomId())
@@ -90,7 +105,7 @@ public class ChatMessagePayloadFactory {
                 .senderDisplayName(senderDisplayName)
                 .preview(previewService.buildPreview(message, attachments))
                 .attachments(attachmentPayloads)
-                .blocks(messageBlockMapper.toPayloads(message.getBlocksJson()))
+                .blocks(blocksPayloads)
                 .mentionedUserIds(mentionedUserIds == null ? List.of() : mentionedUserIds)
                 .recipientUserIds(recipientUserIds == null ? List.of() : recipientUserIds)
                 .isDirect(isDirect)

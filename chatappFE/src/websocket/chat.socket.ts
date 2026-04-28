@@ -64,6 +64,7 @@ export type ChatSocketEvent =
   | { type: typeof ChatEventType.REACTION_UPDATED; payload: ReactionUpdatedPayload }
   | { type: typeof ChatEventType.MEMBER_JOINED; payload: RoomMemberJoinedPayload }
   | { type: typeof ChatEventType.MEMBER_LEFT; payload: RoomMemberLeftPayload }
+  | { type: typeof ChatEventType.MEMBER_REMOVED; payload: RoomMemberLeftPayload }
 
 /* ================= CONNECT ================= */
 
@@ -174,6 +175,13 @@ export const connectChatSocket = () => {
         case ChatEventType.MEMBER_LEFT: {
           eventHandlers.forEach((h) =>
             h({ type: ChatEventType.MEMBER_LEFT, payload: payload as RoomMemberLeftPayload })
+          )
+          break
+        }
+
+        case ChatEventType.MEMBER_REMOVED: {
+          eventHandlers.forEach((h) =>
+            h({ type: ChatEventType.MEMBER_REMOVED, payload: payload as RoomMemberLeftPayload })
           )
           break
         }

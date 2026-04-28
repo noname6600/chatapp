@@ -49,6 +49,14 @@ public class AuthController extends BaseController {
         return ok(response);
     }
 
+    @PostMapping("/oauth/google/exchange")
+    public ResponseEntity<ApiResponse<AuthResponse>> exchangeGoogleOAuthCode(
+            @Valid @RequestBody OAuthExchangeRequest request
+    ) {
+        AuthResponse response = authService.exchangeGoogleOAuthCode(request.getCode());
+        return ok(response);
+    }
+
     @PostMapping("/refresh")
     public ResponseEntity<ApiResponse<AuthResponse>> refresh(
             @Valid @RequestBody RefreshRequest request

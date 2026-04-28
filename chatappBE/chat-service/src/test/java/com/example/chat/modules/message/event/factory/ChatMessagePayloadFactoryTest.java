@@ -58,4 +58,32 @@ class ChatMessagePayloadFactoryTest {
         assertThat(payload.getMentionedUserIds()).isEmpty();
         assertThat(payload.getRecipientUserIds()).isEmpty();
     }
+
+    @Test
+    void from_invalidBlocksJson_fallsBackToEmptyBlocks() {
+        ChatMessagePayloadFactory factory = new ChatMessagePayloadFactory(
+                previewService,
+                new MessageBlockMapper(new ObjectMapper()),
+                org.mockito.Mockito.mock(ChatMessageRepository.class),
+                org.mockito.Mockito.mock(RoomMemberRepository.class),
+                org.mockito.Mockito.mock(UserClient.class)
+        );
+
+        ChatMessage message = ChatMessage.builder()
+                .id(UUID.randomUUID())
+                .roomId(UUID.randomUUID())
+                .senderId(UUID.randomUUID())
+                .seq(1L)
+                .type(MessageType.MIXED)
+                .content("hello")
+                .blocksJson("{not-json")
+                .deleted(false)
+                .build();
+
+        when(previewService.buildPreview(message, List.of())).thenReturn("hello");
+
+        ChatMessagePayload payload = factory.from(message, List.of(), List.of(), List.of(), false);
+
+        assertThat(payload.getBlocks()).isEmpty();
+    }
 }

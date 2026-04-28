@@ -26,6 +26,8 @@ public class SecurityConfig {
     private static final String[] PUBLIC_AUTH_PATHS = {
             "/api/v1/auth/**",
             "/api/auth/**",
+            "/oauth2/authorization/**",
+            "/login/oauth2/code/**",
             "/.well-known/**"
     };
 
@@ -86,7 +88,10 @@ public class SecurityConfig {
         String path = exchange.getRequest().getURI().getPath();
         String authHeader = exchange.getRequest().getHeaders().getFirst("Authorization");
 
-        if ((path.startsWith("/api/v1/auth/") || path.startsWith("/api/auth/"))) {
+        if ((path.startsWith("/api/v1/auth/")
+            || path.startsWith("/api/auth/")
+            || path.startsWith("/oauth2/authorization/")
+            || path.startsWith("/login/oauth2/code/"))) {
             return "route_misclassified";
         }
 

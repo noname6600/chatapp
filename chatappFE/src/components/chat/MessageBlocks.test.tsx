@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import MessageBlocks from "./MessageBlocks"
 
@@ -10,6 +10,7 @@ const clipboardWriteTextMock = vi.fn(async () => undefined)
 const loadRoomsMock = vi.fn(async () => undefined)
 const setActiveRoomMock = vi.fn(async () => undefined)
 const navigateMock = vi.fn()
+const windowOpenMock = vi.fn()
 let roomsByIdMock: Record<string, unknown> = {}
 
 Object.defineProperty(navigator, "clipboard", {
@@ -47,7 +48,13 @@ vi.mock("../user/Username", () => ({
 }))
 
 describe("MessageBlocks", () => {
+  beforeEach(() => {
+    windowOpenMock.mockReset()
+    vi.spyOn(window, "open").mockImplementation(windowOpenMock as any)
+  })
+
   afterEach(() => {
+    vi.restoreAllMocks()
     joinRoomByInviteApiMock.mockReset()
     clipboardWriteTextMock.mockReset()
     loadRoomsMock.mockReset()
@@ -55,6 +62,65 @@ describe("MessageBlocks", () => {
     navigateMock.mockReset()
     roomsByIdMock = {}
     cleanup()
+  })
+
+  it("opens confirmation popup before opening external link", async () => {
+    render(
+      <MessageBlocks
+        blocks={[{ type: "TEXT", text: "Go https://example.com/path" }]}
+      />
+    )
+
+    fireEvent.click(screen.getByRole("link", { name: "https://example.com/path" }))
+
+    expect(screen.getByRole("heading", { name: "Open Link" })).toBeTruthy()
+    expect(windowOpenMock).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }))
+    expect(windowOpenMock).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole("link", { name: "https://example.com/path" }))
+    fireEvent.click(screen.getByRole("button", { name: "Open Link" }))
+
+    expect(windowOpenMock).toHaveBeenCalledWith(
+      "https://example.com/path",
+      "_blank",
+      "noopener,noreferrer"
+    )
+  })
+
+  it("opens image preview popup and only opens new tab on View Full", () => {
+    render(
+      <MessageBlocks
+        blocks={[
+          {
+            type: "ASSET",
+            attachment: {
+              type: "IMAGE",
+              url: "https://res.cloudinary.com/demo/image/upload/v1/chat/attachments/p.jpg",
+              fileName: "p.jpg",
+            },
+          },
+        ]}
+      />
+    )
+
+    fireEvent.click(screen.getByAltText("p.jpg"))
+
+    expect(screen.getByText("View Full")).toBeTruthy()
+    expect(windowOpenMock).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }))
+    expect(windowOpenMock).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByAltText("p.jpg"))
+    fireEvent.click(screen.getByRole("button", { name: "View Full" }))
+
+    expect(windowOpenMock).toHaveBeenCalledWith(
+      "https://res.cloudinary.com/demo/image/upload/v1/chat/attachments/p.jpg",
+      "_blank",
+      "noopener,noreferrer"
+    )
   })
 
   it("renders ordered text, link, and asset blocks", () => {

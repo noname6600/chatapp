@@ -238,6 +238,10 @@ describe("room.store", () => {
     localStorage.setItem("notification_modes_by_room", JSON.stringify({ "room-b": "ONLY_MENTION" }))
     const harness = await renderRoomProvider()
 
+    await waitFor(() => {
+      expect(harness.store.roomsById["room-b"]?.id).toBe("room-b")
+    })
+
     await act(async () => {
       chatEventHandler?.({
         type: ChatEventType.MESSAGE_SENT,
@@ -584,6 +588,50 @@ describe("room.store", () => {
     })
 
     expect(mocks.subscribeRoom).toHaveBeenCalledWith("room-c")
+  })
+
+  it("shows first unknown-room message immediately and deduplicates repeated event", async () => {
+    const harness = await renderRoomProvider()
+
+    await waitFor(() => {
+      expect(harness.store.roomsById["room-d"]).toBeUndefined()
+    })
+
+    await act(async () => {
+      chatEventHandler?.({
+        type: ChatEventType.MESSAGE_SENT,
+        payload: {
+          messageId: "msg-d-1",
+          roomId: "room-d",
+          senderId: "u9",
+          type: "TEXT",
+          content: "first realtime",
+          attachments: [],
+          createdAt: "2026-03-26T11:40:00.000Z",
+        },
+      })
+    })
+
+    expect(harness.store.roomsById["room-d"]).toBeDefined()
+    expect(harness.store.roomsById["room-d"]?.lastMessage?.content).toBe("first realtime")
+    expect(harness.store.roomsById["room-d"]?.unreadCount).toBe(1)
+
+    await act(async () => {
+      chatEventHandler?.({
+        type: ChatEventType.MESSAGE_SENT,
+        payload: {
+          messageId: "msg-d-1",
+          roomId: "room-d",
+          senderId: "u9",
+          type: "TEXT",
+          content: "first realtime",
+          attachments: [],
+          createdAt: "2026-03-26T11:40:00.000Z",
+        },
+      })
+    })
+
+    expect(harness.store.roomsById["room-d"]?.unreadCount).toBe(1)
   })
 
   it("removes a room locally without waiting for a reload", async () => {

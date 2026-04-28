@@ -9,7 +9,8 @@ public enum ChatEventType {
     MESSAGE_UNPINNED("chat.message.unpinned"),
     REACTION_UPDATED("chat.reaction.updated"),
     MEMBER_JOINED("chat.room.member.joined"),
-    MEMBER_LEFT("chat.room.member.left");
+    MEMBER_LEFT("chat.room.member.left"),
+    MEMBER_REMOVED("chat.room.member.removed");
 
     private final String value;
 

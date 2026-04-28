@@ -12,6 +12,7 @@ import {
   sendFriendRequestApi,
   unfriendApi,
   blockUserApi,
+  unblockUserApi,
 } from "../../api/friend.service";
 
 import { startPrivateChatApi } from "../../api/room.service";
@@ -61,7 +62,7 @@ export default function UserPopup() {
   const [hoverFriend, setHoverFriend] = useState(false);
   const [hoverMore, setHoverMore] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [hoverInviteToGroup, setHoverInviteToGroup] = useState(false);
+  const [inviteMenuOpen, setInviteMenuOpen] = useState(false);
   const [showRemove, setShowRemove] = useState(false);
   const [dmText, setDmText] = useState("");
   const dmInputRef = useRef<HTMLInputElement>(null);
@@ -74,7 +75,7 @@ export default function UserPopup() {
 
   useEffect(() => {
     setMenuOpen(false);
-    setHoverInviteToGroup(false);
+    setInviteMenuOpen(false);
     setShowRemove(false);
     setDmText("");
   }, [userId]);
@@ -219,6 +220,13 @@ export default function UserPopup() {
           ariaLabel: "Friend request received",
         };
       case "BLOCKED_BY_ME":
+        return {
+          label: "Unblock",
+          disabled: false,
+          style: "primary",
+          icon: <User size={16} />,
+          ariaLabel: "Unblock user",
+        };
       case "BLOCKED_ME":
         return {
           label: "Unavailable",
@@ -259,6 +267,17 @@ export default function UserPopup() {
           setStatus(userId, "REQUEST_SENT");
         } catch (error) {
           console.error("Failed to send friend request", error);
+        }
+      });
+    }
+
+    if (status === "BLOCKED_BY_ME") {
+      runAsync(async () => {
+        try {
+          await unblockUserApi(userId);
+          setStatus(userId, "NONE");
+        } catch (error) {
+          console.error("Failed to unblock user", error);
         }
       });
     }
@@ -388,7 +407,13 @@ export default function UserPopup() {
       <div className="relative">
         <button
           onClick={() => {
-            setMenuOpen((v) => !v);
+            setMenuOpen((v) => {
+              const next = !v;
+              if (!next) {
+                setInviteMenuOpen(false);
+              }
+              return next;
+            });
             setShowRemove(false);
           }}
           onMouseEnter={() => setHoverMore(true)}
@@ -403,16 +428,15 @@ export default function UserPopup() {
 
         {menuOpen && (
           <div className="absolute right-0 top-11 z-20 w-44 rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
-            <MenuItem>View full profile</MenuItem>
             {!isSelf && (
               <div
                 className="relative"
-                onMouseEnter={() => setHoverInviteToGroup(true)}
-                onMouseLeave={() => setHoverInviteToGroup(false)}
+                onMouseEnter={() => setInviteMenuOpen(true)}
+                onMouseLeave={() => setInviteMenuOpen(false)}
               >
-                <MenuItem>Invite to group</MenuItem>
-                {hoverInviteToGroup && (
-                  <div className="absolute right-full top-0 mr-2 max-h-56 w-56 overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+                <MenuItem onClick={() => setInviteMenuOpen((v) => !v)}>Invite to group</MenuItem>
+                {inviteMenuOpen && (
+                  <div className="absolute right-full top-0 max-h-56 w-56 overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
                     {inviteableGroups.length === 0 ? (
                       <div className="px-3 py-2 text-xs text-gray-500">No group available</div>
                     ) : (
@@ -420,7 +444,10 @@ export default function UserPopup() {
                         <button
                           key={room.id}
                           type="button"
-                          onClick={() => sendGroupInvite(room.id)}
+                          onClick={() => {
+                            setInviteMenuOpen(false);
+                            sendGroupInvite(room.id);
+                          }}
                           className="w-full truncate px-3 py-2 text-left text-sm text-gray-700 transition hover:bg-gray-50"
                         >
                           {room.name}

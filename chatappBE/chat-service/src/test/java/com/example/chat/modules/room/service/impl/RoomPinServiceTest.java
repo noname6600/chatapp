@@ -8,6 +8,7 @@ import com.example.chat.modules.message.domain.enums.MessageType;
 import com.example.chat.modules.message.domain.repository.ChatAttachmentRepository;
 import com.example.chat.modules.message.domain.repository.ChatMessageRepository;
 import com.example.chat.modules.message.domain.repository.RoomPinnedMessageRepository;
+import com.example.chat.modules.message.domain.service.IMessagePreviewService;
 import com.example.chat.modules.message.infrastructure.redis.ChatRedisPublisher;
 import com.example.chat.modules.room.repository.RoomMemberRepository;
 import com.example.common.web.exception.BusinessException;
@@ -44,6 +45,8 @@ class RoomPinServiceTest {
     private MessageMapper messageMapper;
     @Mock
     private ChatRedisPublisher chatRedisPublisher;
+    @Mock
+    private IMessagePreviewService previewService;
 
     @InjectMocks
     private RoomPinService roomPinService;

@@ -39,8 +39,13 @@ public class RoomPermissionServiceImpl
                 return canSendPrivate(roomId, userId);
 
             case GROUP:
-                return memberRepository
-                        .existsByRoomIdAndUserId(roomId, userId);
+                if (!memberRepository.existsByRoomIdAndUserId(roomId, userId)) {
+                    throw new BusinessException(
+                            ErrorCode.REMOVED_FROM_GROUP,
+                            "You have been removed from this group."
+                    );
+                }
+                return true;
 
             default:
                 return false;

@@ -38,7 +38,10 @@ public enum ErrorCode {
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR),
 
     REACTION_INVALID(HttpStatus.BAD_REQUEST),
-    REACTION_NOT_ALLOWED(HttpStatus.BAD_REQUEST);
+    REACTION_NOT_ALLOWED(HttpStatus.BAD_REQUEST),
+
+    REMOVED_FROM_GROUP(HttpStatus.FORBIDDEN),
+    BLOCKED_SEND(HttpStatus.FORBIDDEN);
 
     private final HttpStatus status;
 

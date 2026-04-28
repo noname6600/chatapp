@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { loginApi, registerApi } from "../api/auth.service";
 import { useAuth } from "../hooks/useAuth";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
+import { redirectToUrl } from "../utils/browserRedirect";
 
 type Mode = "login" | "register";
 type SubmitPhase = "idle" | "verifying" | "bootstrapping";
@@ -15,6 +16,7 @@ export default function AuthPage() {
 
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [mode, setMode] = useState<Mode>("login");
 
@@ -25,6 +27,7 @@ export default function AuthPage() {
   const [formError, setFormError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitPhase, setSubmitPhase] = useState<SubmitPhase>("idle");
+  const [oauthErrorDismissed, setOauthErrorDismissed] = useState(false);
 
   const getFallbackAuthError = () =>
     mode === "login"
@@ -34,6 +37,17 @@ export default function AuthPage() {
   const toAuthErrorMessage = (err: unknown) => {
     if (err instanceof Error && err.message.trim()) return err.message;
     return getFallbackAuthError();
+  };
+
+  const toOAuthErrorMessage = (errorCode: string | null) => {
+    if (!errorCode) return "";
+    if (errorCode === "google_login_failed") {
+      return "Google login failed. Please try again.";
+    }
+    if (errorCode === "incomplete_account") {
+      return "Account setup incomplete. Please try again in a few seconds.";
+    }
+    return "Google login could not be completed. Please try again.";
   };
 
   const validateEmailBlur = (value: string) => {
@@ -65,7 +79,13 @@ export default function AuthPage() {
   const handleUsernameFocus = () => {
     setUsernameError("");
     setFormError("");
+    setOauthErrorDismissed(true);
   };
+
+  const oauthErrorMessage = oauthErrorDismissed
+    ? ""
+    : toOAuthErrorMessage(searchParams.get("oauth_error"));
+  const displayedFormError = formError || oauthErrorMessage;
 
   const handleSubmit = async () => {
     if (isSubmitting) return;
@@ -101,7 +121,7 @@ export default function AuthPage() {
   };
 
   const handleGoogleLogin = () => {
-    window.location.href = `${AUTH_GATEWAY_BASE}/oauth2/authorization/google`;
+    redirectToUrl(`${AUTH_GATEWAY_BASE}/oauth2/authorization/google`);
   };
 
   return (
@@ -115,9 +135,9 @@ export default function AuthPage() {
         </h1>
 
         {/* FORM ERROR */}
-        {formError && (
+        {displayedFormError && (
           <div className="bg-red-100 border border-red-300 text-red-700 text-sm p-3 rounded mb-4">
-            {formError}
+            {displayedFormError}
           </div>
         )}
 

@@ -32,6 +32,8 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     protected final CorsProperties securityProperties;
+    private final GoogleOAuthAuthenticationSuccessHandler googleOAuthAuthenticationSuccessHandler;
+    private final GoogleOAuthAuthenticationFailureHandler googleOAuthAuthenticationFailureHandler;
 
 
     @Bean
@@ -40,11 +42,13 @@ public class SecurityConfig {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session ->
-                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
                 )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 "/api/v1/auth/**",
+                    "/oauth2/authorization/**",
+                    "/login/oauth2/code/**",
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
@@ -54,6 +58,10 @@ public class SecurityConfig {
 
                         .anyRequest().authenticated()
                 )
+            .oauth2Login(oauth2 -> oauth2
+                .successHandler(googleOAuthAuthenticationSuccessHandler)
+                .failureHandler(googleOAuthAuthenticationFailureHandler)
+            )
                 .addFilterBefore(
                         jwtAuthenticationFilter,
                         UsernamePasswordAuthenticationFilter.class

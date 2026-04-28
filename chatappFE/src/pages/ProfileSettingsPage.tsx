@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { changePasswordApi, getEmailVerificationStatusApi, sendVerificationEmailApi } from "../api/auth.service";
 import { useAuth } from "../store/auth.store";
 import ProfileEditor from "../components/profile/ProfileEditor";
-import ProfilePreview from "../components/profile/ProfilePreview";
 import ProfileIdentityCard from "../components/profile/ProfileIdentityCard";
 import type { ProfileDraft } from "../types/profile";
 import { resolveProfileBackground } from "../utils/profileBackground";
@@ -239,9 +238,6 @@ export default function ProfileSettingsPage() {
                 <>
                   <div className="rounded-xl border border-gray-200 bg-gray-50 p-6">
                     <ProfileEditor draft={draft} setDraft={setDraft} />
-                  </div>
-                  <div className="mt-6 rounded-xl border border-gray-200 bg-white p-4">
-                    <ProfilePreview draft={draft} />
                   </div>
                 </>
               </div>

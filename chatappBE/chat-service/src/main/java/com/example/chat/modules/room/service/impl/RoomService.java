@@ -16,9 +16,11 @@ import com.example.common.integration.chat.ChatEventType;
 import com.example.common.integration.websocket.WsEvent;
 import com.example.common.websocket.session.IRoomBroadcaster;
 import com.example.chat.modules.room.entity.Room;
+import com.example.chat.modules.room.entity.RoomBan;
 import com.example.chat.modules.room.entity.RoomMember;
 import com.example.chat.modules.room.enums.Role;
 import com.example.chat.modules.room.enums.RoomType;
+import com.example.chat.modules.room.repository.RoomBanRepository;
 import com.example.chat.modules.room.repository.RoomMemberRepository;
 import com.example.chat.modules.room.repository.RoomRepository;
 import com.example.chat.modules.room.service.IRoomService;
@@ -46,6 +48,7 @@ public class RoomService implements IRoomService {
 
     private final RoomRepository roomRepo;
     private final RoomMemberRepository memberRepo;
+    private final RoomBanRepository roomBanRepository;
     private final UserClient userClient;
     private final InviteCodeGenerator inviteCodeGenerator;
     private final GroupAvatarGenerator avatarGenerator;
@@ -113,6 +116,10 @@ public class RoomService implements IRoomService {
 
         if (memberRepo.existsByRoomIdAndUserId(roomId, userId)) {
             return;
+        }
+
+        if (roomBanRepository.existsByRoomIdAndUserId(roomId, userId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "You are banned from this room");
         }
 
         UserBasicProfile joinerProfile = safeGetBasicProfile(userId);
@@ -213,15 +220,14 @@ public class RoomService implements IRoomService {
 
     @Override
     public void addMember(UUID roomId, UUID ownerId, UUID newUserId) {
-        RoomMember owner = memberRepo.findByRoomIdAndUserId(roomId, ownerId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.FORBIDDEN, "Not a member"));
-
-        if (owner.getRole() != Role.OWNER) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "Only owner can invite");
-        }
+        assertOwner(roomId, ownerId, "Only owner can invite");
 
         if (memberRepo.existsByRoomIdAndUserId(roomId, newUserId)) {
             return;
+        }
+
+        if (roomBanRepository.existsByRoomIdAndUserId(roomId, newUserId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "User is banned from this room");
         }
 
         try {
@@ -245,17 +251,96 @@ public class RoomService implements IRoomService {
 
     @Override
     public void removeMember(UUID roomId, UUID ownerId, UUID targetUser) {
-        RoomMember owner = memberRepo.findByRoomIdAndUserId(roomId, ownerId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.FORBIDDEN, "Not a member"));
+        assertOwner(roomId, ownerId, "Only owner can remove");
 
-        if (owner.getRole() != Role.OWNER) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "Only owner can remove");
+        if (ownerId.equals(targetUser)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "Owner cannot remove themselves");
         }
 
         memberRepo.deleteByRoomIdAndUserId(roomId, targetUser);
 
         evictRoomsCache(targetUser);
         evictRoomMembers(roomId);
+
+        roomBroadcaster.sendToRoom(roomId, WsEvent.builder()
+                .type(ChatEventType.MEMBER_REMOVED.value())
+                .payload(RoomMemberLeftPayload.builder()
+                        .roomId(roomId)
+                        .userId(targetUser)
+                        .build())
+                .build());
+    }
+
+    @Override
+    public void banMember(UUID roomId, UUID ownerId, UUID targetUser) {
+        assertOwner(roomId, ownerId, "Only owner can ban");
+
+        if (ownerId.equals(targetUser)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "Owner cannot ban themselves");
+        }
+
+        if (!roomBanRepository.existsByRoomIdAndUserId(roomId, targetUser)) {
+            roomBanRepository.save(RoomBan.builder()
+                    .roomId(roomId)
+                    .userId(targetUser)
+                    .bannedBy(ownerId)
+                    .build());
+        }
+
+        memberRepo.deleteByRoomIdAndUserId(roomId, targetUser);
+
+        evictRoomsCache(targetUser);
+        evictRoomMembers(roomId);
+
+        roomBroadcaster.sendToRoom(roomId, WsEvent.builder()
+                .type(ChatEventType.MEMBER_REMOVED.value())
+                .payload(RoomMemberLeftPayload.builder()
+                        .roomId(roomId)
+                        .userId(targetUser)
+                        .build())
+                .build());
+    }
+
+    @Override
+    public void unbanMember(UUID roomId, UUID ownerId, UUID targetUser) {
+        assertOwner(roomId, ownerId, "Only owner can unban");
+        roomBanRepository.deleteByRoomIdAndUserId(roomId, targetUser);
+    }
+
+    @Override
+    public void transferOwnership(UUID roomId, UUID ownerId, UUID newOwnerId) {
+        if (ownerId.equals(newOwnerId)) {
+            return;
+        }
+
+        RoomMember owner = assertOwner(roomId, ownerId, "Only owner can transfer ownership");
+
+        RoomMember newOwner = memberRepo.findByRoomIdAndUserId(roomId, newOwnerId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.BAD_REQUEST, "New owner must be a room member"));
+
+        owner.setRole(Role.MEMBER);
+        newOwner.setRole(Role.OWNER);
+
+        memberRepo.save(owner);
+        memberRepo.save(newOwner);
+
+        evictRoomMembers(roomId);
+        evictRoomsCache(ownerId);
+        evictRoomsCache(newOwnerId);
+    }
+
+    @Override
+    public void bulkBanMembers(UUID roomId, UUID ownerId, List<UUID> targetUsers) {
+        assertOwner(roomId, ownerId, "Only owner can ban");
+
+        if (targetUsers == null || targetUsers.isEmpty()) {
+            return;
+        }
+
+        targetUsers.stream()
+                .filter(targetUser -> targetUser != null && !ownerId.equals(targetUser))
+                .distinct()
+                .forEach(targetUser -> banMember(roomId, ownerId, targetUser));
     }
 
     @Override
@@ -411,6 +496,17 @@ public class RoomService implements IRoomService {
 
     private long safe(Long v) {
         return v == null ? 0 : v;
+    }
+
+    private RoomMember assertOwner(UUID roomId, UUID ownerId, String unauthorizedMessage) {
+        RoomMember owner = memberRepo.findByRoomIdAndUserId(roomId, ownerId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.FORBIDDEN, "Not a member"));
+
+        if (owner.getRole() != Role.OWNER) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, unauthorizedMessage);
+        }
+
+        return owner;
     }
 
     private String defaultAvatar() {

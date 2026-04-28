@@ -8,20 +8,27 @@ import AuthPage from "./AuthPage"
 const authServiceMocks = vi.hoisted(() => ({
   loginApi: vi.fn(),
   registerApi: vi.fn(),
+  exchangeGoogleOAuthCodeApi: vi.fn(),
 }))
 
 const loginMock = vi.hoisted(() => vi.fn())
 const navigateMock = vi.hoisted(() => vi.fn())
+const redirectToUrlMock = vi.hoisted(() => vi.fn())
 
 vi.mock("../api/auth.service", () => ({
   loginApi: authServiceMocks.loginApi,
   registerApi: authServiceMocks.registerApi,
+  exchangeGoogleOAuthCodeApi: authServiceMocks.exchangeGoogleOAuthCodeApi,
 }))
 
 vi.mock("../hooks/useAuth", () => ({
   useAuth: () => ({
     login: loginMock,
   }),
+}))
+
+vi.mock("../utils/browserRedirect", () => ({
+  redirectToUrl: redirectToUrlMock,
 }))
 
 vi.mock("react-router-dom", async () => {
@@ -32,9 +39,9 @@ vi.mock("react-router-dom", async () => {
   }
 })
 
-const renderPage = () =>
+const renderPage = (initialEntries: string[] = ["/"]) =>
   render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={initialEntries}>
       <AuthPage />
     </MemoryRouter>
   )
@@ -196,5 +203,19 @@ describe("AuthPage", () => {
     })
     expect(loginMock).not.toHaveBeenCalled()
     expect(navigateMock).not.toHaveBeenCalled()
+  })
+
+  it("shows oauth error from query string", () => {
+    renderPage(["/login?oauth_error=google_login_failed"])
+
+    expect(screen.getByText("Google login failed. Please try again.")).toBeTruthy()
+  })
+
+  it("redirects to the gateway google oauth entrypoint when google button is clicked", () => {
+    renderPage(["/login"])
+
+    fireEvent.click(screen.getByRole("button", { name: /continue with google/i }))
+
+    expect(redirectToUrlMock).toHaveBeenCalledWith("http://localhost:8080/oauth2/authorization/google")
   })
 })

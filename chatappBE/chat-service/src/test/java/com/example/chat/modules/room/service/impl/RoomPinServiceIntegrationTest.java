@@ -9,6 +9,8 @@ import com.example.chat.modules.message.domain.enums.MessageType;
 import com.example.chat.modules.message.domain.repository.ChatAttachmentRepository;
 import com.example.chat.modules.message.domain.repository.ChatMessageRepository;
 import com.example.chat.modules.message.domain.repository.RoomPinnedMessageRepository;
+import com.example.chat.modules.message.domain.service.IMessagePreviewService;
+import com.example.chat.modules.message.infrastructure.service.DefaultMessagePreviewService;
 import com.example.chat.modules.message.infrastructure.redis.ChatRedisPublisher;
 import com.example.chat.modules.room.entity.Room;
 import com.example.chat.modules.room.entity.RoomMember;
@@ -29,6 +31,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.ContextConfiguration;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
 import java.util.List;
@@ -59,11 +62,13 @@ class RoomPinServiceIntegrationTest {
 
     private ISystemMessageService systemMessageService;
     private MessageMapper messageMapper;
+        private IMessagePreviewService previewService;
 
     @BeforeEach
     void setUp() {
         systemMessageService = mock(ISystemMessageService.class);
         messageMapper = mock(MessageMapper.class);
+        previewService = new DefaultMessagePreviewService(new com.example.chat.modules.message.application.mapper.MessageBlockMapper(new ObjectMapper()));
 
         when(messageMapper.toResponse(any(ChatMessage.class), any(List.class), any(List.class)))
                 .thenAnswer(invocation -> {
@@ -85,7 +90,8 @@ class RoomPinServiceIntegrationTest {
                 roomPinnedMessageRepository,
                 systemMessageService,
                 messageMapper,
-                mock(ChatRedisPublisher.class)
+                mock(ChatRedisPublisher.class),
+                previewService
         );
     }
 
@@ -99,6 +105,9 @@ class RoomPinServiceIntegrationTest {
         roomPinService.pinMessage(roomId, actorId, messageId);
 
         assertThat(roomPinnedMessageRepository.findByRoomIdAndMessageId(roomId, messageId)).isPresent();
+        assertThat(roomPinnedMessageRepository.findByRoomIdAndMessageId(roomId, messageId)
+                .map(RoomPinnedMessage::getPreviewText))
+                .contains("message 1");
 
         assertThatThrownBy(() -> roomPinService.pinMessage(roomId, actorId, messageId))
                 .isInstanceOf(BusinessException.class)
@@ -161,6 +170,37 @@ class RoomPinServiceIntegrationTest {
         assertThat(pinned.get(0).getMessageId()).isEqualTo(newerMessageId);
         assertThat(pinned.get(1).getMessageId()).isEqualTo(olderMessageId);
     }
+
+        @Test
+        void getPinnedMessages_prefersStoredPreviewTextWithLegacyFallback() {
+                UUID roomId = createRoomWithMember();
+                UUID actorId = UUID.randomUUID();
+                addMember(roomId, actorId);
+
+                UUID messageId = createMessage(roomId, UUID.randomUUID(), 1L, false);
+                UUID legacyMessageId = createMessage(roomId, UUID.randomUUID(), 2L, false);
+
+                roomPinnedMessageRepository.save(RoomPinnedMessage.builder()
+                                .roomId(roomId)
+                                .messageId(messageId)
+                                .pinnedBy(actorId)
+                                .previewKind("IMAGE")
+                                .previewText("Image")
+                                .pinnedAt(Instant.parse("2026-01-01T00:02:00Z"))
+                                .build());
+                roomPinnedMessageRepository.save(RoomPinnedMessage.builder()
+                                .roomId(roomId)
+                                .messageId(legacyMessageId)
+                                .pinnedBy(actorId)
+                                .pinnedAt(Instant.parse("2026-01-01T00:01:00Z"))
+                                .build());
+
+                List<MessageResponse> pinned = roomPinService.getPinnedMessages(roomId, actorId);
+
+                assertThat(pinned).hasSize(2);
+                assertThat(pinned.get(0).getContent()).isEqualTo("Image");
+                assertThat(pinned.get(1).getContent()).isEqualTo("message 2");
+        }
 
     private UUID createRoomWithMember() {
         Room room = roomRepository.save(Room.builder()

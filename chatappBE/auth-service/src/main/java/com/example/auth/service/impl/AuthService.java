@@ -32,19 +32,20 @@ public class AuthService implements IAuthService {
     private final IPasswordService passwordService;
     private final IVerificationTokenService verificationTokenService;
     private final IEmailService emailService;
-    private final IUserProfileReadinessService userProfileReadinessService;
     private final AccountRepository accountRepository;
+    private final AuthSessionService authSessionService;
+    private final BrowserOAuthService browserOAuthService;
 
     @Override
     public AuthResponse register(String email, String password) {
         UUID accountId = localAuthService.register(email, password);
-        return issueTokensWhenProfileReady(accountId);
+        return authSessionService.issueTokensWhenProfileReady(accountId);
     }
 
     @Override
     public AuthResponse login(String email, String password) {
         UUID accountId = localAuthService.login(email, password);
-        return issueTokensWhenProfileReady(accountId);
+        return authSessionService.issueTokensWhenProfileReady(accountId);
     }
 
     @Override
@@ -57,7 +58,12 @@ public class AuthService implements IAuthService {
                 payload.getEmail()
         );
 
-        return issueTokensWhenProfileReady(accountId);
+        return authSessionService.issueTokensWhenProfileReady(accountId);
+    }
+
+    @Override
+    public AuthResponse exchangeGoogleOAuthCode(String code) {
+        return browserOAuthService.exchangeGoogleLogin(code);
     }
 
     @Override
@@ -103,16 +109,4 @@ public class AuthService implements IAuthService {
         verificationTokenService.confirmEmail(token);
     }
 
-    private AuthResponse issueTokensWhenProfileReady(UUID accountId) {
-        if (!userProfileReadinessService.waitUntilReady(accountId)) {
-            log.warn("auth_issue_blocked reason=user_profile_not_ready accountId={}", accountId);
-            throw new BusinessException(
-                    ErrorCode.INCOMPLETE_ACCOUNT,
-                    INCOMPLETE_ACCOUNT_MESSAGE,
-                    Map.of("authCode", "incomplete_account")
-            );
-        }
-
-        return tokenFacade.issue(accountId);
-    }
 }

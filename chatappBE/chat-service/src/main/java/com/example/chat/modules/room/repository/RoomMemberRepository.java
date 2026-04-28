@@ -1,6 +1,8 @@
 package com.example.chat.modules.room.repository;
 
 import com.example.chat.modules.room.entity.RoomMember;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.*;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,6 +18,12 @@ public interface RoomMemberRepository extends JpaRepository<RoomMember, UUID> {
 
     List<RoomMember> findByRoomId(UUID roomId);
 
+    Page<RoomMember> findByRoomId(UUID roomId, Pageable pageable);
+
+    Page<RoomMember> findByRoomIdAndDisplayNameContainingIgnoreCase(UUID roomId, String query, Pageable pageable);
+
+    List<RoomMember> findByRoomIdIn(List<UUID> roomIds);
+
     @Query("""
         select rm.roomId
         from RoomMember rm
@@ -29,20 +37,6 @@ public interface RoomMemberRepository extends JpaRepository<RoomMember, UUID> {
         where rm.roomId = :roomId
     """)
     List<UUID> findUserIdsByRoomId(UUID roomId);
-
-    @Query("""
-        select rm
-        from RoomMember rm
-        where rm.roomId = :roomId
-    """)
-    List<RoomMember> findMembersOfRoom(UUID roomId);
-
-    @Query("""
-        select rm
-        from RoomMember rm
-        where rm.roomId in :roomIds
-    """)
-    List<RoomMember> findMembersOfRooms(List<UUID> roomIds);
 
     long countByRoomId(UUID roomId);
 
@@ -59,5 +53,11 @@ public interface RoomMemberRepository extends JpaRepository<RoomMember, UUID> {
 
     @Modifying
     @Transactional
-    int deleteByRoomIdAndUserId(UUID roomId, UUID userId);
+        @Query("""
+                delete from RoomMember rm
+                where rm.roomId = :roomId
+                    and rm.userId = :userId
+        """)
+        int deleteByRoomIdAndUserId(UUID roomId, UUID userId);
+
 }

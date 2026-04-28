@@ -102,6 +102,7 @@ function renderTextWithMentions(
 
 function renderTextWithLinks(
   text: string,
+  onRequestOpenLink: (url: string) => void,
   resolveMentionLabel?: (token: string) => string,
   resolveMentionUserId?: (token: string) => string | null
 ) {
@@ -115,8 +116,10 @@ function renderTextWithLinks(
         <a
           key={`${part}-${index}`}
           href={part}
-          target="_blank"
-          rel="noopener noreferrer"
+          onClick={(event) => {
+            event.preventDefault()
+            onRequestOpenLink(part)
+          }}
           className="text-blue-600 underline underline-offset-2 break-all"
         >
           {part}
@@ -150,13 +153,20 @@ function getAttachmentIcon(attachment: Attachment) {
   }
 }
 
-function AssetBlock({ attachment }: { attachment: Attachment }) {
+function AssetBlock({
+  attachment,
+  onPreviewImage,
+  onRequestOpenLink,
+}: {
+  attachment: Attachment
+  onPreviewImage: (url: string) => void
+  onRequestOpenLink: (url: string) => void
+}) {
   if (attachment.type === "IMAGE") {
     return (
-      <a
-        href={attachment.url}
-        target="_blank"
-        rel="noopener noreferrer"
+      <button
+        type="button"
+        onClick={() => onPreviewImage(attachment.url)}
         className="block max-w-xs"
       >
         <img
@@ -164,15 +174,14 @@ function AssetBlock({ attachment }: { attachment: Attachment }) {
           alt={attachment.fileName || attachment.name || "Image"}
           className="rounded-lg max-h-72 object-cover hover:opacity-90 transition"
         />
-      </a>
+      </button>
     )
   }
 
   return (
-    <a
-      href={attachment.url}
-      target="_blank"
-      rel="noopener noreferrer"
+    <button
+      type="button"
+      onClick={() => onRequestOpenLink(attachment.url)}
       className="flex items-center gap-3 p-2 rounded-lg bg-gray-50 hover:bg-gray-100 transition border border-gray-200 max-w-xs"
     >
       <div className="text-gray-600 flex-shrink-0">{getAttachmentIcon(attachment)}</div>
@@ -185,7 +194,7 @@ function AssetBlock({ attachment }: { attachment: Attachment }) {
         </div>
       </div>
       <Download size={16} className="text-gray-400 flex-shrink-0" />
-    </a>
+    </button>
   )
 }
 
@@ -276,48 +285,116 @@ export default function MessageBlocks({
   resolveMentionLabel,
   resolveMentionUserId,
 }: MessageBlocksProps) {
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null)
+  const [confirmUrl, setConfirmUrl] = useState<string | null>(null)
   const renderableBlocks = getRenderableBlocks(blocks)
 
   if (renderableBlocks.length === 0) {
     return null
   }
 
+  const handleOpenExternal = () => {
+    if (!confirmUrl) return
+    window.open(confirmUrl, "_blank", "noopener,noreferrer")
+    setConfirmUrl(null)
+  }
+
   return (
-    <div className="flex flex-col gap-1.5 mt-0.5">
-      {renderableBlocks.map((block, index) => {
-        if (block.type === "TEXT") {
+    <>
+      <div className="flex flex-col gap-1.5 mt-0.5">
+        {renderableBlocks.map((block, index) => {
+          if (block.type === "TEXT") {
+            return (
+              <div
+                key={`text-${index}`}
+                className="text-sm text-gray-800 whitespace-pre-wrap break-words"
+              >
+                {renderTextWithLinks(
+                  block.text ?? "",
+                  setConfirmUrl,
+                  resolveMentionLabel,
+                  resolveMentionUserId
+                )}
+              </div>
+            )
+          }
+
+          if (block.type === "ROOM_INVITE") {
+            return (
+              <div key={`invite-${index}`}>
+                <RoomInviteBlock block={block} />
+              </div>
+            )
+          }
+
+          if (!block.attachment) {
+            return null
+          }
+
           return (
-            <div
-              key={`text-${index}`}
-              className="text-sm text-gray-800 whitespace-pre-wrap break-words"
-            >
-              {renderTextWithLinks(
-                block.text ?? "",
-                resolveMentionLabel,
-                resolveMentionUserId
-              )}
+            <div key={`asset-${index}`}>
+              <AssetBlock
+                attachment={block.attachment}
+                onPreviewImage={setPreviewImageUrl}
+                onRequestOpenLink={setConfirmUrl}
+              />
             </div>
           )
-        }
+        })}
+      </div>
 
-        if (block.type === "ROOM_INVITE") {
-          return (
-            <div key={`invite-${index}`}>
-              <RoomInviteBlock block={block} />
+      {previewImageUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-xl rounded-xl bg-white p-4 shadow-lg">
+            <img src={previewImageUrl} alt="Preview" className="max-h-[70vh] w-full rounded-lg object-contain" />
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPreviewImageUrl(null)}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  window.open(previewImageUrl, "_blank", "noopener,noreferrer")
+                  setPreviewImageUrl(null)
+                }}
+                className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                View Full
+              </button>
             </div>
-          )
-        }
-
-        if (!block.attachment) {
-          return null
-        }
-
-        return (
-          <div key={`asset-${index}`}>
-            <AssetBlock attachment={block.attachment} />
           </div>
-        )
-      })}
-    </div>
+        </div>
+      )}
+
+      {confirmUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-4 shadow-lg">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-amber-700">Open Link</h3>
+            <p className="mt-2 text-sm text-gray-600">Do you want to open this link in a new tab?</p>
+            <p className="mt-1 text-xs text-gray-500 break-all">{confirmUrl}</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmUrl(null)}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenExternal}
+                className="rounded-md bg-amber-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-amber-700"
+              >
+                Open Link
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }

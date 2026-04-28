@@ -25,6 +25,7 @@ import com.example.chat.modules.room.repository.RoomMemberRepository;
 import com.example.chat.modules.room.repository.RoomRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import com.example.common.web.exception.BusinessException;
 import com.example.common.web.exception.ErrorCode;
 
@@ -184,6 +185,7 @@ public class MessageCommandService
     }
 
     @Override
+    @Transactional
     public MessageResponse forwardMessage(
             ForwardMessageRequest request
     ) {
@@ -232,7 +234,6 @@ public class MessageCommandService
         List<ChatAttachment> sourceAttachments = attachmentRepository.findByMessageId(sourceMessage.getId());
         List<ChatAttachment> forwardedAttachments = sourceAttachments.stream()
                 .map(attachment -> ChatAttachment.builder()
-                        .id(UUID.randomUUID())
                         .messageId(forwardedMessage.getId())
                         .type(attachment.getType())
                         .url(attachment.getUrl())

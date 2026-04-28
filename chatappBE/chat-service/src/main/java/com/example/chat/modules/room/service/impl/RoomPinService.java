@@ -11,6 +11,7 @@ import com.example.chat.modules.message.infrastructure.redis.ChatRedisPublisher;
 import com.example.chat.modules.message.domain.repository.ChatAttachmentRepository;
 import com.example.chat.modules.message.domain.repository.ChatMessageRepository;
 import com.example.chat.modules.message.domain.repository.RoomPinnedMessageRepository;
+import com.example.chat.modules.message.domain.service.IMessagePreviewService;
 import com.example.chat.modules.room.dto.RoomMessagePinEventPayload;
 import com.example.chat.modules.room.repository.RoomMemberRepository;
 import com.example.chat.modules.room.service.IRoomPinService;
@@ -40,6 +41,7 @@ public class RoomPinService implements IRoomPinService {
         private final ISystemMessageService systemMessageService;
     private final MessageMapper messageMapper;
         private final ChatRedisPublisher chatRedisPublisher;
+        private final IMessagePreviewService previewService;
 
     @Override
     public void pinMessage(UUID roomId, UUID actorId, UUID messageId) {
@@ -65,6 +67,8 @@ public class RoomPinService implements IRoomPinService {
             );
         }
 
+        List<ChatAttachment> attachments = chatAttachmentRepository.findByMessageId(messageId);
+
         roomPinnedMessageRepository.findByRoomIdAndMessageId(roomId, messageId)
                 .ifPresent(existing -> {
                     throw new BusinessException(
@@ -79,6 +83,8 @@ public class RoomPinService implements IRoomPinService {
                         .roomId(roomId)
                         .messageId(messageId)
                         .pinnedBy(actorId)
+                        .previewKind(resolvePreviewKind(targetMessage, attachments))
+                        .previewText(previewService.buildPreview(targetMessage, attachments))
                         .pinnedAt(Instant.now())
                         .build()
         );
@@ -142,16 +148,48 @@ public class RoomPinService implements IRoomPinService {
             }
 
             responses.add(
-                    messageMapper.toResponse(
+                    applyPinnedPreview(
+                            messageMapper.toResponse(
                             message,
                             attachmentsByMessageId.getOrDefault(message.getId(), List.of()),
                             List.of()
+                            ),
+                            pin
                     )
             );
         }
 
         return responses;
     }
+
+        private MessageResponse applyPinnedPreview(MessageResponse response, RoomPinnedMessage pin) {
+                String previewText = pin.getPreviewText();
+                if (previewText == null || previewText.isBlank()) {
+                        return response;
+                }
+                response.setContent(previewText);
+                return response;
+        }
+
+        private String resolvePreviewKind(ChatMessage message, List<ChatAttachment> attachments) {
+                if (message.getBlocksJson() != null && !message.getBlocksJson().isBlank()) {
+                        return "BLOCK";
+                }
+
+                if (attachments == null || attachments.isEmpty()) {
+                        return "TEXT";
+                }
+
+                if (attachments.size() > 1) {
+                        return "MEDIA";
+                }
+
+                return switch (attachments.get(0).getType()) {
+                        case IMAGE -> "IMAGE";
+                        case VIDEO -> "VIDEO";
+                        case FILE -> "FILE";
+                };
+        }
 
     private void ensureMember(UUID roomId, UUID actorId) {
         if (!roomMemberRepository.existsByRoomIdAndUserId(roomId, actorId)) {

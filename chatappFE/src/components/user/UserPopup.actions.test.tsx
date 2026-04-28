@@ -255,8 +255,8 @@ describe("UserPopup self/other actions", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "More actions" }))
 
-    const inviteToGroupItem = screen.getByText("Invite to group")
-    fireEvent.mouseEnter(inviteToGroupItem)
+    const inviteToGroupItem = screen.getByRole("button", { name: "Invite to group" })
+    fireEvent.click(inviteToGroupItem)
     fireEvent.click(await screen.findByRole("button", { name: "Alpha Group" }))
 
     await waitFor(() => {
@@ -280,5 +280,13 @@ describe("UserPopup self/other actions", () => {
       )
       expect(navigateMock).toHaveBeenCalledWith("/chat")
     })
+  })
+
+  it("does not render view full profile action in more menu", () => {
+    render(<UserPopup />)
+
+    fireEvent.click(screen.getByRole("button", { name: "More actions" }))
+
+    expect(screen.queryByRole("button", { name: "View full profile" })).toBeNull()
   })
 })

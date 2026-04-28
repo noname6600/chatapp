@@ -33,10 +33,6 @@ vi.mock("../components/profile/ProfileEditor", () => ({
   default: () => <div data-testid="profile-editor">Editor</div>,
 }))
 
-vi.mock("../components/profile/ProfilePreview", () => ({
-  default: () => <div data-testid="profile-preview">Preview</div>,
-}))
-
 describe("ProfileSettingsPage", () => {
   it("renders profile and security tabs only", () => {
     render(
@@ -59,5 +55,6 @@ describe("ProfileSettingsPage", () => {
 
     expect(screen.getAllByRole("button", { name: "Edit Profile" }).length).toBeGreaterThan(0)
     expect(screen.getAllByTestId("settings-about-text")[0].textContent).toBe("No bio yet.")
+    expect(screen.queryByTestId("profile-preview")).toBeNull()
   })
 })

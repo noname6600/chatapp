@@ -79,7 +79,7 @@ public class MessageAggregate {
         boolean hasAttachments = attachments != null && !attachments.isEmpty();
         boolean hasBlocks = blocksJson != null && !blocksJson.isBlank();
 
-        if (hasAttachments && (hasContent || hasBlocks)) return MessageType.MIXED;
+        if (hasAttachments && hasContent) return MessageType.MIXED;
         if (hasAttachments) return MessageType.ATTACHMENT;
         if (hasContent || hasBlocks) return MessageType.TEXT;
 
@@ -255,10 +255,10 @@ public class MessageAggregate {
 
             case MIXED:
 
-                if (!hasContent || !hasAttachments)
+                if ((!hasContent && !hasBlocks) || !hasAttachments)
                     throw new BusinessException(
                             ErrorCode.VALIDATION_ERROR,
-                            "MIXED requires text and attachment"
+                            "MIXED requires text or blocks, and attachment"
                     );
 
                 break;

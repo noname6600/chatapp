@@ -85,4 +85,44 @@ class AuthErrorPayloadPropagationIntegrationTest {
         assertThat(recordedRequest.getPath()).isEqualTo("/api/v1/auth/login");
         assertThat(recordedRequest.getMethod()).isEqualTo("POST");
     }
+
+        @Test
+        void oauthAuthorizationRequest_isForwardedThroughGatewayWithoutJwtEnforcement() throws Exception {
+        AUTH_BACKEND.enqueue(new MockResponse()
+            .setResponseCode(302)
+            .addHeader("Location", "https://accounts.google.com/o/oauth2/v2/auth?state=test-state"));
+
+        webTestClient.get()
+            .uri("/oauth2/authorization/google")
+            .exchange()
+            .expectStatus().is3xxRedirection()
+            .expectHeader().valueEquals("Location", "https://accounts.google.com/o/oauth2/v2/auth?state=test-state");
+
+        RecordedRequest recordedRequest = AUTH_BACKEND.takeRequest(3, TimeUnit.SECONDS);
+        assertThat(recordedRequest).isNotNull();
+        assertThat(recordedRequest.getPath()).isEqualTo("/oauth2/authorization/google");
+        assertThat(recordedRequest.getMethod()).isEqualTo("GET");
+        }
+
+        @Test
+        void oauthCallbackRequest_isForwardedThroughGatewayWithoutJwtEnforcement() throws Exception {
+        AUTH_BACKEND.enqueue(new MockResponse()
+            .setResponseCode(302)
+            .addHeader("Location", "https://chatweb.nani.id.vn/auth/oauth/google/callback?code=handoff-code"));
+
+        webTestClient.get()
+            .uri(uriBuilder -> uriBuilder
+                .path("/login/oauth2/code/google")
+                .queryParam("code", "provider-code")
+                .queryParam("state", "provider-state")
+                .build())
+            .exchange()
+            .expectStatus().is3xxRedirection()
+            .expectHeader().valueEquals("Location", "https://chatweb.nani.id.vn/auth/oauth/google/callback?code=handoff-code");
+
+        RecordedRequest recordedRequest = AUTH_BACKEND.takeRequest(3, TimeUnit.SECONDS);
+        assertThat(recordedRequest).isNotNull();
+        assertThat(recordedRequest.getPath()).isEqualTo("/login/oauth2/code/google?code=provider-code&state=provider-state");
+        assertThat(recordedRequest.getMethod()).isEqualTo("GET");
+        }
 }

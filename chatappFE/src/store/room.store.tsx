@@ -321,6 +321,51 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
     }, 120)
   }, [reconcileRoomState])
 
+  const applyIncomingMessageToRoom = useCallback(
+    (room: Room, msg: ChatMessage): Room => {
+      const isSender = userId != null && msg.senderId === userId
+      const mode = getRoomNotificationMode(msg.roomId)
+      const isMentioned = Boolean(userId && msg.mentionedUserIds?.includes(userId))
+      const suppressUnreadByMode = !shouldDeliverRoomEventByMode(mode, isMentioned)
+
+      const senderName = resolveLastMessageSenderName({
+        room,
+        senderId: msg.senderId,
+        currentUserId: userId,
+        usersById: usersRef.current,
+      })
+
+      const roomLatestTs = toTimestamp(room.latestMessageAt ?? room.lastMessage?.createdAt ?? null)
+      const messageTs = toTimestamp(msg.createdAt)
+      const shouldPromoteAsLatest = messageTs >= roomLatestTs
+
+      const excludeSelfFromUnread = isFeatureEnabled("enableSelfMessageUnreadExclusion") && isSender
+      const unreadCount =
+        excludeSelfFromUnread || suppressUnreadByMode
+          ? (room.unreadCount ?? 0)
+          : (room.unreadCount ?? 0) + 1
+
+      const nextRoom: Room = {
+        ...room,
+        unreadCount,
+      }
+
+      if (shouldPromoteAsLatest) {
+        nextRoom.latestMessageAt = msg.createdAt
+        nextRoom.lastMessage = {
+          id: msg.messageId,
+          senderId: msg.senderId,
+          senderName,
+          content: buildPreview(msg),
+          createdAt: msg.createdAt,
+        }
+      }
+
+      return nextRoom
+    },
+    [userId]
+  )
+
   const buildPreview = (msg: ChatMessage): string => {
     if (msg.deleted) return "[Message deleted]"
 
@@ -423,68 +468,69 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
 
       const msg = event.payload
 
-      // First-message edge case: incoming message can target a room not yet in local
-      // list state (for example, first-ever DM). Trigger a debounced reconciliation so
-      // the new room appears without requiring manual page refresh.
-      if (!roomsByIdRef.current[msg.roomId]) {
-        scheduleMissingRoomReconcile()
-        return
-      }
-
       // Deterministic merge: skip if this message was already processed.
       const processedSet = getProcessedMessages(msg.roomId)
       if (processedSet.has(msg.messageId)) {
-        // Event already processed, skip to avoid double-increment.
+        return
+      }
+
+      // First-message edge case: incoming message can target a room not yet in local
+      // list state (for example, first-ever DM). Create a lightweight local placeholder
+      // immediately so the first message is visible in realtime, then reconcile full data.
+      if (!roomsByIdRef.current[msg.roomId]) {
+        setRoomsById((prev) => {
+          const existing = prev[msg.roomId]
+          if (existing) return prev
+
+          const placeholder: Room = {
+            id: msg.roomId,
+            type: "PRIVATE",
+            name: "New message",
+            avatarUrl: null,
+            createdBy: msg.senderId,
+            createdAt: msg.createdAt,
+            myRole: "MEMBER",
+            unreadCount: 0,
+            latestMessageAt: null,
+            otherUserId: msg.senderId,
+            lastMessage: null,
+          }
+
+          const hydrated = applyIncomingMessageToRoom(placeholder, msg)
+
+          const nextMap = {
+            ...prev,
+            [msg.roomId]: hydrated,
+          }
+
+          setRoomOrder((prevOrder) => {
+            const withInserted = prevOrder.includes(msg.roomId)
+              ? prevOrder
+              : [msg.roomId, ...prevOrder]
+            return sortRoomIdsByRecency(nextMap, withInserted)
+          })
+
+          return nextMap
+        })
+
+        if (!subscribedRoomIdsRef.current.has(msg.roomId)) {
+          subscribeRoom(msg.roomId)
+          subscribedRoomIdsRef.current.add(msg.roomId)
+        }
+
+        processedSet.add(msg.messageId)
+        scheduleMissingRoomReconcile()
         return
       }
 
       // Mark this message as processed for future events.
       processedSet.add(msg.messageId)
 
-      const preview = buildPreview(msg)
-
       setRoomsById(prev => {
         const room = prev[msg.roomId]
         if (!room) return prev
 
-        const isSender = userId != null && msg.senderId === userId
-        const mode = getRoomNotificationMode(msg.roomId)
-        const isMentioned = Boolean(userId && msg.mentionedUserIds?.includes(userId))
-        const suppressUnreadByMode = !shouldDeliverRoomEventByMode(mode, isMentioned)
-
-        const senderName = resolveLastMessageSenderName({
-          room,
-          senderId: msg.senderId,
-          currentUserId: userId,
-          usersById: users,
-        })
-
-        const roomLatestTs = toTimestamp(room.latestMessageAt ?? room.lastMessage?.createdAt ?? null)
-        const messageTs = toTimestamp(msg.createdAt)
-        const shouldPromoteAsLatest = messageTs >= roomLatestTs
-
-        // Self-message unread exclusion (can be disabled via feature flag)
-        const excludeSelfFromUnread = isFeatureEnabled("enableSelfMessageUnreadExclusion") && isSender;
-        const unreadCount =
-          excludeSelfFromUnread || suppressUnreadByMode
-            ? (room.unreadCount ?? 0)
-            : (room.unreadCount ?? 0) + 1
-
-        const nextRoom: Room = {
-          ...room,
-          unreadCount,
-        }
-
-        if (shouldPromoteAsLatest) {
-          nextRoom.latestMessageAt = msg.createdAt
-          nextRoom.lastMessage = {
-            id: msg.messageId,
-            senderId: msg.senderId,
-            senderName,
-            content: preview,
-            createdAt: msg.createdAt
-          }
-        }
+        const nextRoom = applyIncomingMessageToRoom(room, msg)
 
         return {
           ...prev,
@@ -494,7 +540,7 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
 
       scheduleSortRoomOrder()
     })
-  }, [getProcessedMessages, scheduleMissingRoomReconcile, scheduleSortRoomOrder, userId, users])
+  }, [applyIncomingMessageToRoom, getProcessedMessages, scheduleMissingRoomReconcile, scheduleSortRoomOrder])
 
   // Reconcile room state when websocket reconnects.
   useEffect(() => {

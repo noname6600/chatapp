@@ -32,7 +32,7 @@ let deletingContent: string | null = null
 vi.mock("../../store/chat.store", () => ({
   useChat: () => ({
     messagesByRoom: {
-      "room-1": [makeMessage(1), makeMessage(2)],
+      "room-1": [makeMessage(1), makeMessage(2), makeTempFailedMessage(3)],
     },
     currentUserId: "user-1",
     loadOlderMessages,
@@ -148,6 +148,25 @@ function makeMessage(seq: number): ChatMessage {
   }
 }
 
+function makeTempFailedMessage(seq: number): ChatMessage {
+  return {
+    messageId: `temp-${seq}`,
+    roomId: "room-1",
+    senderId: "user-1",
+    seq,
+    type: "TEXT",
+    content: `Temp Message ${seq}`,
+    replyToMessageId: null,
+    clientMessageId: `cid-${seq}`,
+    createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, seq)).toISOString(),
+    editedAt: null,
+    deleted: false,
+    attachments: [],
+    reactions: [],
+    deliveryStatus: "failed",
+  }
+}
+
 describe("MessageList delete action behavior", () => {
   afterEach(() => {
     cleanup()
@@ -217,6 +236,23 @@ describe("MessageList delete action behavior", () => {
       expect(clearDeleting).toHaveBeenCalled()
       expect(deleteMessageApiMock).not.toHaveBeenCalled()
       expect(removeMessage).not.toHaveBeenCalled()
+    })
+  })
+
+  it("deletes failed temp-id message locally without calling delete API", async () => {
+    const { rerender } = render(<MessageList roomId="room-1" />)
+
+    fireEvent.click(screen.getByTestId("delete-3"))
+    rerender(<MessageList roomId="room-1" />)
+
+    await waitFor(() => screen.getByTestId("confirm-delete-dialog"))
+
+    fireEvent.click(screen.getByTestId("confirm-btn"))
+
+    await waitFor(() => {
+      expect(deleteMessageApiMock).not.toHaveBeenCalled()
+      expect(removeMessage).toHaveBeenCalledWith("temp-3", "room-1")
+      expect(clearDeleting).toHaveBeenCalled()
     })
   })
 })

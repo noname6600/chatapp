@@ -29,6 +29,14 @@ public interface IRoomService {
 
     void removeMember(UUID roomId, UUID ownerId, UUID targetUser);
 
+        void banMember(UUID roomId, UUID ownerId, UUID targetUser);
+
+        void unbanMember(UUID roomId, UUID ownerId, UUID targetUser);
+
+        void transferOwnership(UUID roomId, UUID ownerId, UUID newOwnerId);
+
+        void bulkBanMembers(UUID roomId, UUID ownerId, java.util.List<UUID> targetUsers);
+
     void updateLastMessage(
             UUID roomId,
             UUID messageId,

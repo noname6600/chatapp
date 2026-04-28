@@ -38,6 +38,12 @@ public class RoomPinnedMessage {
     @Column(nullable = false)
     private UUID pinnedBy;
 
+    @Column(length = 16)
+    private String previewKind;
+
+    @Column(columnDefinition = "TEXT")
+    private String previewText;
+
     @Column(nullable = false, updatable = false)
     private Instant pinnedAt;
 

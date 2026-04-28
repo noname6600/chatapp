@@ -570,6 +570,13 @@ export default function MessageInput({ roomId }: Props) {
       setEditingDraftBlockId(null);
       setEditingDraftContent("");
       stopTyping();
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "";
+      if (msg.includes("You have been removed from this group")) {
+        setComposerError("You have been removed from this group.");
+      } else if (msg.includes("You cannot send messages to this user")) {
+        setComposerError("You cannot send messages to this user.");
+      }
     } finally {
       setTimeout(() => {
         sendingRef.current = false;
