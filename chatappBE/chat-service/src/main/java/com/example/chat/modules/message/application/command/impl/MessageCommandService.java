@@ -26,8 +26,8 @@ import com.example.chat.modules.room.repository.RoomRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 
 import java.util.Collections;
 import java.util.List;
@@ -107,7 +107,7 @@ public class MessageCommandService
                                 .forEach(block -> {
                                         if (block.getRoomInvite() == null || block.getRoomInvite().getRoomId() == null) {
                                                 throw new BusinessException(
-                                                                ErrorCode.VALIDATION_ERROR,
+                                                                CommonErrorCode.VALIDATION_ERROR,
                                                                 "ROOM_INVITE block requires roomId"
                                                 );
                                         }
@@ -115,20 +115,20 @@ public class MessageCommandService
                                         UUID inviteRoomId = block.getRoomInvite().getRoomId();
                                         Room room = roomRepository.findById(inviteRoomId)
                                                         .orElseThrow(() -> new BusinessException(
-                                                                        ErrorCode.RESOURCE_NOT_FOUND,
+                                                                        CommonErrorCode.RESOURCE_NOT_FOUND,
                                                                         "Invite room not found"
                                                         ));
 
                                         if (room.getType() != RoomType.GROUP) {
                                                 throw new BusinessException(
-                                                                ErrorCode.BAD_REQUEST,
+                                                                CommonErrorCode.BAD_REQUEST,
                                                                 "Only group rooms can be invited"
                                                 );
                                         }
 
                                         if (!roomMemberRepository.existsByRoomIdAndUserId(inviteRoomId, senderId)) {
                                                 throw new BusinessException(
-                                                                ErrorCode.FORBIDDEN,
+                                                                CommonErrorCode.FORBIDDEN,
                                                                 "You cannot invite others to a room you are not a member of"
                                                 );
                                         }
@@ -194,20 +194,20 @@ public class MessageCommandService
 
         if (!roomMemberRepository.existsByRoomIdAndUserId(targetRoomId, actorId)) {
             throw new BusinessException(
-                    ErrorCode.FORBIDDEN,
+                    CommonErrorCode.FORBIDDEN,
                     "Not a member of target room"
             );
         }
 
         ChatMessage sourceMessage = messageRepository.findById(request.getSourceMessageId())
                 .orElseThrow(() -> new BusinessException(
-                        ErrorCode.RESOURCE_NOT_FOUND,
+                        CommonErrorCode.RESOURCE_NOT_FOUND,
                         "Source message not found"
                 ));
 
         if (Boolean.TRUE.equals(sourceMessage.getDeleted())) {
             throw new BusinessException(
-                    ErrorCode.BAD_REQUEST,
+                    CommonErrorCode.BAD_REQUEST,
                     "Cannot forward a deleted message"
             );
         }
@@ -272,3 +272,4 @@ public class MessageCommandService
         deletePipeline.execute(context);
     }
 }
+

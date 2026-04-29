@@ -3,8 +3,8 @@ package com.example.chat.modules.message.application.pipeline.send.steps;
 import com.example.chat.modules.message.application.pipeline.send.SendMessageContext;
 import com.example.chat.modules.message.application.port.RoomPermissionService;
 import com.example.common.core.pipeline.PipelineStep;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -26,7 +26,7 @@ public class ValidateRoomPermissionStep
 
         if (!allowed) {
             throw new BusinessException(
-                    ErrorCode.FORBIDDEN,
+                    CommonErrorCode.FORBIDDEN,
                     "User cannot send message to this room"
             );
         }
@@ -39,3 +39,5 @@ public class ValidateRoomPermissionStep
         };
     }
 }
+
+

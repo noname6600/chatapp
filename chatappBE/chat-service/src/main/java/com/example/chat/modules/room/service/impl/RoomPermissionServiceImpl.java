@@ -5,8 +5,9 @@ import com.example.chat.modules.room.entity.Room;
 import com.example.chat.modules.room.repository.PrivateRoomRepository;
 import com.example.chat.modules.room.repository.RoomMemberRepository;
 import com.example.chat.modules.room.repository.RoomRepository;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.chat.exception.ChatErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -28,7 +29,7 @@ public class RoomPermissionServiceImpl
                 roomRepository.findById(roomId)
                         .orElseThrow(() ->
                                 new BusinessException(
-                                        ErrorCode.RESOURCE_NOT_FOUND,
+                                        CommonErrorCode.RESOURCE_NOT_FOUND,
                                         "Room not found"
                                 )
                         );
@@ -41,7 +42,7 @@ public class RoomPermissionServiceImpl
             case GROUP:
                 if (!memberRepository.existsByRoomIdAndUserId(roomId, userId)) {
                     throw new BusinessException(
-                            ErrorCode.REMOVED_FROM_GROUP,
+                            ChatErrorCode.REMOVED_FROM_GROUP,
                             "You have been removed from this group."
                     );
                 }
@@ -61,3 +62,5 @@ public class RoomPermissionServiceImpl
                         .existsByRoomIdAndUser2Id(roomId, userId);
     }
 }
+
+

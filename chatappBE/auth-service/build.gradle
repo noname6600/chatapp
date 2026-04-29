@@ -26,6 +26,7 @@ repositories {
 
 dependencies {
     implementation project(':common:common-web')
+    implementation project(':common:common-core')
     implementation project(':common:common-kafka')
     implementation project(':common:common-events')
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'

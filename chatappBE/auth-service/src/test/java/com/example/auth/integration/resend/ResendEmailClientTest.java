@@ -1,7 +1,7 @@
 package com.example.auth.integration.resend;
 
 import com.example.auth.configuration.ResendProperties;
-import com.example.common.web.exception.BusinessException;
+import com.example.common.core.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.HttpMethod;
@@ -65,3 +65,4 @@ class ResendEmailClientTest {
         server.verify();
     }
 }
+

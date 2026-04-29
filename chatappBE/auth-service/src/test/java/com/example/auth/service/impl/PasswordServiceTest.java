@@ -2,8 +2,8 @@ package com.example.auth.service.impl;
 
 import com.example.auth.entity.Account;
 import com.example.auth.repository.AccountRepository;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -54,7 +54,7 @@ class PasswordServiceTest {
         )
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.VALIDATION_ERROR);
+                .isEqualTo(CommonErrorCode.VALIDATION_ERROR);
     }
 
     @Test
@@ -70,7 +70,7 @@ class PasswordServiceTest {
         )
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.UNAUTHORIZED);
+                .isEqualTo(CommonErrorCode.UNAUTHORIZED);
     }
 
     private Account baseAccount(UUID id, String hash) {
@@ -83,3 +83,5 @@ class PasswordServiceTest {
                 .build();
     }
 }
+
+

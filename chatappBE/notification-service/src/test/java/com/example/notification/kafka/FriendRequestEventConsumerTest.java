@@ -1,7 +1,7 @@
 package com.example.notification.kafka;
 
 import com.example.common.integration.friendship.FriendRequestEvent;
-import com.example.common.kafka.event.FriendRequestKafkaEvent;
+import com.example.common.integration.kafka.event.FriendRequestKafkaEvent;
 import com.example.notification.entity.Notification;
 import com.example.notification.entity.NotificationType;
 import com.example.notification.repository.NotificationRepository;

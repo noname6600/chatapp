@@ -5,8 +5,8 @@ import com.example.auth.entity.VerificationToken;
 import com.example.auth.repository.AccountRepository;
 import com.example.auth.repository.VerificationTokenRepository;
 import com.example.auth.service.IVerificationTokenService;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.codec.digest.DigestUtils;
@@ -36,13 +36,13 @@ public class VerificationTokenService implements IVerificationTokenService {
     @Transactional
     public String issueToken(UUID accountId, String email) {
         Account account = accountRepository.findById(accountId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHORIZED, "Account not found"));
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Account not found"));
 
         // If email not provided, use account's email
         String tokenEmail = email != null && !email.isBlank() ? email : account.getEmail();
 
         if (tokenEmail == null || tokenEmail.isBlank()) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "Email is required");
+            throw new BusinessException(CommonErrorCode.VALIDATION_ERROR, "Email is required");
         }
 
         // Invalidate previous unused token if any
@@ -74,23 +74,23 @@ public class VerificationTokenService implements IVerificationTokenService {
     @Transactional
     public void confirmEmail(String token) {
         if (token == null || token.isBlank()) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "Verification token is required");
+            throw new BusinessException(CommonErrorCode.VALIDATION_ERROR, "Verification token is required");
         }
 
         String tokenHash = DigestUtils.sha256Hex(token);
         Instant now = Instant.now(clock);
 
         VerificationToken verificationToken = verificationTokenRepository.findByTokenHash(tokenHash)
-                .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR, "Invalid verification token"));
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.VALIDATION_ERROR, "Invalid verification token"));
 
         // Check if token is already used
         if (verificationToken.isUsed()) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "Verification token has already been used");
+            throw new BusinessException(CommonErrorCode.VALIDATION_ERROR, "Verification token has already been used");
         }
 
         // Check if token has expired
         if (now.isAfter(verificationToken.getExpiresAt())) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "Verification token has expired");
+            throw new BusinessException(CommonErrorCode.VALIDATION_ERROR, "Verification token has expired");
         }
 
         // Mark token as used
@@ -98,7 +98,7 @@ public class VerificationTokenService implements IVerificationTokenService {
 
         // Mark account's email as verified
         Account account = accountRepository.findById(verificationToken.getAccountId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHORIZED, "Account not found"));
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Account not found"));
         account.setEmailVerified(true);
         accountRepository.save(account);
 
@@ -120,3 +120,5 @@ public class VerificationTokenService implements IVerificationTokenService {
                 .orElse(null);
     }
 }
+
+

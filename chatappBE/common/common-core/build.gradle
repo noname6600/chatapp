@@ -5,7 +5,7 @@ plugins {
 
 group = 'com.example'
 version = '0.0.1-SNAPSHOT'
-description = 'Common Redis Library'
+description = 'Common Core Library'
 
 java {
     toolchain {
@@ -30,11 +30,7 @@ dependencyManagement {
 }
 
 dependencies {
-    implementation project(':common:common-events')
-    implementation 'org.springframework.boot:spring-boot-starter-websocket'
-    implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
-    implementation 'com.fasterxml.jackson.core:jackson-databind'
-    implementation "com.fasterxml.jackson.datatype:jackson-datatype-jsr310"
+    implementation 'org.springframework:spring-web'
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
 }

@@ -1,7 +1,7 @@
 package com.example.user.service.impl;
 
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import com.example.user.dto.CloudinaryUploadResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -31,17 +31,17 @@ public class CloudinaryService {
         try {
 
             if (file == null || file.isEmpty()) {
-                throw new BusinessException(ErrorCode.BAD_REQUEST, "Avatar file is empty");
+                throw new BusinessException(CommonErrorCode.BAD_REQUEST, "Avatar file is empty");
             }
 
             if (file.getSize() > MAX_FILE_SIZE) {
-                throw new BusinessException(ErrorCode.BAD_REQUEST, "Avatar file too large (max 5MB)");
+                throw new BusinessException(CommonErrorCode.BAD_REQUEST, "Avatar file too large (max 5MB)");
             }
 
             String contentType = file.getContentType();
 
             if (contentType == null || !ALLOWED_TYPES.contains(contentType)) {
-                throw new BusinessException(ErrorCode.BAD_REQUEST, "Unsupported image format");
+                throw new BusinessException(CommonErrorCode.BAD_REQUEST, "Unsupported image format");
             }
 
             byte[] bytes = file.getBytes();
@@ -68,7 +68,7 @@ public class CloudinaryService {
         } catch (Exception e) {
 
             throw new BusinessException(
-                    ErrorCode.INTERNAL_ERROR,
+                    CommonErrorCode.INTERNAL_ERROR,
                     "Cloudinary upload failed"
             );
         }
@@ -91,3 +91,4 @@ public class CloudinaryService {
         }
     }
 }
+

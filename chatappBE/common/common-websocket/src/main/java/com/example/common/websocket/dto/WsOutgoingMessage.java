@@ -1,6 +1,7 @@
 package com.example.common.websocket.dto;
 
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -14,6 +15,7 @@ public class WsOutgoingMessage {
 
     private String type;
 
-    private Object data;
+    @JsonAlias("data")
+    private Object payload;
 }
 

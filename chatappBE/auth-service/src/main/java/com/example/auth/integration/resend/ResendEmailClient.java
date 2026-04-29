@@ -1,8 +1,8 @@
 package com.example.auth.integration.resend;
 
 import com.example.auth.configuration.ResendProperties;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -53,14 +53,14 @@ public class ResendEmailClient {
                         response.getStatusCodeValue(),
                         truncateBody(response.getBody()));
                 throw new BusinessException(
-                        ErrorCode.INTERNAL_ERROR,
+                        CommonErrorCode.INTERNAL_ERROR,
                         "Failed to send email. Please try again later."
                 );
             }
         } catch (RestClientException ex) {
             log.error("Resend send failed: {}", ex.getMessage(), ex);
             throw new BusinessException(
-                    ErrorCode.INTERNAL_ERROR,
+                    CommonErrorCode.INTERNAL_ERROR,
                     "Failed to send email. Please try again later."
             );
         }
@@ -91,3 +91,5 @@ public class ResendEmailClient {
     ) {
     }
 }
+
+

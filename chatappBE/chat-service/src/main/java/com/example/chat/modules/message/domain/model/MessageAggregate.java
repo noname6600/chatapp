@@ -4,8 +4,9 @@ import com.example.chat.modules.message.domain.entity.ChatAttachment;
 import com.example.chat.modules.message.domain.entity.ChatMessage;
 import com.example.chat.modules.message.domain.enums.AttachmentType;
 import com.example.chat.modules.message.domain.enums.MessageType;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.chat.exception.ChatErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -84,7 +85,7 @@ public class MessageAggregate {
         if (hasContent || hasBlocks) return MessageType.TEXT;
 
         throw new BusinessException(
-                ErrorCode.MESSAGE_CONTENT_EMPTY,
+                ChatErrorCode.MESSAGE_CONTENT_EMPTY,
                 "Message cannot be empty"
         );
     }
@@ -95,7 +96,7 @@ public class MessageAggregate {
 
         if (drafts.size() > MAX_ATTACHMENTS) {
             throw new BusinessException(
-                    ErrorCode.TOO_MANY_ATTACHMENTS,
+                    ChatErrorCode.TOO_MANY_ATTACHMENTS,
                     "Max attachments exceeded"
             );
         }
@@ -124,35 +125,35 @@ public class MessageAggregate {
 
         if (draft == null) {
             throw new BusinessException(
-                    ErrorCode.ATTACHMENT_INVALID,
+                    ChatErrorCode.ATTACHMENT_INVALID,
                     "Attachment draft cannot be null"
             );
         }
 
         if (draft.getType() == null) {
             throw new BusinessException(
-                    ErrorCode.UNSUPPORTED_ATTACHMENT_TYPE,
+                    ChatErrorCode.UNSUPPORTED_ATTACHMENT_TYPE,
                     "Attachment type required"
             );
         }
 
         if (draft.getUrl() == null || draft.getUrl().isBlank()) {
             throw new BusinessException(
-                    ErrorCode.ATTACHMENT_INVALID,
+                    ChatErrorCode.ATTACHMENT_INVALID,
                     "Attachment url required"
             );
         }
 
         if (draft.getPublicId() == null || draft.getPublicId().isBlank()) {
             throw new BusinessException(
-                ErrorCode.ATTACHMENT_INVALID,
+                ChatErrorCode.ATTACHMENT_INVALID,
                 "Attachment publicId required"
             );
         }
 
         if (!draft.getUrl().startsWith("https://res.cloudinary.com/")) {
             throw new BusinessException(
-                ErrorCode.ATTACHMENT_INVALID,
+                ChatErrorCode.ATTACHMENT_INVALID,
                 "Attachment url must be a Cloudinary secure URL"
             );
         }
@@ -166,14 +167,14 @@ public class MessageAggregate {
 
                 if (size != null && size > IMAGE_MAX_SIZE) {
                     throw new BusinessException(
-                            ErrorCode.ATTACHMENT_TOO_LARGE,
+                            ChatErrorCode.ATTACHMENT_TOO_LARGE,
                             "Image too large"
                     );
                 }
 
                 if (draft.getWidth() == null || draft.getHeight() == null) {
                     throw new BusinessException(
-                            ErrorCode.VALIDATION_ERROR,
+                            CommonErrorCode.VALIDATION_ERROR,
                             "Image width/height required"
                     );
                 }
@@ -184,7 +185,7 @@ public class MessageAggregate {
 
                 if (size != null && size > VIDEO_MAX_SIZE) {
                     throw new BusinessException(
-                            ErrorCode.ATTACHMENT_TOO_LARGE,
+                            ChatErrorCode.ATTACHMENT_TOO_LARGE,
                             "Video too large"
                     );
                 }
@@ -195,7 +196,7 @@ public class MessageAggregate {
 
                 if (size != null && size > FILE_MAX_SIZE) {
                     throw new BusinessException(
-                            ErrorCode.ATTACHMENT_TOO_LARGE,
+                            ChatErrorCode.ATTACHMENT_TOO_LARGE,
                             "File too large"
                     );
                 }
@@ -205,7 +206,7 @@ public class MessageAggregate {
             default:
 
                 throw new BusinessException(
-                        ErrorCode.UNSUPPORTED_ATTACHMENT_TYPE,
+                        ChatErrorCode.UNSUPPORTED_ATTACHMENT_TYPE,
                         "Unsupported attachment type"
                 );
         }
@@ -231,13 +232,13 @@ public class MessageAggregate {
 
                 if (!hasContent && !hasBlocks)
                     throw new BusinessException(
-                            ErrorCode.MESSAGE_CONTENT_EMPTY,
+                            ChatErrorCode.MESSAGE_CONTENT_EMPTY,
                             "TEXT must contain content"
                     );
 
                 if (hasAttachments)
                     throw new BusinessException(
-                            ErrorCode.VALIDATION_ERROR,
+                            CommonErrorCode.VALIDATION_ERROR,
                             "TEXT cannot contain attachments"
                     );
 
@@ -247,7 +248,7 @@ public class MessageAggregate {
 
                 if (!hasAttachments)
                     throw new BusinessException(
-                            ErrorCode.VALIDATION_ERROR,
+                            CommonErrorCode.VALIDATION_ERROR,
                             "ATTACHMENT requires attachments"
                     );
 
@@ -257,7 +258,7 @@ public class MessageAggregate {
 
                 if ((!hasContent && !hasBlocks) || !hasAttachments)
                     throw new BusinessException(
-                            ErrorCode.VALIDATION_ERROR,
+                            CommonErrorCode.VALIDATION_ERROR,
                             "MIXED requires text or blocks, and attachment"
                     );
 
@@ -273,25 +274,25 @@ public class MessageAggregate {
 
         if (!message.getSenderId().equals(actorId))
             throw new BusinessException(
-                    ErrorCode.PERMISSION_DENIED,
+                    CommonErrorCode.PERMISSION_DENIED,
                     "Cannot edit other user's message"
             );
 
         if (message.getDeleted())
             throw new BusinessException(
-                    ErrorCode.MESSAGE_DELETED,
+                    ChatErrorCode.MESSAGE_DELETED,
                     "Cannot edit deleted message"
             );
 
         if (message.getType() == MessageType.ATTACHMENT)
             throw new BusinessException(
-                    ErrorCode.VALIDATION_ERROR,
+                    CommonErrorCode.VALIDATION_ERROR,
                     "Attachment-only message cannot be edited"
             );
 
         if (newContent == null || newContent.isBlank())
             throw new BusinessException(
-                    ErrorCode.MESSAGE_CONTENT_EMPTY,
+                    ChatErrorCode.MESSAGE_CONTENT_EMPTY,
                     "Content cannot be empty"
             );
 
@@ -327,7 +328,7 @@ public class MessageAggregate {
 
         if (message.getDeleted())
             throw new BusinessException(
-                    ErrorCode.MESSAGE_DELETED,
+                    ChatErrorCode.MESSAGE_DELETED,
                     "Message deleted"
             );
 
@@ -338,7 +339,7 @@ public class MessageAggregate {
 
         if (!message.getSenderId().equals(actorId))
             throw new BusinessException(
-                    ErrorCode.PERMISSION_DENIED,
+                    CommonErrorCode.PERMISSION_DENIED,
                     "Cannot delete other user's message"
             );
 
@@ -349,3 +350,4 @@ public class MessageAggregate {
         message.setDeletedBy(actorId);
     }
 }
+

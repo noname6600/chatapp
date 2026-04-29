@@ -4,7 +4,7 @@ import com.example.common.integration.chat.ChatMessagePayload;
 import com.example.common.integration.chat.MessageBlockPayload;
 import com.example.common.integration.chat.RoomInvitePayload;
 import com.example.common.integration.enums.MessageType;
-import com.example.common.kafka.event.ChatMessageSentEvent;
+import com.example.common.integration.kafka.event.ChatMessageSentEvent;
 import com.example.notification.entity.Notification;
 import com.example.notification.entity.NotificationType;
 import com.example.notification.entity.RoomMuteSetting;

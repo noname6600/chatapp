@@ -1,7 +1,5 @@
 package com.example.common.core.pipeline;
 
-import org.springframework.aop.support.AopUtils;
-
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
@@ -24,12 +22,11 @@ public class PipelineStepDescriptor<C> {
 
     @SuppressWarnings("unchecked")
     public PipelineStepDescriptor(PipelineStep<C> step) {
-
         this.step = step;
 
         this.stepClass =
                 (Class<? extends PipelineStep<?>>)
-                        AopUtils.getTargetClass(step);
+                        step.getClass();
 
         this.runAfter = new HashSet<>(
                 Arrays.asList(step.runAfter())

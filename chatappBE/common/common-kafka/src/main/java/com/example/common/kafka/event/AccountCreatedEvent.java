@@ -1,4 +1,4 @@
-package com.example.common.kafka.event;
+package com.example.common.integration.kafka.event;
 
 import java.time.Instant;
 import java.util.UUID;

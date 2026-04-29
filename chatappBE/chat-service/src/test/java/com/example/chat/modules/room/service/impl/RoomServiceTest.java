@@ -11,8 +11,8 @@ import com.example.chat.modules.room.repository.RoomRepository;
 import com.example.common.websocket.session.IRoomBroadcaster;
 import com.example.chat.modules.message.application.service.ISystemMessageService;
 import com.example.common.redis.api.ITimeRedisCacheManager;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -72,7 +72,7 @@ class RoomServiceTest {
 		assertThatThrownBy(() -> roomService.joinByInviteRoomId(userId, roomId))
 				.isInstanceOf(BusinessException.class)
 				.extracting("errorCode")
-				.isEqualTo(ErrorCode.RESOURCE_NOT_FOUND);
+				.isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND);
 	}
 
 	@Test
@@ -85,7 +85,7 @@ class RoomServiceTest {
 		assertThatThrownBy(() -> roomService.joinByInviteRoomId(userId, roomId))
 				.isInstanceOf(BusinessException.class)
 				.extracting("errorCode")
-				.isEqualTo(ErrorCode.BAD_REQUEST);
+				.isEqualTo(CommonErrorCode.BAD_REQUEST);
 
 		verify(memberRepo, never()).save(any(RoomMember.class));
 	}
@@ -162,7 +162,7 @@ class RoomServiceTest {
 		assertThatThrownBy(() -> roomService.removeMember(roomId, callerId, targetId))
 				.isInstanceOf(BusinessException.class)
 				.extracting("errorCode")
-				.isEqualTo(ErrorCode.FORBIDDEN);
+				.isEqualTo(CommonErrorCode.FORBIDDEN);
 
 		verify(memberRepo, never()).deleteByRoomIdAndUserId(any(), any());
 	}
@@ -177,7 +177,7 @@ class RoomServiceTest {
 		assertThatThrownBy(() -> roomService.removeMember(roomId, ownerId, ownerId))
 				.isInstanceOf(BusinessException.class)
 				.extracting("errorCode")
-				.isEqualTo(ErrorCode.BAD_REQUEST);
+				.isEqualTo(CommonErrorCode.BAD_REQUEST);
 
 		verify(memberRepo, never()).deleteByRoomIdAndUserId(any(), any());
 	}
@@ -191,7 +191,7 @@ class RoomServiceTest {
 		assertThatThrownBy(() -> roomService.banMember(roomId, ownerId, ownerId))
 				.isInstanceOf(BusinessException.class)
 				.extracting("errorCode")
-				.isEqualTo(ErrorCode.BAD_REQUEST);
+				.isEqualTo(CommonErrorCode.BAD_REQUEST);
 	}
 
 	@Test
@@ -205,6 +205,8 @@ class RoomServiceTest {
 		assertThatThrownBy(() -> roomService.transferOwnership(roomId, ownerId, newOwnerId))
 				.isInstanceOf(BusinessException.class)
 				.extracting("errorCode")
-				.isEqualTo(ErrorCode.BAD_REQUEST);
+				.isEqualTo(CommonErrorCode.BAD_REQUEST);
 	}
 }
+
+

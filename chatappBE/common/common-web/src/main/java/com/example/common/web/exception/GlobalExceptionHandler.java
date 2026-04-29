@@ -1,5 +1,7 @@
 package com.example.common.web.exception;
 
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import com.example.common.web.response.ApiError;
 import com.example.common.web.response.ApiResponse;
 import jakarta.validation.ConstraintViolationException;
@@ -22,7 +24,6 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusiness(BusinessException ex) {
-
         log.warn("Business error [{}]: {}", ex.getErrorCode(), ex.getMessage());
 
         ApiError error = new ApiError(
@@ -37,10 +38,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ApiResponse<Void>> handleValidation(
-            MethodArgumentNotValidException ex
-    ) {
-
+    public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException ex) {
         Map<String, String> errors = new HashMap<>();
 
         ex.getBindingResult().getFieldErrors()
@@ -51,37 +49,33 @@ public class GlobalExceptionHandler {
                 .orElse("Validation failed");
 
         ApiError error = new ApiError(
-                ErrorCode.VALIDATION_ERROR.name(),
+                CommonErrorCode.VALIDATION_ERROR.name(),
                 message,
                 errors
         );
 
         return ResponseEntity
-                .status(ErrorCode.VALIDATION_ERROR.getStatus())
+                .status(CommonErrorCode.VALIDATION_ERROR.getStatus())
                 .body(ApiResponse.failure(error));
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleUnexpected(Exception ex) {
-
         log.error("Unexpected error", ex);
 
         ApiError error = new ApiError(
-                ErrorCode.INTERNAL_ERROR.name(),
+                CommonErrorCode.INTERNAL_ERROR.name(),
                 "Internal server error",
                 null
         );
 
         return ResponseEntity
-                .status(ErrorCode.INTERNAL_ERROR.getStatus())
+                .status(CommonErrorCode.INTERNAL_ERROR.getStatus())
                 .body(ApiResponse.failure(error));
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
-    public ResponseEntity<ApiResponse<Void>> handleConstraintViolation(
-            ConstraintViolationException ex
-    ) {
-
+    public ResponseEntity<ApiResponse<Void>> handleConstraintViolation(ConstraintViolationException ex) {
         Map<String, String> errors = new HashMap<>();
 
         ex.getConstraintViolations().forEach(violation -> {
@@ -90,74 +84,65 @@ public class GlobalExceptionHandler {
         });
 
         ApiError error = new ApiError(
-                ErrorCode.VALIDATION_ERROR.name(),
+                CommonErrorCode.VALIDATION_ERROR.name(),
                 "Validation failed",
                 errors
         );
 
         return ResponseEntity
-                .status(ErrorCode.VALIDATION_ERROR.getStatus())
+                .status(CommonErrorCode.VALIDATION_ERROR.getStatus())
                 .body(ApiResponse.failure(error));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
-    public ResponseEntity<ApiResponse<Void>> handleMalformedJson(
-            HttpMessageNotReadableException ex
-    ) {
+    public ResponseEntity<ApiResponse<Void>> handleMalformedJson(HttpMessageNotReadableException ex) {
         ApiError error = new ApiError(
-                ErrorCode.BAD_REQUEST.name(),
+                CommonErrorCode.BAD_REQUEST.name(),
                 "Malformed JSON request",
                 null
         );
 
         return ResponseEntity
-                .status(ErrorCode.BAD_REQUEST.getStatus())
+                .status(CommonErrorCode.BAD_REQUEST.getStatus())
                 .body(ApiResponse.failure(error));
     }
 
     @ExceptionHandler(AccessDeniedException.class)
-    public ResponseEntity<ApiResponse<Void>> handleAccessDenied(
-            AccessDeniedException ex
-    ) {
+    public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException ex) {
         ApiError error = new ApiError(
-                ErrorCode.FORBIDDEN.name(),
+                CommonErrorCode.FORBIDDEN.name(),
                 "Access denied",
                 null
         );
 
         return ResponseEntity
-                .status(ErrorCode.FORBIDDEN.getStatus())
+                .status(CommonErrorCode.FORBIDDEN.getStatus())
                 .body(ApiResponse.failure(error));
     }
 
     @ExceptionHandler(AuthenticationException.class)
-    public ResponseEntity<ApiResponse<Void>> handleAuthException(
-            AuthenticationException ex
-    ) {
+    public ResponseEntity<ApiResponse<Void>> handleAuthException(AuthenticationException ex) {
         ApiError error = new ApiError(
-                ErrorCode.UNAUTHORIZED.name(),
+                CommonErrorCode.UNAUTHORIZED.name(),
                 "Unauthorized",
                 null
         );
 
         return ResponseEntity
-                .status(ErrorCode.UNAUTHORIZED.getStatus())
+                .status(CommonErrorCode.UNAUTHORIZED.getStatus())
                 .body(ApiResponse.failure(error));
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
-    public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(
-            MethodArgumentTypeMismatchException ex
-    ) {
-
+    public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
         ApiError error = new ApiError(
-                ErrorCode.BAD_REQUEST.name(),
+                CommonErrorCode.BAD_REQUEST.name(),
                 "Invalid parameter type",
                 ex.getName()
         );
 
         return ResponseEntity
-                .status(ErrorCode.BAD_REQUEST.getStatus())
+                .status(CommonErrorCode.BAD_REQUEST.getStatus())
                 .body(ApiResponse.failure(error));
     }
 }

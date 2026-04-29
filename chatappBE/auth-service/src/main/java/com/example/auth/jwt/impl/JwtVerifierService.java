@@ -13,8 +13,8 @@ import java.time.Instant;
 import java.util.Date;
 import java.util.UUID;
 
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.auth.exception.AuthErrorCode;
+import com.example.common.core.exception.BusinessException;
 
 
 import java.security.Key;
@@ -41,7 +41,7 @@ public class JwtVerifierService implements IJwtVerifierService {
                             String kid = header.getKeyId();
                             if (kid == null) {
                                 throw new BusinessException(
-                                        ErrorCode.TOKEN_INVALID,
+                                        AuthErrorCode.TOKEN_INVALID,
                                         "Missing key id"
                                 );
                             }
@@ -50,7 +50,7 @@ public class JwtVerifierService implements IJwtVerifierService {
 
                             if (key == null || key.isExpired(Instant.now(clock))) {
                                 throw new BusinessException(
-                                        ErrorCode.TOKEN_INVALID,
+                                        AuthErrorCode.TOKEN_INVALID,
                                         "Invalid signing key"
                                 );
                             }
@@ -66,13 +66,13 @@ public class JwtVerifierService implements IJwtVerifierService {
 
         } catch (ExpiredJwtException ex) {
             throw new BusinessException(
-                    ErrorCode.TOKEN_EXPIRED,
+                    AuthErrorCode.TOKEN_EXPIRED,
                     "Access token expired"
             );
 
         } catch (JwtException | IllegalArgumentException ex) {
             throw new BusinessException(
-                    ErrorCode.TOKEN_INVALID,
+                    AuthErrorCode.TOKEN_INVALID,
                     "Invalid access token"
             );
         }

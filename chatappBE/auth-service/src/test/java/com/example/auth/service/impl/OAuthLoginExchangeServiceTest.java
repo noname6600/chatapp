@@ -3,8 +3,8 @@ package com.example.auth.service.impl;
 import com.example.auth.entity.OAuthLoginExchange;
 import com.example.auth.enums.AuthProvider;
 import com.example.auth.repository.OAuthLoginExchangeRepository;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.auth.exception.AuthErrorCode;
+import com.example.common.core.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -78,6 +78,6 @@ class OAuthLoginExchangeServiceTest {
         assertThatThrownBy(() -> service.consume(rawCode, AuthProvider.GOOGLE))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.TOKEN_INVALID);
+                .isEqualTo(AuthErrorCode.TOKEN_INVALID);
     }
 }

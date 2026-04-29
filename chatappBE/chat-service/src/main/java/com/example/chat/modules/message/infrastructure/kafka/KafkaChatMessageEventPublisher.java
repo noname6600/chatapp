@@ -15,11 +15,11 @@ import com.example.chat.modules.room.repository.RoomRepository;
 import com.example.common.integration.chat.ChatMessagePayload;
 import com.example.common.integration.chat.MessageDeletedPayload;
 import com.example.common.integration.chat.MessageUpdatedPayload;
-import com.example.common.kafka.Topics;
+import com.example.common.integration.kafka.KafkaTopics;
 import com.example.common.kafka.api.KafkaEventPublisher;
-import com.example.common.kafka.event.ChatMessageDeletedEvent;
-import com.example.common.kafka.event.ChatMessageEditedEvent;
-import com.example.common.kafka.event.ChatMessageSentEvent;
+import com.example.common.integration.kafka.event.ChatMessageDeletedEvent;
+import com.example.common.integration.kafka.event.ChatMessageEditedEvent;
+import com.example.common.integration.kafka.event.ChatMessageSentEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -68,7 +68,7 @@ public class KafkaChatMessageEventPublisher
                 ChatMessageSentEvent.from(sourceService, payload);
 
         kafkaEventPublisher.publish(
-                Topics.CHAT_MESSAGE_SENT,
+                KafkaTopics.CHAT_MESSAGE_SENT,
                 message.getRoomId().toString(),
                 event
         );
@@ -84,7 +84,7 @@ public class KafkaChatMessageEventPublisher
                 ChatMessageEditedEvent.from(sourceService, payload);
 
         kafkaEventPublisher.publish(
-                Topics.CHAT_MESSAGE_EDITED,
+                KafkaTopics.CHAT_MESSAGE_EDITED,
                 message.getRoomId().toString(),
                 event
         );
@@ -103,7 +103,7 @@ public class KafkaChatMessageEventPublisher
                 ChatMessageDeletedEvent.from(sourceService, payload);
 
         kafkaEventPublisher.publish(
-                Topics.CHAT_MESSAGE_DELETED,
+                KafkaTopics.CHAT_MESSAGE_DELETED,
                 message.getRoomId().toString(),
                 event
         );

@@ -1,7 +1,7 @@
 package com.example.notification.service.impl;
 
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import com.example.notification.entity.Notification;
 import com.example.notification.entity.NotificationType;
 import com.example.notification.repository.NotificationRepository;
@@ -90,14 +90,14 @@ public class NotificationCommandService {
     @Transactional
     public Notification markRead(UUID notificationId, UUID userId) {
         Notification noti = repository.findById(notificationId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "Notification not found"));
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND, "Notification not found"));
 
         if (!noti.getUserId().equals(userId)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "Forbidden");
+            throw new BusinessException(CommonErrorCode.FORBIDDEN, "Forbidden");
         }
 
         if (noti.isActionRequired()) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "This notification can only be resolved by action");
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST, "This notification can only be resolved by action");
         }
 
         noti.setRead(true);
@@ -109,10 +109,10 @@ public class NotificationCommandService {
     @Transactional
     public Notification resolveActionRequired(UUID notificationId, UUID userId) {
         Notification noti = repository.findById(notificationId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "Notification not found"));
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND, "Notification not found"));
 
         if (!noti.getUserId().equals(userId)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "Forbidden");
+            throw new BusinessException(CommonErrorCode.FORBIDDEN, "Forbidden");
         }
 
         noti.setRead(true);
@@ -163,5 +163,7 @@ public class NotificationCommandService {
         markAllRead(userId);
     }
 }
+
+
 
 

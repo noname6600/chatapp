@@ -1,4 +1,4 @@
-package com.example.common.core.upload;
+package com.example.common.media;
 
 import lombok.Builder;
 import lombok.Getter;

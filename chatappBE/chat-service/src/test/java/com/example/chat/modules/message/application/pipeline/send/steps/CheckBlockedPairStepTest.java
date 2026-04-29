@@ -7,8 +7,8 @@ import com.example.chat.modules.room.entity.Room;
 import com.example.chat.modules.room.enums.RoomType;
 import com.example.chat.modules.room.repository.PrivateRoomRepository;
 import com.example.chat.modules.room.repository.RoomRepository;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.chat.exception.ChatErrorCode;
+import com.example.common.core.exception.BusinessException;
 import com.example.common.web.response.ApiResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -90,7 +90,7 @@ class CheckBlockedPairStepTest {
         assertThatThrownBy(() -> step.execute(context))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.BLOCKED_SEND);
+                .isEqualTo(ChatErrorCode.BLOCKED_SEND);
     }
 
     @Test
@@ -148,7 +148,7 @@ class CheckBlockedPairStepTest {
         assertThatThrownBy(() -> step.execute(context))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.BLOCKED_SEND);
+                .isEqualTo(ChatErrorCode.BLOCKED_SEND);
     }
 
     @Test
@@ -171,8 +171,9 @@ class CheckBlockedPairStepTest {
         assertThatThrownBy(() -> step.execute(context))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.BLOCKED_SEND);
+                .isEqualTo(ChatErrorCode.BLOCKED_SEND);
 
                 verify(friendshipClient, times(2)).isBlockedBetween(senderId, otherId);
     }
 }
+

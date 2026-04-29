@@ -3,8 +3,8 @@ package com.example.chat.modules.message.application.pipeline.edit.steps;
 import com.example.chat.modules.message.application.pipeline.edit.EditMessageContext;
 import com.example.chat.modules.message.domain.model.MessageAggregate;
 import com.example.common.core.pipeline.PipelineStep;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import org.springframework.stereotype.Component;
 
 import java.util.UUID;
@@ -24,7 +24,7 @@ public class AuthorizeEditMessageStep
 
         if (!senderId.equals(actorId)) {
             throw new BusinessException(
-                    ErrorCode.FORBIDDEN,
+                    CommonErrorCode.FORBIDDEN,
                     "You are not allowed to edit this message"
             );
         }
@@ -37,3 +37,5 @@ public class AuthorizeEditMessageStep
         };
     }
 }
+
+

@@ -8,8 +8,8 @@ import com.example.auth.dto.AuthResponse;
 import com.example.auth.dto.JwtPrincipal;
 import com.example.auth.service.IAuthService;
 import com.example.auth.service.IForgotPasswordService;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -41,7 +41,7 @@ class AuthControllerTest {
         assertThatThrownBy(() -> controller.changePassword(null, request))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.UNAUTHORIZED);
+                .isEqualTo(CommonErrorCode.UNAUTHORIZED);
 
         verifyNoInteractions(authService);
     }
@@ -114,3 +114,5 @@ class AuthControllerTest {
         verify(authService).exchangeGoogleOAuthCode("handoff-code");
     }
 }
+
+

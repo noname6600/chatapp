@@ -4,8 +4,9 @@ import com.example.auth.entity.Account;
 import com.example.auth.kafka.AccountCreatedEventProducer;
 import com.example.auth.repository.AccountRepository;
 import com.example.auth.service.IIdentityProviderService;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
+import com.example.auth.exception.AuthErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -57,7 +58,7 @@ class LocalAuthServiceTest {
         );
 
         assertThat(exception).isNotNull();
-        assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.UNAUTHORIZED);
+        assertThat(exception.getErrorCode()).isEqualTo(CommonErrorCode.UNAUTHORIZED);
         assertThat(exception.getMessage()).isEqualTo("Invalid credentials");
         assertThat(exception.getDetails()).isEqualTo(java.util.Map.of("authCode", "invalid_credentials"));
     }
@@ -83,7 +84,7 @@ class LocalAuthServiceTest {
         assertThatThrownBy(() -> localAuthService.register(email, "Password1!"))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.INCOMPLETE_ACCOUNT);
+                .isEqualTo(AuthErrorCode.INCOMPLETE_ACCOUNT);
 
         verify(idpService).linkIfAbsent(eq(accountId), any(), eq(email));
     }
@@ -158,8 +159,10 @@ class LocalAuthServiceTest {
         assertThatThrownBy(() -> localAuthService.register(email, "WrongPass1!"))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.CONFLICT);
+                .isEqualTo(CommonErrorCode.CONFLICT);
 
         verify(accountCreatedEventProducer, never()).publish(existing);
     }
 }
+
+

@@ -1,7 +1,7 @@
 package com.example.notification.kafka;
 
 import com.example.common.integration.chat.ChatMessagePayload;
-import com.example.common.kafka.event.ChatMessageSentEvent;
+import com.example.common.integration.kafka.event.ChatMessageSentEvent;
 import com.example.notification.entity.RoomNotificationMode;
 import com.example.notification.entity.NotificationType;
 import com.example.notification.repository.NotificationRepository;

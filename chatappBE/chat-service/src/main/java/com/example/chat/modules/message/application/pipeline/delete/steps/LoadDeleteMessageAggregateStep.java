@@ -6,9 +6,9 @@ import com.example.chat.modules.message.domain.entity.ChatMessage;
 import com.example.chat.modules.message.domain.model.MessageAggregate;
 import com.example.chat.modules.message.domain.repository.ChatAttachmentRepository;
 import com.example.chat.modules.message.domain.repository.ChatMessageRepository;
+import com.example.chat.exception.ChatErrorCode;
 import com.example.common.core.pipeline.PipelineStep;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -34,7 +34,7 @@ public class LoadDeleteMessageAggregateStep
                 messageRepository.findById(messageId)
                         .orElseThrow(() ->
                                 new BusinessException(
-                                        ErrorCode.MESSAGE_NOT_FOUND
+                                        ChatErrorCode.MESSAGE_NOT_FOUND
                                 )
                         );
 
@@ -59,3 +59,4 @@ public class LoadDeleteMessageAggregateStep
         };
     }
 }
+

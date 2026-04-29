@@ -4,8 +4,8 @@ import com.example.auth.entity.OAuthLoginExchange;
 import com.example.auth.enums.AuthProvider;
 import com.example.auth.repository.OAuthLoginExchangeRepository;
 import com.example.auth.service.IOAuthLoginExchangeService;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.auth.exception.AuthErrorCode;
+import com.example.common.core.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.springframework.beans.factory.annotation.Value;
@@ -51,12 +51,12 @@ public class OAuthLoginExchangeService implements IOAuthLoginExchangeService {
 
         int updated = oauthLoginExchangeRepository.consumeIfAvailable(codeHash, provider, now);
         if (updated == 0) {
-            throw new BusinessException(ErrorCode.TOKEN_INVALID, "OAuth login code is invalid or expired");
+            throw new BusinessException(AuthErrorCode.TOKEN_INVALID, "OAuth login code is invalid or expired");
         }
 
         return oauthLoginExchangeRepository.findByCodeHashAndProvider(codeHash, provider)
                 .map(OAuthLoginExchange::getAccountId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.TOKEN_INVALID, "OAuth login code is invalid or expired"));
+                .orElseThrow(() -> new BusinessException(AuthErrorCode.TOKEN_INVALID, "OAuth login code is invalid or expired"));
     }
 
     @Override

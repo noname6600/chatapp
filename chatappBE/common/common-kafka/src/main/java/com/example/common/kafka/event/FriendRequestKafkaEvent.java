@@ -1,4 +1,4 @@
-package com.example.common.kafka.event;
+package com.example.common.integration.kafka.event;
 
 import com.example.common.integration.friendship.FriendRequestEvent;
 import com.fasterxml.jackson.annotation.JsonCreator;

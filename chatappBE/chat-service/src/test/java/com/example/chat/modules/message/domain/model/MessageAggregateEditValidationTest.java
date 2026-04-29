@@ -2,8 +2,8 @@ package com.example.chat.modules.message.domain.model;
 
 import com.example.chat.modules.message.domain.enums.AttachmentType;
 import com.example.chat.modules.message.domain.enums.MessageType;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -127,3 +127,5 @@ class MessageAggregateEditValidationTest {
         assertThat(aggregate.getMessage().getType()).isEqualTo(MessageType.MIXED);
     }
 }
+
+

@@ -2,7 +2,7 @@ package com.example.notification.kafka;
 
 import com.example.common.integration.chat.ReactionPayload;
 import com.example.common.integration.enums.ReactionAction;
-import com.example.common.kafka.event.ChatReactionUpdatedEvent;
+import com.example.common.integration.kafka.event.ChatReactionUpdatedEvent;
 import com.example.notification.entity.Notification;
 import com.example.notification.entity.NotificationType;
 import com.example.notification.repository.NotificationRepository;

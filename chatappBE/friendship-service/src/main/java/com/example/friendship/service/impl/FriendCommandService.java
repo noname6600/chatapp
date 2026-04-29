@@ -5,8 +5,8 @@ import com.example.common.integration.friendship.FriendRequestEvent;
 import com.example.common.web.response.ApiResponse;
 import com.example.friendship.client.UserClient;
 import com.example.friendship.dto.UserProfileResponse;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import com.example.friendship.entity.Friendship;
 import com.example.friendship.enums.FriendshipStatus;
 import com.example.friendship.kafka.FriendshipEventProducer;
@@ -35,18 +35,18 @@ public class FriendCommandService implements IFriendCommandService {
 
     private Friendship getExisting(UUID u1, UUID u2) {
         return repository.findBetweenUsers(u1, u2)
-                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "Relationship not found"));
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND, "Relationship not found"));
     }
 
     public void sendRequest(UUID sender, UUID receiver) {
         if (sender.equals(receiver))
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "Cannot friend yourself");
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST, "Cannot friend yourself");
 
         var existing = repository.findBetweenUsers(sender, receiver);
         if (existing.isPresent()) {
             Friendship f = existing.get();
             switch (f.getStatus()) {
-                case ACCEPTED -> throw new BusinessException(ErrorCode.BAD_REQUEST, "Already friends");
+                case ACCEPTED -> throw new BusinessException(CommonErrorCode.BAD_REQUEST, "Already friends");
                 case PENDING -> {
                     // If the other person already sent a request to us, auto-accept it
                     if (!f.getActionUserId().equals(sender)) {
@@ -63,9 +63,9 @@ public class FriendCommandService implements IFriendCommandService {
                         return;
                     }
                     // Otherwise it's our own duplicate request
-                    throw new BusinessException(ErrorCode.BAD_REQUEST, "Request already pending");
+                    throw new BusinessException(CommonErrorCode.BAD_REQUEST, "Request already pending");
                 }
-                case BLOCKED -> throw new BusinessException(ErrorCode.FORBIDDEN, "User is blocked");
+                case BLOCKED -> throw new BusinessException(CommonErrorCode.FORBIDDEN, "User is blocked");
             }
             return;
         }
@@ -123,10 +123,10 @@ public class FriendCommandService implements IFriendCommandService {
         Friendship f = getExisting(me, other);
 
         if (f.getStatus() != FriendshipStatus.PENDING)
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "Not in pending state");
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST, "Not in pending state");
 
         if (f.getActionUserId().equals(me))
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "Sender cannot accept own request");
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST, "Sender cannot accept own request");
 
         f.setStatus(FriendshipStatus.ACCEPTED);
         f.setActionUserId(me);
@@ -145,10 +145,10 @@ public class FriendCommandService implements IFriendCommandService {
         Friendship f = getExisting(me, other);
 
         if (f.getStatus() != FriendshipStatus.PENDING)
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "Not in pending state");
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST, "Not in pending state");
 
         if (f.getActionUserId().equals(me))
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "Sender cannot decline own request");
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST, "Sender cannot decline own request");
 
         repository.delete(f);
 
@@ -165,10 +165,10 @@ public class FriendCommandService implements IFriendCommandService {
         Friendship f = getExisting(sender, receiver);
 
         if (f.getStatus() != FriendshipStatus.PENDING)
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "Not in pending state");
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST, "Not in pending state");
 
         if (!f.getActionUserId().equals(sender))
-            throw new BusinessException(ErrorCode.FORBIDDEN, "Only sender can cancel");
+            throw new BusinessException(CommonErrorCode.FORBIDDEN, "Only sender can cancel");
 
         repository.delete(f);
 
@@ -185,7 +185,7 @@ public class FriendCommandService implements IFriendCommandService {
         Friendship f = getExisting(me, other);
 
         if (f.getStatus() != FriendshipStatus.ACCEPTED)
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "Not friends");
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST, "Not friends");
 
         repository.delete(f);
 
@@ -213,16 +213,18 @@ public class FriendCommandService implements IFriendCommandService {
         Friendship f = getExisting(me, other);
 
         if (f.getStatus() != FriendshipStatus.BLOCKED)
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "Not blocked");
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST, "Not blocked");
 
         if (!f.getActionUserId().equals(me))
-            throw new BusinessException(ErrorCode.FORBIDDEN, "Only blocker can unblock");
+            throw new BusinessException(CommonErrorCode.FORBIDDEN, "Only blocker can unblock");
 
         repository.delete(f);
 
         producer.publish(FriendshipEventType.FRIEND_UNBLOCKED, f);
     }
 }
+
+
 
 
 

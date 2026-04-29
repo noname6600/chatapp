@@ -5,6 +5,7 @@ import com.example.chat.modules.message.application.dto.response.MessageResponse
 import com.example.chat.modules.message.application.query.IMessageQueryService;
 import com.example.common.web.controller.BaseController;
 import com.example.common.web.response.ApiResponse;
+import com.example.common.security.jwt.JwtHelper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -33,7 +34,7 @@ public class MessageQueryController extends BaseController {
 
         MessagePage response =
                 messageQueryService.getLatestMessages(
-                        currentUserId(jwt),
+                        JwtHelper.extractUserId(jwt),
                         roomId,
                         limit
                 );
@@ -51,7 +52,7 @@ public class MessageQueryController extends BaseController {
 
         MessagePage response =
                 messageQueryService.getMessagesBefore(
-                        currentUserId(jwt),
+                        JwtHelper.extractUserId(jwt),
                         roomId,
                         beforeSeq,
                         limit
@@ -70,7 +71,7 @@ public class MessageQueryController extends BaseController {
 
         List<MessageResponse> response =
                 messageQueryService.getMessageRange(
-                        currentUserId(jwt),
+                        JwtHelper.extractUserId(jwt),
                         roomId,
                         startSeq,
                         endSeq
@@ -89,7 +90,7 @@ public class MessageQueryController extends BaseController {
 
         List<MessageResponse> response =
                 messageQueryService.getMessagesAround(
-                        currentUserId(jwt),
+                        JwtHelper.extractUserId(jwt),
                         roomId,
                         messageId,
                         halfWindow
@@ -98,4 +99,5 @@ public class MessageQueryController extends BaseController {
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 }
+
 

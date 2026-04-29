@@ -3,8 +3,8 @@ package com.example.chat.modules.message.application.query;
 import com.example.chat.modules.message.application.dto.response.MessagePage;
 import com.example.chat.modules.message.application.dto.response.MessageResponse;
 import com.example.chat.modules.message.application.mapper.MessageMapper;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import com.example.chat.modules.message.domain.entity.ChatAttachment;
 import com.example.chat.modules.message.domain.entity.ChatMessage;
 import com.example.chat.modules.message.domain.repository.ChatAttachmentRepository;
@@ -103,7 +103,7 @@ public class MessageQueryService
             int halfWindow
     ) {
         ChatMessage target = messageRepository.findById(messageId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "Message not found"));
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND, "Message not found"));
 
         long startSeq = Math.max(1, target.getSeq() - halfWindow);
         long endSeq = target.getSeq() + halfWindow;
@@ -175,3 +175,4 @@ public class MessageQueryService
                 .collect(Collectors.toList());
     }
 }
+

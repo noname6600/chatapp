@@ -3,8 +3,8 @@ package com.example.chat.modules.message.application.pipeline.edit.steps;
 import com.example.chat.modules.message.application.dto.request.EditMessageRequest;
 import com.example.chat.modules.message.application.pipeline.edit.EditMessageContext;
 import com.example.chat.modules.message.domain.model.MessageAggregate;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -72,6 +72,8 @@ class AuthorizeEditMessageStepTest {
         assertThatThrownBy(() -> step.execute(context))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.FORBIDDEN);
+                .isEqualTo(CommonErrorCode.FORBIDDEN);
     }
 }
+
+

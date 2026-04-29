@@ -18,8 +18,8 @@ import com.example.chat.modules.room.enums.Role;
 import com.example.chat.modules.room.enums.RoomType;
 import com.example.chat.modules.room.repository.RoomMemberRepository;
 import com.example.chat.modules.room.repository.RoomRepository;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -112,7 +112,7 @@ class RoomPinServiceIntegrationTest {
         assertThatThrownBy(() -> roomPinService.pinMessage(roomId, actorId, messageId))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.CONFLICT);
+                .isEqualTo(CommonErrorCode.CONFLICT);
 
         UUID outsiderId = UUID.randomUUID();
         UUID messageId2 = createMessage(roomId, UUID.randomUUID(), 2L, false);
@@ -120,7 +120,7 @@ class RoomPinServiceIntegrationTest {
         assertThatThrownBy(() -> roomPinService.pinMessage(roomId, outsiderId, messageId2))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.FORBIDDEN);
+                .isEqualTo(CommonErrorCode.FORBIDDEN);
     }
 
     @Test
@@ -246,3 +246,5 @@ class RoomPinServiceIntegrationTest {
         }
     }
 }
+
+

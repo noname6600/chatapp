@@ -3,8 +3,8 @@ package com.example.chat.modules.room.service.impl;
 import com.cloudinary.Cloudinary;
 import com.cloudinary.utils.ObjectUtils;
 import com.example.chat.modules.room.dto.CloudinaryUploadResult;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -40,7 +40,7 @@ public class CloudinaryService {
             );
 
         } catch (Exception e) {
-            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Upload failed");
+            throw new BusinessException(CommonErrorCode.INTERNAL_ERROR, "Upload failed");
         }
     }
 
@@ -51,3 +51,4 @@ public class CloudinaryService {
         } catch (Exception ignored) {}
     }
 }
+

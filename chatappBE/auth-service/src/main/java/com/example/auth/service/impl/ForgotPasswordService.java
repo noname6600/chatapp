@@ -6,8 +6,8 @@ import com.example.auth.repository.AccountRepository;
 import com.example.auth.repository.PasswordResetTokenRepository;
 import com.example.auth.service.IEmailService;
 import com.example.auth.service.IForgotPasswordService;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.codec.digest.DigestUtils;
@@ -83,16 +83,16 @@ public class ForgotPasswordService implements IForgotPasswordService {
     @Transactional
     public void resetPassword(String token, String newPassword) {
         if (token == null || token.isBlank()) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "Reset token is required");
+            throw new BusinessException(CommonErrorCode.VALIDATION_ERROR, "Reset token is required");
         }
 
         if (newPassword == null || newPassword.isBlank()) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "New password is required");
+            throw new BusinessException(CommonErrorCode.VALIDATION_ERROR, "New password is required");
         }
 
         if (!STRONG_PASSWORD_PATTERN.matcher(newPassword).matches()) {
             throw new BusinessException(
-                    ErrorCode.VALIDATION_ERROR,
+                    CommonErrorCode.VALIDATION_ERROR,
                     "Password must be 8-72 chars and include uppercase, lowercase, and number"
             );
         }
@@ -101,18 +101,18 @@ public class ForgotPasswordService implements IForgotPasswordService {
         Instant now = Instant.now(clock);
 
         PasswordResetToken resetToken = resetTokenRepository.findByTokenHash(tokenHash)
-                .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR, "Invalid or expired reset token"));
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.VALIDATION_ERROR, "Invalid or expired reset token"));
 
         if (resetToken.isUsed()) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "Reset token has already been used");
+            throw new BusinessException(CommonErrorCode.VALIDATION_ERROR, "Reset token has already been used");
         }
 
         if (now.isAfter(resetToken.getExpiresAt())) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "Reset token has expired");
+            throw new BusinessException(CommonErrorCode.VALIDATION_ERROR, "Reset token has expired");
         }
 
         Account account = accountRepository.findById(resetToken.getAccountId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.VALIDATION_ERROR, "Invalid or expired reset token"));
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.VALIDATION_ERROR, "Invalid or expired reset token"));
 
         // Mark token as consumed (replay prevention)
         resetTokenRepository.markAsUsed(resetToken.getId(), now);
@@ -124,3 +124,5 @@ public class ForgotPasswordService implements IForgotPasswordService {
         log.info("Password reset successful for account {}", account.getId());
     }
 }
+
+

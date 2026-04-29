@@ -26,8 +26,8 @@ import com.example.chat.modules.room.repository.RoomRepository;
 import com.example.chat.modules.room.service.IRoomService;
 import com.example.common.redis.api.ITimeRedisCacheManager;
 import com.example.common.redis.exception.CreateCacheException;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import org.springframework.dao.DataIntegrityViolationException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -108,10 +108,10 @@ public class RoomService implements IRoomService {
     public void joinByInviteRoomId(UUID userId, UUID roomId) {
 
         Room room = roomRepo.findById(roomId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "Room not found"));
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND, "Room not found"));
 
         if (room.getType() == RoomType.PRIVATE) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "Cannot join private room");
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST, "Cannot join private room");
         }
 
         if (memberRepo.existsByRoomIdAndUserId(roomId, userId)) {
@@ -119,7 +119,7 @@ public class RoomService implements IRoomService {
         }
 
         if (roomBanRepository.existsByRoomIdAndUserId(roomId, userId)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "You are banned from this room");
+            throw new BusinessException(CommonErrorCode.FORBIDDEN, "You are banned from this room");
         }
 
         UserBasicProfile joinerProfile = safeGetBasicProfile(userId);
@@ -165,7 +165,7 @@ public class RoomService implements IRoomService {
     @Override
     public void leaveRoom(UUID roomId, UUID userId) {
         RoomMember leaving = memberRepo.findByRoomIdAndUserId(roomId, userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "Membership not found"));
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND, "Membership not found"));
 
         memberRepo.delete(leaving);
 
@@ -202,13 +202,13 @@ public class RoomService implements IRoomService {
     @Override
     public RoomResponse renameRoom(UUID roomId, UUID userId, String newName) {
         Room room = roomRepo.findById(roomId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "Room not found"));
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND, "Room not found"));
 
         RoomMember member = memberRepo.findByRoomIdAndUserId(roomId, userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.FORBIDDEN, "Not a member"));
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN, "Not a member"));
 
         if (member.getRole() != Role.OWNER) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "Only owner can rename");
+            throw new BusinessException(CommonErrorCode.FORBIDDEN, "Only owner can rename");
         }
 
         room.setName(newName);
@@ -227,7 +227,7 @@ public class RoomService implements IRoomService {
         }
 
         if (roomBanRepository.existsByRoomIdAndUserId(roomId, newUserId)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "User is banned from this room");
+            throw new BusinessException(CommonErrorCode.FORBIDDEN, "User is banned from this room");
         }
 
         try {
@@ -254,7 +254,7 @@ public class RoomService implements IRoomService {
         assertOwner(roomId, ownerId, "Only owner can remove");
 
         if (ownerId.equals(targetUser)) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "Owner cannot remove themselves");
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST, "Owner cannot remove themselves");
         }
 
         memberRepo.deleteByRoomIdAndUserId(roomId, targetUser);
@@ -276,7 +276,7 @@ public class RoomService implements IRoomService {
         assertOwner(roomId, ownerId, "Only owner can ban");
 
         if (ownerId.equals(targetUser)) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "Owner cannot ban themselves");
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST, "Owner cannot ban themselves");
         }
 
         if (!roomBanRepository.existsByRoomIdAndUserId(roomId, targetUser)) {
@@ -316,7 +316,7 @@ public class RoomService implements IRoomService {
         RoomMember owner = assertOwner(roomId, ownerId, "Only owner can transfer ownership");
 
         RoomMember newOwner = memberRepo.findByRoomIdAndUserId(roomId, newOwnerId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.BAD_REQUEST, "New owner must be a room member"));
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.BAD_REQUEST, "New owner must be a room member"));
 
         owner.setRole(Role.MEMBER);
         newOwner.setRole(Role.OWNER);
@@ -427,13 +427,13 @@ public class RoomService implements IRoomService {
     @Override
     public RoomAvatarUploadResponse uploadAvatar(UUID roomId, UUID userId, MultipartFile file) {
         Room room = roomRepo.findById(roomId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "Room not found"));
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND, "Room not found"));
 
         RoomMember member = memberRepo.findByRoomIdAndUserId(roomId, userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.FORBIDDEN, "Not a member"));
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN, "Not a member"));
 
         if (member.getRole() != Role.OWNER) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "Only owner");
+            throw new BusinessException(CommonErrorCode.FORBIDDEN, "Only owner");
         }
 
         CloudinaryUploadResult uploaded =
@@ -500,10 +500,10 @@ public class RoomService implements IRoomService {
 
     private RoomMember assertOwner(UUID roomId, UUID ownerId, String unauthorizedMessage) {
         RoomMember owner = memberRepo.findByRoomIdAndUserId(roomId, ownerId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.FORBIDDEN, "Not a member"));
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.FORBIDDEN, "Not a member"));
 
         if (owner.getRole() != Role.OWNER) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, unauthorizedMessage);
+            throw new BusinessException(CommonErrorCode.FORBIDDEN, unauthorizedMessage);
         }
 
         return owner;
@@ -528,3 +528,5 @@ public class RoomService implements IRoomService {
         }
     }
 }
+
+

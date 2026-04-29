@@ -1,6 +1,6 @@
 package com.example.notification.configuration;
 
-import com.example.common.web.security.CorsProperties;
+import com.example.common.web.cors.CorsProperties;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 import org.springframework.context.annotation.Bean;

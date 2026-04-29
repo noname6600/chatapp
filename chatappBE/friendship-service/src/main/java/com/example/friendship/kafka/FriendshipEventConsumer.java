@@ -2,8 +2,8 @@ package com.example.friendship.kafka;
 
 import com.example.common.integration.friendship.FriendshipEventType;
 import com.example.common.integration.friendship.FriendshipPayload;
-import com.example.common.kafka.Topics;
-import com.example.common.kafka.event.FriendshipEvent;
+import com.example.common.integration.kafka.KafkaTopics;
+import com.example.common.integration.kafka.event.FriendshipEvent;
 import com.example.friendship.websocket.FriendshipWebSocketPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,7 +17,7 @@ public class FriendshipEventConsumer {
 
     private final FriendshipWebSocketPublisher webSocketPublisher;
 
-    @KafkaListener(topics = Topics.FRIENDSHIP_EVENTS)
+    @KafkaListener(topics = KafkaTopics.FRIENDSHIP_EVENTS)
     public void listen(FriendshipEvent event) {
         if (event == null || event.getPayload() == null) {
             log.warn("[FRIEND] Received null event");

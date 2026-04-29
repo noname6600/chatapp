@@ -1,8 +1,9 @@
-package com.example.common.kafka;
+package com.example.common.integration.kafka;
 
-public final class Topics {
+public final class KafkaTopics {
 
-    private Topics() {}
+    private KafkaTopics() {}
+
     // ========= ACCOUNT =========
     public static final String ACCOUNT_CREATED = "account.account.created";
     public static final String ACCOUNT_DELETED = "account.account.deleted";

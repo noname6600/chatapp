@@ -19,8 +19,8 @@ import com.example.chat.modules.room.entity.Room;
 import com.example.chat.modules.room.enums.RoomType;
 import com.example.chat.modules.room.repository.RoomMemberRepository;
 import com.example.chat.modules.room.repository.RoomRepository;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -240,7 +240,7 @@ class MessageCommandServiceTest {
         assertThatThrownBy(() -> service.sendMessage(request))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.FORBIDDEN);
+                .isEqualTo(CommonErrorCode.FORBIDDEN);
 
         verifyNoInteractions(sendPipeline);
     }
@@ -266,7 +266,7 @@ class MessageCommandServiceTest {
         assertThatThrownBy(() -> service.sendMessage(request))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.BAD_REQUEST);
+                .isEqualTo(CommonErrorCode.BAD_REQUEST);
 
         verifyNoInteractions(sendPipeline);
     }
@@ -325,3 +325,5 @@ class MessageCommandServiceTest {
         verify(sendPipeline).execute(any());
     }
 }
+
+

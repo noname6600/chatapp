@@ -1,12 +1,9 @@
 package com.example.common.core.pipeline;
 
-import lombok.extern.slf4j.Slf4j;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
 
-@Slf4j
 public class PipelineExecutor<C> {
 
     private final List<PipelineStepDescriptor<C>> steps;
@@ -90,24 +87,14 @@ public class PipelineExecutor<C> {
                         System.nanoTime() - start
                 );
 
-                log.debug("Step {} completed in {} ms", stepName, duration);
-
                 return;
 
             } catch (Exception e) {
 
                 attempt++;
 
-                log.warn(
-                        "Step {} failed (attempt {}/{})",
-                        stepName,
-                        attempt,
-                        maxAttempts
-                );
 
                 if (attempt >= maxAttempts) {
-
-                    log.error("Step {} failed permanently", stepName, e);
 
                     if (e instanceof RuntimeException runtime) {
                         throw runtime;

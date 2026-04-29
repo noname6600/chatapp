@@ -9,8 +9,8 @@ import com.example.chat.modules.room.repository.PrivateRoomRepository;
 import com.example.chat.modules.room.repository.RoomMemberRepository;
 import com.example.chat.modules.room.repository.RoomRepository;
 import com.example.common.redis.api.ITimeRedisCacheManager;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import com.example.common.web.response.ApiResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -73,7 +73,7 @@ class PrivateRoomServiceTest {
         assertThatThrownBy(() -> privateRoomService.getOrCreatePrivateRoom(user1, user2))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.RESOURCE_NOT_FOUND);
+                .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND);
 
         verify(roomRepo, never()).save(any(Room.class));
         verify(memberRepo, never()).saveAll(anyList());
@@ -114,3 +114,5 @@ class PrivateRoomServiceTest {
         return profile;
     }
 }
+
+

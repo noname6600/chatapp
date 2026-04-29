@@ -1,7 +1,7 @@
 package com.example.upload.service;
 
 import com.cloudinary.Cloudinary;
-import com.example.common.web.exception.BusinessException;
+import com.example.common.core.exception.BusinessException;
 import com.example.upload.config.UploadPolicyProperties;
 import com.example.upload.domain.UploadPurpose;
 import com.example.upload.dto.ConfirmUploadRequest;
@@ -112,3 +112,4 @@ class UploadSigningServiceTest {
         assertThat(response.getHeight()).isEqualTo(480);
     }
 }
+

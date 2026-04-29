@@ -1,7 +1,7 @@
 package com.example.user.kafka;
 
-import com.example.common.kafka.Topics;
-import com.example.common.kafka.event.AccountCreatedEvent;
+import com.example.common.integration.kafka.KafkaTopics;
+import com.example.common.integration.kafka.event.AccountCreatedEvent;
 import com.example.user.entity.UserProfile;
 import com.example.user.repository.UserProfileRepository;
 import com.example.user.utils.AvatarGenerator;
@@ -23,7 +23,7 @@ public class AccountCreatedConsumer {
     private final UserProfileRepository repository;
     private final AvatarGenerator avatarGenerator;
 
-    @KafkaListener(topics = Topics.ACCOUNT_CREATED)
+    @KafkaListener(topics = KafkaTopics.ACCOUNT_CREATED)
     public void listen(AccountCreatedEvent event) {
         var payload = event.getPayload();
         UUID accountId = payload.getAccountId();

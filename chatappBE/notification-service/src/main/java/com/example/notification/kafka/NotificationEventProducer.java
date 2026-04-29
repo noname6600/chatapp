@@ -1,9 +1,9 @@
 package com.example.notification.kafka;
 
 import com.example.common.integration.notification.NotificationRequestedPayload;
-import com.example.common.kafka.Topics;
+import com.example.common.integration.kafka.KafkaTopics;
 import com.example.common.kafka.api.KafkaEventPublisher;
-import com.example.common.kafka.event.NotificationRequestedEvent;
+import com.example.common.integration.kafka.event.NotificationRequestedEvent;
 import com.example.notification.entity.Notification;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -29,7 +29,7 @@ public class NotificationEventProducer {
                 );
 
         kafkaEventPublisher.publish(
-                Topics.NOTIFICATION_REQUESTED,
+                KafkaTopics.NOTIFICATION_REQUESTED,
                 noti.getUserId().toString(),
                 NotificationRequestedEvent.from(sourceService, payload)
         );

@@ -7,9 +7,10 @@ import com.example.chat.modules.room.service.IRoomPinService;
 import com.example.chat.modules.room.service.IRoomQueryService;
 import com.example.chat.modules.room.service.IRoomService;
 import com.example.common.web.controller.BaseController;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import com.example.common.web.response.ApiResponse;
+import com.example.common.security.jwt.JwtHelper;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -38,7 +39,7 @@ public class RoomController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody CreateRoomRequest request
     ) {
-        UUID userId = currentUserId(jwt);
+        UUID userId = JwtHelper.extractUserId(jwt);
         return ResponseEntity.ok(ApiResponse.success(
                 roomService.createRoom(userId, request.getName())
         ));
@@ -49,7 +50,7 @@ public class RoomController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @RequestParam UUID userId
     ) {
-        UUID me = currentUserId(jwt);
+        UUID me = JwtHelper.extractUserId(jwt);
         return ResponseEntity.ok(ApiResponse.success(
                 privateRoomService.getOrCreatePrivateRoom(me, userId)
         ));
@@ -60,7 +61,7 @@ public class RoomController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @RequestParam String code
     ) {
-        roomService.joinByCode(currentUserId(jwt), code);
+                roomService.joinByCode(JwtHelper.extractUserId(jwt), code);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
@@ -69,7 +70,7 @@ public class RoomController extends BaseController {
                         @AuthenticationPrincipal Jwt jwt,
                         @PathVariable UUID roomId
         ) {
-                roomService.joinByInviteRoomId(currentUserId(jwt), roomId);
+                roomService.joinByInviteRoomId(JwtHelper.extractUserId(jwt), roomId);
                 return ResponseEntity.ok(ApiResponse.success(null));
         }
 
@@ -79,7 +80,7 @@ public class RoomController extends BaseController {
                         @PathVariable UUID roomId,
                         @RequestParam(required = false) UUID userId
         ) {
-                roomService.joinByInviteRoomId(currentUserId(jwt), roomId);
+                roomService.joinByInviteRoomId(JwtHelper.extractUserId(jwt), roomId);
                 return ResponseEntity.ok(ApiResponse.success(null));
         }
 
@@ -98,7 +99,7 @@ public class RoomController extends BaseController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         return ResponseEntity.ok(ApiResponse.success(
-                roomQueryService.roomsOfUser(currentUserId(jwt))
+                roomQueryService.roomsOfUser(JwtHelper.extractUserId(jwt))
         ));
     }
 
@@ -109,7 +110,7 @@ public class RoomController extends BaseController {
             @Valid @RequestBody UpdateRoomRequest request
     ) {
         return ResponseEntity.ok(ApiResponse.success(
-                roomService.renameRoom(roomId, currentUserId(jwt), request.getName())
+                roomService.renameRoom(roomId, JwtHelper.extractUserId(jwt), request.getName())
         ));
     }
 
@@ -157,7 +158,7 @@ public class RoomController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID roomId
     ) {
-        roomService.leaveRoom(roomId, currentUserId(jwt));
+                roomService.leaveRoom(roomId, JwtHelper.extractUserId(jwt));
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
@@ -167,7 +168,7 @@ public class RoomController extends BaseController {
             @PathVariable UUID roomId,
             @PathVariable UUID userId
     ) {
-        roomService.removeMember(roomId, currentUserId(jwt), userId);
+                roomService.removeMember(roomId, JwtHelper.extractUserId(jwt), userId);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
@@ -177,7 +178,7 @@ public class RoomController extends BaseController {
                         @PathVariable UUID roomId,
                         @PathVariable UUID userId
         ) {
-                roomService.removeMember(roomId, currentUserId(jwt), userId);
+                roomService.removeMember(roomId, JwtHelper.extractUserId(jwt), userId);
                 return ResponseEntity.ok(ApiResponse.success(null));
         }
 
@@ -187,7 +188,7 @@ public class RoomController extends BaseController {
                         @PathVariable UUID roomId,
                         @PathVariable UUID userId
         ) {
-                roomService.banMember(roomId, currentUserId(jwt), userId);
+                roomService.banMember(roomId, JwtHelper.extractUserId(jwt), userId);
                 return ResponseEntity.ok(ApiResponse.success(null));
         }
 
@@ -197,7 +198,7 @@ public class RoomController extends BaseController {
                         @PathVariable UUID roomId,
                         @PathVariable UUID userId
         ) {
-                roomService.unbanMember(roomId, currentUserId(jwt), userId);
+                roomService.unbanMember(roomId, JwtHelper.extractUserId(jwt), userId);
                 return ResponseEntity.ok(ApiResponse.success(null));
         }
 
@@ -207,7 +208,7 @@ public class RoomController extends BaseController {
                         @PathVariable UUID roomId,
                         @Valid @RequestBody BulkMemberModerationRequest request
         ) {
-                roomService.bulkBanMembers(roomId, currentUserId(jwt), request.getUserIds());
+                roomService.bulkBanMembers(roomId, JwtHelper.extractUserId(jwt), request.getUserIds());
                 return ResponseEntity.ok(ApiResponse.success(null));
         }
 
@@ -217,7 +218,7 @@ public class RoomController extends BaseController {
                         @PathVariable UUID roomId,
                         @PathVariable UUID userId
         ) {
-                roomService.transferOwnership(roomId, currentUserId(jwt), userId);
+                roomService.transferOwnership(roomId, JwtHelper.extractUserId(jwt), userId);
                 return ResponseEntity.ok(ApiResponse.success(null));
         }
 
@@ -237,7 +238,7 @@ public class RoomController extends BaseController {
                         @AuthenticationPrincipal Jwt jwt,
                         @PathVariable UUID roomId
         ) {
-                roomService.markRoomRead(roomId, currentUserId(jwt));
+                roomService.markRoomRead(roomId, JwtHelper.extractUserId(jwt));
                 return ResponseEntity.ok(ApiResponse.success(null));
         }
 
@@ -247,7 +248,7 @@ public class RoomController extends BaseController {
                         @PathVariable UUID roomId,
                         @RequestParam UUID messageId
         ) {
-                roomPinService.pinMessage(roomId, currentUserId(jwt), messageId);
+                roomPinService.pinMessage(roomId, JwtHelper.extractUserId(jwt), messageId);
                 return ResponseEntity.ok(ApiResponse.success(null));
         }
 
@@ -257,7 +258,7 @@ public class RoomController extends BaseController {
                         @PathVariable UUID roomId,
                         @PathVariable UUID messageId
         ) {
-                roomPinService.unpinMessage(roomId, currentUserId(jwt), messageId);
+                roomPinService.unpinMessage(roomId, JwtHelper.extractUserId(jwt), messageId);
                 return ResponseEntity.ok(ApiResponse.success(null));
         }
 
@@ -266,7 +267,7 @@ public class RoomController extends BaseController {
                         @AuthenticationPrincipal Jwt jwt,
                         @PathVariable UUID roomId
         ) {
-                List<MessageResponse> pinnedMessages = roomPinService.getPinnedMessages(roomId, currentUserId(jwt));
+                List<MessageResponse> pinnedMessages = roomPinService.getPinnedMessages(roomId, JwtHelper.extractUserId(jwt));
                 return ResponseEntity.ok(ApiResponse.success(pinnedMessages));
         }
 
@@ -281,23 +282,25 @@ public class RoomController extends BaseController {
     ) {
         validate(file);
         return ResponseEntity.ok(ApiResponse.success(
-                roomService.uploadAvatar(roomId, currentUserId(jwt), file)
+                roomService.uploadAvatar(roomId, JwtHelper.extractUserId(jwt), file)
         ));
     }
 
     private void validate(MultipartFile file) {
         if (file == null || file.isEmpty()) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "Avatar file is required");
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST, "Avatar file is required");
         }
 
         String type = file.getContentType();
 
         if (type == null || !type.startsWith("image/")) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "File must be an image");
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST, "File must be an image");
         }
 
         if (file.getSize() > 5 * 1024 * 1024) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "Avatar too large");
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST, "Avatar too large");
         }
     }
 }
+
+

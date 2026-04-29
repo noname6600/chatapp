@@ -5,8 +5,8 @@ import com.example.auth.jwt.IKeyManager;
 import com.example.auth.jwt.KeyRecord;
 import com.example.auth.repository.RefreshTokenRepository;
 import com.example.auth.service.ITokenService;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import lombok.RequiredArgsConstructor;
@@ -46,3 +46,4 @@ public class TokenService implements ITokenService {
                 .compact();
     }
 }
+

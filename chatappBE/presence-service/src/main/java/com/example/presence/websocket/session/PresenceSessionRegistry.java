@@ -2,9 +2,6 @@ package com.example.presence.websocket.session;
 
 
 import com.example.common.websocket.handshake.AbstractJwtHandshakeInterceptor;
-import com.example.common.websocket.session.IPresenceQuery;
-import com.example.common.websocket.session.IRoomSessionRegistry;
-import com.example.common.websocket.session.IWebSocketSessionRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketSession;
@@ -15,7 +12,7 @@ import java.util.stream.Collectors;
 
 @Component
 @Slf4j
-public class PresenceSessionRegistry {
+public class PresenceSessionRegistry implements IPresenceQuery {
 
     private final Map<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
     private final Map<String, UUID> sessionUsers = new ConcurrentHashMap<>();
@@ -121,6 +118,11 @@ public class PresenceSessionRegistry {
         Set<String> set = userSessions.get(userId);
 
         return set != null && !set.isEmpty();
+    }
+
+    @Override
+    public Set<UUID> getOnlineUsers() {
+        return Set.copyOf(userSessions.keySet());
     }
 
     public Set<UUID> getRoomsOfUser(UUID userId) {

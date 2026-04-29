@@ -4,8 +4,8 @@ import com.example.auth.entity.JwtKeyEntity;
 import com.example.auth.jwt.IKeyManager;
 import com.example.auth.jwt.KeyRecord;
 import com.example.auth.repository.JwtKeyRepository;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import lombok.RequiredArgsConstructor;
@@ -104,7 +104,7 @@ public class KeyManager implements IKeyManager {
             log.error("JWT key rotation failed", e);
 
             throw new BusinessException(
-                    ErrorCode.INTERNAL_ERROR,
+                    CommonErrorCode.INTERNAL_ERROR,
                     "Key rotation failed"
             );
         }
@@ -177,9 +177,10 @@ public class KeyManager implements IKeyManager {
 
         } catch (Exception ex) {
             throw new BusinessException(
-                    ErrorCode.INTERNAL_ERROR,
+                    CommonErrorCode.INTERNAL_ERROR,
                     "Key parsing failed"
             );
         }
     }
 }
+

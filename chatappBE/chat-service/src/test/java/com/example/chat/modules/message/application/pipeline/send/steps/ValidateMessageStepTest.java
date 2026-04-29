@@ -5,8 +5,8 @@ import com.example.chat.modules.message.application.dto.request.RoomInviteReques
 import com.example.chat.modules.message.application.dto.request.SendMessageRequest;
 import com.example.chat.modules.message.application.pipeline.send.SendMessageContext;
 import com.example.chat.modules.message.domain.enums.MessageBlockType;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -60,6 +60,8 @@ class ValidateMessageStepTest {
         assertThatThrownBy(() -> step.execute(context))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.VALIDATION_ERROR);
+                .isEqualTo(CommonErrorCode.VALIDATION_ERROR);
     }
 }
+
+

@@ -5,8 +5,8 @@ import com.example.auth.entity.PasswordResetToken;
 import com.example.auth.repository.AccountRepository;
 import com.example.auth.repository.PasswordResetTokenRepository;
 import com.example.auth.service.IEmailService;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -119,7 +119,7 @@ class ForgotPasswordServiceTest {
         )
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.VALIDATION_ERROR);
+                .isEqualTo(CommonErrorCode.VALIDATION_ERROR);
     }
 
     @Test
@@ -139,7 +139,7 @@ class ForgotPasswordServiceTest {
         )
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.VALIDATION_ERROR);
+                .isEqualTo(CommonErrorCode.VALIDATION_ERROR);
     }
 
     @Test
@@ -159,7 +159,7 @@ class ForgotPasswordServiceTest {
         )
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.VALIDATION_ERROR);
+                .isEqualTo(CommonErrorCode.VALIDATION_ERROR);
     }
 
     private Account baseAccount(UUID id, String email) {
@@ -182,3 +182,5 @@ class ForgotPasswordServiceTest {
                 .build();
     }
 }
+
+

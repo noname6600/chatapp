@@ -1,6 +1,6 @@
 package com.example.user.kafka;
 
-import com.example.common.kafka.event.AccountCreatedEvent;
+import com.example.common.integration.kafka.event.AccountCreatedEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

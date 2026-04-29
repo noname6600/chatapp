@@ -1,10 +1,11 @@
 package com.example.user.service.impl;
 
+import com.example.common.media.UploadAssetMetadata;
 import com.example.common.redis.api.ITimeRedisCache;
 import com.example.common.redis.api.ITimeRedisCacheManager;
-import com.example.common.core.upload.UploadAssetMetadata;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
+import com.example.user.exception.UserErrorCode;
 import com.example.user.dto.*;
 import com.example.user.entity.UserProfile;
 import com.example.user.repository.UserProfileRepository;
@@ -79,7 +80,7 @@ public class UserProfileService implements IUserProfileService {
 
         UserProfile profile = repo.findById(id)
                 .orElseThrow(() ->
-                        new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "User not found")
+                        new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND, "User not found")
                 );
 
         UserProfileResponse response = toResponse(profile);
@@ -121,7 +122,7 @@ public class UserProfileService implements IUserProfileService {
 
         UserProfile profile = repo.findById(accountId)
                 .orElseThrow(() ->
-                        new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "User not found")
+                        new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND, "User not found")
                 );
 
         if (req.getUsername() != null) {
@@ -132,7 +133,7 @@ public class UserProfileService implements IUserProfileService {
 
                 if (!USERNAME_PATTERN.matcher(newUsername).matches()) {
                     throw new BusinessException(
-                            ErrorCode.VALIDATION_ERROR,
+                            CommonErrorCode.VALIDATION_ERROR,
                             "Username must be 3-30 chars and only include letters, numbers, dot(.), underscore(_), comma(,)"
                     );
                 }
@@ -142,7 +143,7 @@ public class UserProfileService implements IUserProfileService {
                         .isPresent();
 
                 if (takenByAnother) {
-                    throw new BusinessException(ErrorCode.CONFLICT, "Username already taken");
+                    throw new BusinessException(CommonErrorCode.CONFLICT, "Username already taken");
                 }
 
                 profile.setUsername(newUsername);
@@ -170,7 +171,7 @@ public class UserProfileService implements IUserProfileService {
             String color = req.getBackgroundColor().trim();
 
             if (!HEX_COLOR.matcher(color).matches()) {
-                throw new BusinessException(ErrorCode.BAD_REQUEST, "Invalid background color");
+                throw new BusinessException(CommonErrorCode.BAD_REQUEST, "Invalid background color");
             }
 
             profile.setBackgroundColor(color);
@@ -184,7 +185,7 @@ public class UserProfileService implements IUserProfileService {
 
         UserProfile profile = repo.findById(accountId)
                 .orElseThrow(() ->
-                        new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "User not found")
+                        new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND, "User not found")
                 );
 
         UploadAssetMetadata metadata = toUploadAssetMetadata(request);
@@ -248,11 +249,11 @@ public class UserProfileService implements IUserProfileService {
                 : request.getResourceType().trim().toLowerCase(Locale.ROOT);
 
         if (!"image".equals(resourceType)) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "Avatar resourceType must be image");
+            throw new BusinessException(CommonErrorCode.VALIDATION_ERROR, "Avatar resourceType must be image");
         }
 
         if (request.getBytes() > AVATAR_MAX_BYTES) {
-            throw new BusinessException(ErrorCode.ATTACHMENT_TOO_LARGE, "Avatar too large (max 5MB)");
+            throw new BusinessException(UserErrorCode.ATTACHMENT_TOO_LARGE, "Avatar too large (max 5MB)");
         }
 
         String format = request.getFormat() == null
@@ -263,11 +264,11 @@ public class UserProfileService implements IUserProfileService {
                 || "jpeg".equals(format)
                 || "png".equals(format)
                 || "webp".equals(format))) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "Unsupported avatar format");
+            throw new BusinessException(CommonErrorCode.VALIDATION_ERROR, "Unsupported avatar format");
         }
 
         if (!request.getSecureUrl().startsWith("https://res.cloudinary.com/")) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "Avatar secureUrl is invalid");
+            throw new BusinessException(CommonErrorCode.VALIDATION_ERROR, "Avatar secureUrl is invalid");
         }
     }
 
@@ -293,6 +294,8 @@ public class UserProfileService implements IUserProfileService {
         );
     }
 }
+
+
 
 
 

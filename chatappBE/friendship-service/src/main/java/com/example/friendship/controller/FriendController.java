@@ -2,6 +2,7 @@ package com.example.friendship.controller;
 
 import com.example.common.web.controller.BaseController;
 import com.example.common.web.response.ApiResponse;
+import com.example.common.security.jwt.JwtHelper;
 import com.example.friendship.dto.SendFriendRequestByUsernameRequest;
 import com.example.friendship.dto.UnreadCountResponse;
 import com.example.friendship.enums.FriendshipStatus;
@@ -34,7 +35,7 @@ public class FriendController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody SendFriendRequestByUsernameRequest request
     ) {
-        commandService.sendRequestByUsername(currentUserId(jwt), request.getUsername().trim());
+        commandService.sendRequestByUsername(JwtHelper.extractUserId(jwt), request.getUsername().trim());
         return ok();
     }
 
@@ -43,7 +44,7 @@ public class FriendController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID userId
     ) {
-        commandService.sendRequest(currentUserId(jwt), userId);
+        commandService.sendRequest(JwtHelper.extractUserId(jwt), userId);
         return ok();
     }
 
@@ -52,7 +53,7 @@ public class FriendController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID userId
     ) {
-        commandService.accept(currentUserId(jwt), userId);
+        commandService.accept(JwtHelper.extractUserId(jwt), userId);
         return ok();
     }
 
@@ -61,7 +62,7 @@ public class FriendController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID userId
     ) {
-        commandService.decline(currentUserId(jwt), userId);
+        commandService.decline(JwtHelper.extractUserId(jwt), userId);
         return ok();
     }
 
@@ -70,7 +71,7 @@ public class FriendController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID userId
     ) {
-        commandService.cancel(currentUserId(jwt), userId);
+        commandService.cancel(JwtHelper.extractUserId(jwt), userId);
         return ok();
     }
 
@@ -79,7 +80,7 @@ public class FriendController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID userId
     ) {
-        commandService.unfriend(currentUserId(jwt), userId);
+        commandService.unfriend(JwtHelper.extractUserId(jwt), userId);
         return ok();
     }
 
@@ -88,7 +89,7 @@ public class FriendController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID userId
     ) {
-        commandService.block(currentUserId(jwt), userId);
+        commandService.block(JwtHelper.extractUserId(jwt), userId);
         return ok();
     }
 
@@ -97,7 +98,7 @@ public class FriendController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID userId
     ) {
-        commandService.unblock(currentUserId(jwt), userId);
+        commandService.unblock(JwtHelper.extractUserId(jwt), userId);
         return ok();
     }
 
@@ -106,35 +107,35 @@ public class FriendController extends BaseController {
     public ResponseEntity<ApiResponse<List<UUID>>> friends(
             @AuthenticationPrincipal Jwt jwt
     ) {
-        return ok(queryService.getFriends(currentUserId(jwt)));
+        return ok(queryService.getFriends(JwtHelper.extractUserId(jwt)));
     }
 
     @GetMapping("/requests/incoming")
     public ResponseEntity<ApiResponse<List<UUID>>> incomingRequests(
             @AuthenticationPrincipal Jwt jwt
     ) {
-        return ok(queryService.getIncomingRequests(currentUserId(jwt)));
+        return ok(queryService.getIncomingRequests(JwtHelper.extractUserId(jwt)));
     }
 
     @GetMapping("/requests/outgoing")
     public ResponseEntity<ApiResponse<List<UUID>>> outgoingRequests(
             @AuthenticationPrincipal Jwt jwt
     ) {
-        return ok(queryService.getOutgoingRequests(currentUserId(jwt)));
+        return ok(queryService.getOutgoingRequests(JwtHelper.extractUserId(jwt)));
     }
 
     @GetMapping("/blocks/me")
     public ResponseEntity<ApiResponse<List<UUID>>> blockedByMe(
             @AuthenticationPrincipal Jwt jwt
     ) {
-        return ok(queryService.getBlockedByMe(currentUserId(jwt)));
+        return ok(queryService.getBlockedByMe(JwtHelper.extractUserId(jwt)));
     }
 
     @GetMapping("/blocks/by-others")
     public ResponseEntity<ApiResponse<List<UUID>>> blockedMe(
             @AuthenticationPrincipal Jwt jwt
     ) {
-        return ok(queryService.getBlockedMe(currentUserId(jwt)));
+        return ok(queryService.getBlockedMe(JwtHelper.extractUserId(jwt)));
     }
 
     @GetMapping("/status/{userId}")
@@ -142,7 +143,7 @@ public class FriendController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID userId
     ) {
-        FriendshipStatus status = queryService.getStatus(currentUserId(jwt), userId);
+        FriendshipStatus status = queryService.getStatus(JwtHelper.extractUserId(jwt), userId);
         return ok(status != null ? status.name() : "NONE");
     }
 
@@ -158,12 +159,13 @@ public class FriendController extends BaseController {
     public ResponseEntity<ApiResponse<UnreadCountResponse>> getUnreadCount(
             @AuthenticationPrincipal Jwt jwt
     ) {
-        long unreadCount = queryService.getUnreadFriendRequestCount(currentUserId(jwt));
+        long unreadCount = queryService.getUnreadFriendRequestCount(JwtHelper.extractUserId(jwt));
         return ok(UnreadCountResponse.builder()
                 .unreadCount(unreadCount)
                 .build());
     }
 }
+
 
 
 

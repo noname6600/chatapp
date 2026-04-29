@@ -2,8 +2,8 @@ package com.example.notification.kafka;
 
 import com.example.common.integration.chat.ReactionPayload;
 import com.example.common.integration.enums.ReactionAction;
-import com.example.common.kafka.Topics;
-import com.example.common.kafka.event.ChatReactionUpdatedEvent;
+import com.example.common.integration.kafka.KafkaTopics;
+import com.example.common.integration.kafka.event.ChatReactionUpdatedEvent;
 import com.example.notification.entity.NotificationType;
 import com.example.notification.repository.NotificationRepository;
 import com.example.notification.service.impl.NotificationCommandService;
@@ -20,7 +20,7 @@ public class ReactionEventConsumer {
     private final NotificationRepository notificationRepository;
     private final NotificationCommandService notificationCommandService;
 
-    @KafkaListener(topics = Topics.CHAT_REACTION_UPDATED, groupId = "notification-service")
+    @KafkaListener(topics = KafkaTopics.CHAT_REACTION_UPDATED, groupId = "notification-service")
     public void listen(ChatReactionUpdatedEvent event) {
         if (event == null || event.getPayload() == null) {
             return;

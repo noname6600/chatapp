@@ -3,6 +3,7 @@ package com.example.chat.modules.message.controller;
 import com.example.chat.modules.message.application.command.IReactionCommandService;
 import com.example.common.web.controller.BaseController;
 import com.example.common.web.response.ApiResponse;
+import com.example.common.security.jwt.JwtHelper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -27,7 +28,7 @@ public class MessageReactionController extends BaseController {
 
         reactionService.toggleReaction(
                 messageId,
-                currentUserId(jwt),
+            JwtHelper.extractUserId(jwt),
                 emoji
         );
 

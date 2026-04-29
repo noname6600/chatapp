@@ -1,8 +1,8 @@
 package com.example.notification.kafka;
 
 import com.example.common.integration.friendship.FriendRequestEvent;
-import com.example.common.kafka.Topics;
-import com.example.common.kafka.event.FriendRequestKafkaEvent;
+import com.example.common.integration.kafka.KafkaTopics;
+import com.example.common.integration.kafka.event.FriendRequestKafkaEvent;
 import com.example.notification.entity.NotificationType;
 import com.example.notification.repository.NotificationRepository;
 import com.example.notification.service.impl.NotificationCommandService;
@@ -19,7 +19,7 @@ public class FriendRequestEventConsumer {
     private final NotificationRepository notificationRepository;
     private final NotificationCommandService notificationCommandService;
 
-    @KafkaListener(topics = Topics.FRIENDSHIP_REQUEST_EVENTS)
+        @KafkaListener(topics = KafkaTopics.FRIENDSHIP_REQUEST_EVENTS)
     public void listen(FriendRequestKafkaEvent event) {
         FriendRequestEvent payload = event.getPayload();
         if (payload == null || payload.getType() == null) {

@@ -16,8 +16,8 @@ import com.example.chat.modules.room.dto.RoomMessagePinEventPayload;
 import com.example.chat.modules.room.repository.RoomMemberRepository;
 import com.example.chat.modules.room.service.IRoomPinService;
 import com.example.common.integration.chat.ChatEventType;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,20 +49,20 @@ public class RoomPinService implements IRoomPinService {
 
         ChatMessage targetMessage = chatMessageRepository.findById(messageId)
                 .orElseThrow(() -> new BusinessException(
-                        ErrorCode.RESOURCE_NOT_FOUND,
+                        CommonErrorCode.RESOURCE_NOT_FOUND,
                         "Message not found"
                 ));
 
         if (!roomId.equals(targetMessage.getRoomId())) {
             throw new BusinessException(
-                    ErrorCode.BAD_REQUEST,
+                    CommonErrorCode.BAD_REQUEST,
                     "Message does not belong to the room"
             );
         }
 
         if (Boolean.TRUE.equals(targetMessage.getDeleted())) {
             throw new BusinessException(
-                    ErrorCode.BAD_REQUEST,
+                    CommonErrorCode.BAD_REQUEST,
                     "Cannot pin deleted message"
             );
         }
@@ -72,7 +72,7 @@ public class RoomPinService implements IRoomPinService {
         roomPinnedMessageRepository.findByRoomIdAndMessageId(roomId, messageId)
                 .ifPresent(existing -> {
                     throw new BusinessException(
-                            ErrorCode.CONFLICT,
+                            CommonErrorCode.CONFLICT,
                             "Message already pinned"
                     );
                 });
@@ -105,7 +105,7 @@ public class RoomPinService implements IRoomPinService {
         RoomPinnedMessage existing = roomPinnedMessageRepository
                 .findByRoomIdAndMessageId(roomId, messageId)
                 .orElseThrow(() -> new BusinessException(
-                        ErrorCode.RESOURCE_NOT_FOUND,
+                        CommonErrorCode.RESOURCE_NOT_FOUND,
                         "Pinned message not found"
                 ));
 
@@ -193,7 +193,7 @@ public class RoomPinService implements IRoomPinService {
 
     private void ensureMember(UUID roomId, UUID actorId) {
         if (!roomMemberRepository.existsByRoomIdAndUserId(roomId, actorId)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "Not a room member");
+            throw new BusinessException(CommonErrorCode.FORBIDDEN, "Not a room member");
         }
     }
 
@@ -240,3 +240,5 @@ public class RoomPinService implements IRoomPinService {
                 publishPinRealtimeEvent(roomId, messageId, actorId, eventType);
         }
 }
+
+

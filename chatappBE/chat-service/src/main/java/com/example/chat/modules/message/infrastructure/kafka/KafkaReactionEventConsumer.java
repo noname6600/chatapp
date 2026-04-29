@@ -1,8 +1,8 @@
 package com.example.chat.modules.message.infrastructure.kafka;
 
 import com.example.chat.modules.message.infrastructure.redis.ChatRedisPublisher;
-import com.example.common.kafka.Topics;
-import com.example.common.kafka.event.ChatReactionUpdatedEvent;
+import com.example.common.integration.kafka.KafkaTopics;
+import com.example.common.integration.kafka.event.ChatReactionUpdatedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -16,7 +16,7 @@ public class KafkaReactionEventConsumer {
     private final ChatRedisPublisher chatRedisPublisher;
 
         @KafkaListener(
-            topics = Topics.CHAT_REACTION_UPDATED,
+            topics = KafkaTopics.CHAT_REACTION_UPDATED,
             groupId = "chat-service-realtime-fanout",
             properties = {"auto.offset.reset=latest"}
         )

@@ -1,7 +1,7 @@
 package com.example.upload.service;
 
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import com.example.upload.config.UploadPolicyProperties;
 import com.example.upload.domain.UploadPolicy;
 import com.example.upload.domain.UploadPurpose;
@@ -30,12 +30,12 @@ public class UploadPolicyRegistry {
 
     public UploadPolicy getOrThrow(UploadPurpose purpose) {
         if (purpose == null) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "purpose is required");
+            throw new BusinessException(CommonErrorCode.VALIDATION_ERROR, "purpose is required");
         }
 
         UploadPolicy policy = policies.get(purpose);
         if (policy == null) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "Unsupported upload purpose");
+            throw new BusinessException(CommonErrorCode.VALIDATION_ERROR, "Unsupported upload purpose");
         }
 
         return policy;
@@ -81,3 +81,5 @@ public class UploadPolicyRegistry {
                 .collect(Collectors.toSet());
     }
 }
+
+

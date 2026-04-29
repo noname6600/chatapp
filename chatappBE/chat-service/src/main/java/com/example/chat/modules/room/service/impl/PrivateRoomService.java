@@ -16,8 +16,8 @@ import com.example.chat.modules.room.repository.RoomRepository;
 import com.example.chat.modules.room.service.IPrivateRoomService;
 import com.example.common.redis.api.ITimeRedisCacheManager;
 import com.example.common.redis.exception.CreateCacheException;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -48,7 +48,7 @@ public class PrivateRoomService implements IPrivateRoomService {
 
         if (u1.equals(u2)) {
             throw new BusinessException(
-                    ErrorCode.BAD_REQUEST,
+                    CommonErrorCode.BAD_REQUEST,
                     "Cannot chat with yourself"
             );
         }
@@ -75,7 +75,7 @@ public class PrivateRoomService implements IPrivateRoomService {
                     userClient.getUsersBulk(List.of(u1, u2)).getData();
 
             if (users.size() != 2) {
-                throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND ,"Not found users");
+                throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND ,"Not found users");
             }
 
             Map<UUID, UserBasicProfile> map =
@@ -151,7 +151,7 @@ public class PrivateRoomService implements IPrivateRoomService {
                                 || profile.getDisplayName() == null
                                 || profile.getAvatarUrl() == null) {
                         log.warn("Invalid user profile for private chat startup. requestedUserId={}", requestedUserId);
-                        throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "Not found users");
+                        throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND, "Not found users");
                 }
         }
 
@@ -214,3 +214,4 @@ public class PrivateRoomService implements IPrivateRoomService {
         return "rooms:user:" + userId;
     }
 }
+

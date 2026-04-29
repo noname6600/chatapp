@@ -2,8 +2,8 @@ package com.example.user.service.impl;
 
 import com.example.common.redis.api.ITimeRedisCache;
 import com.example.common.redis.api.ITimeRedisCacheManager;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import com.example.user.dto.UserProfileResponse;
 import com.example.user.entity.UserProfile;
 import com.example.user.repository.UserProfileRepository;
@@ -105,7 +105,7 @@ class UserProfileServiceGetSelfTest {
         assertThatThrownBy(() -> service.getSelf(accountId))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.RESOURCE_NOT_FOUND);
+                .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND);
     }
 
     private UserProfile baseProfile(UUID accountId) {
@@ -119,3 +119,5 @@ class UserProfileServiceGetSelfTest {
                 .build();
     }
 }
+
+

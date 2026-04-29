@@ -6,8 +6,8 @@ import com.example.auth.enums.AuthProvider;
 import com.example.auth.kafka.AccountCreatedEventProducer;
 import com.example.auth.repository.AccountRepository;
 import com.example.auth.service.IIdentityProviderService;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.auth.exception.AuthErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -150,7 +150,7 @@ class OAuthAuthServiceTest {
         assertThatThrownBy(() -> oauthAuthService.loginGoogle("google-sub", "new@example.com"))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
-                        .isEqualTo(ErrorCode.INCOMPLETE_ACCOUNT));
+                        .isEqualTo(AuthErrorCode.INCOMPLETE_ACCOUNT));
     }
 
     @Test
@@ -179,7 +179,7 @@ class OAuthAuthServiceTest {
         assertThatThrownBy(() -> oauthAuthService.loginGoogle("google-sub", "user@example.com"))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
-                        .isEqualTo(ErrorCode.INCOMPLETE_ACCOUNT));
+                        .isEqualTo(AuthErrorCode.INCOMPLETE_ACCOUNT));
     }
 
     @Test

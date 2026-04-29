@@ -2,6 +2,7 @@ package com.example.notification.websocket;
 
 import com.example.common.websocket.dto.WsOutgoingMessage;
 import com.example.notification.dto.NotificationResponse;
+import com.example.notification.websocket.redis.RedisNotificationPublisher;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -19,7 +20,7 @@ import static org.mockito.Mockito.verify;
 class NotificationWebSocketPublisherTest {
 
     @Mock
-    private WebSocketUserBroadcaster broadcaster;
+    private RedisNotificationPublisher redisNotificationPublisher;
 
     @InjectMocks
     private NotificationWebSocketPublisher publisher;
@@ -35,10 +36,10 @@ class NotificationWebSocketPublisherTest {
         publisher.publishNotificationNew(userId, payload);
 
         ArgumentCaptor<WsOutgoingMessage> messageCaptor = ArgumentCaptor.forClass(WsOutgoingMessage.class);
-        verify(broadcaster).sendToUser(eq(userId), messageCaptor.capture());
+        verify(redisNotificationPublisher).publish(eq(userId), messageCaptor.capture());
 
         WsOutgoingMessage sent = messageCaptor.getValue();
         assertThat(sent.getType()).isEqualTo("NOTIFICATION_NEW");
-        assertThat(sent.getData()).isEqualTo(payload);
+        assertThat(sent.getPayload()).isEqualTo(payload);
     }
 }

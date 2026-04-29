@@ -1,8 +1,8 @@
 package com.example.auth.service.impl;
 
 import com.example.auth.service.IGoogleTokenVerifier;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
 import com.google.api.client.http.javanet.NetHttpTransport;
@@ -43,7 +43,7 @@ public class GoogleTokenVerifier implements IGoogleTokenVerifier {
             if (idToken == null) {
                 log.warn("Google ID token verification returned null");
                 throw new BusinessException(
-                        ErrorCode.UNAUTHORIZED,
+                        CommonErrorCode.UNAUTHORIZED,
                         "Invalid Google ID token"
                 );
             }
@@ -55,7 +55,7 @@ public class GoogleTokenVerifier implements IGoogleTokenVerifier {
             log.warn("Google ID token verification failed: {}", ex.getMessage());
 
             throw new BusinessException(
-                    ErrorCode.UNAUTHORIZED,
+                    CommonErrorCode.UNAUTHORIZED,
                     "Invalid Google ID token"
             );
 
@@ -64,10 +64,12 @@ public class GoogleTokenVerifier implements IGoogleTokenVerifier {
             log.error("Unexpected error during Google token verification", ex);
 
             throw new BusinessException(
-                    ErrorCode.INTERNAL_ERROR,
+                    CommonErrorCode.INTERNAL_ERROR,
                     "Google token verification failed"
             );
         }
     }
 }
+
+
 

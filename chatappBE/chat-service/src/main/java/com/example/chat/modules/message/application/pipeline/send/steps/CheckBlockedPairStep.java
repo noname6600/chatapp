@@ -7,9 +7,9 @@ import com.example.chat.modules.room.entity.Room;
 import com.example.chat.modules.room.enums.RoomType;
 import com.example.chat.modules.room.repository.PrivateRoomRepository;
 import com.example.chat.modules.room.repository.RoomRepository;
+import com.example.chat.exception.ChatErrorCode;
 import com.example.common.core.pipeline.PipelineStep;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -51,7 +51,7 @@ public class CheckBlockedPairStep
 
             if (Boolean.TRUE.equals(blocked)) {
                 throw new BusinessException(
-                        ErrorCode.BLOCKED_SEND,
+                        ChatErrorCode.BLOCKED_SEND,
                         "You cannot send messages to this user."
                 );
             }
@@ -62,7 +62,7 @@ public class CheckBlockedPairStep
                 log.warn("[CheckBlockedPairStep] Could not check block status for roomId={}, otherId={}: {}",
                     roomId, otherId, e.getMessage());
             throw new BusinessException(
-                    ErrorCode.BLOCKED_SEND,
+                    ChatErrorCode.BLOCKED_SEND,
                     "You cannot send messages to this user."
             );
         }
@@ -73,3 +73,4 @@ public class CheckBlockedPairStep
         return new Class[]{ValidateRoomPermissionStep.class};
     }
 }
+

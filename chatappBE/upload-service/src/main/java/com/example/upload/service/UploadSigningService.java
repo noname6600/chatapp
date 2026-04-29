@@ -1,9 +1,9 @@
 package com.example.upload.service;
 
 import com.cloudinary.Cloudinary;
-import com.example.common.core.upload.UploadAssetMetadata;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.media.UploadAssetMetadata;
+import com.example.common.core.exception.CommonErrorCode;
 import com.example.upload.dto.ConfirmUploadRequest;
 import com.example.upload.dto.PrepareUploadRequest;
 import com.example.upload.dto.PrepareUploadResponse;
@@ -71,27 +71,27 @@ public class UploadSigningService {
         String secureUrl = request.getSecureUrl() == null ? "" : request.getSecureUrl().trim();
 
         if (!publicId.startsWith(policy.getFolder() + "/")) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "publicId does not match purpose folder policy");
+            throw new BusinessException(CommonErrorCode.VALIDATION_ERROR, "publicId does not match purpose folder policy");
         }
 
         if (!secureUrl.startsWith("https://res.cloudinary.com/" + cloudName + "/")) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "secureUrl is not from configured cloud");
+            throw new BusinessException(CommonErrorCode.VALIDATION_ERROR, "secureUrl is not from configured cloud");
         }
 
         if (!policy.getAllowedResourceTypes().contains(resourceType)) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "resourceType is not allowed for this purpose");
+            throw new BusinessException(CommonErrorCode.VALIDATION_ERROR, "resourceType is not allowed for this purpose");
         }
 
         if (!policy.getAllowedFormats().contains(format)) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "format is not allowed for this purpose");
+            throw new BusinessException(CommonErrorCode.VALIDATION_ERROR, "format is not allowed for this purpose");
         }
 
         if (request.getBytes() > policy.getMaxBytes()) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "file exceeds maxBytes policy");
+            throw new BusinessException(CommonErrorCode.VALIDATION_ERROR, "file exceeds maxBytes policy");
         }
 
         if ("image".equals(resourceType) && (request.getWidth() == null || request.getHeight() == null)) {
-            throw new BusinessException(ErrorCode.VALIDATION_ERROR, "image requires width and height");
+            throw new BusinessException(CommonErrorCode.VALIDATION_ERROR, "image requires width and height");
         }
 
         UploadAssetMetadata metadata = UploadAssetMetadata.builder()
@@ -124,3 +124,5 @@ public class UploadSigningService {
         return raw == null ? "" : raw.trim().toLowerCase(Locale.ROOT);
     }
 }
+
+

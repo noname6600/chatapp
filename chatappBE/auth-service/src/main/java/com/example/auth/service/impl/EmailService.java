@@ -3,8 +3,8 @@ package com.example.auth.service.impl;
 import com.example.auth.repository.AccountRepository;
 import com.example.auth.service.IEmailService;
 import com.example.auth.integration.resend.ResendEmailClient;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,7 +27,7 @@ public class EmailService implements IEmailService {
     public void sendVerificationEmail(UUID accountId, String verificationToken) {
         String email = accountRepository.findById(accountId)
                 .map(account -> account.getEmail())
-                .orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHORIZED, "Account not found"));
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Account not found"));
 
         String confirmUrl = frontendUrl + "/auth/verify-email?token=" + verificationToken;
         String subject = "Verify Your Email - ChatApp";
@@ -43,7 +43,7 @@ public class EmailService implements IEmailService {
     public void sendPasswordResetEmail(UUID accountId, String resetToken) {
         String email = accountRepository.findById(accountId)
                 .map(account -> account.getEmail())
-                .orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHORIZED, "Account not found"));
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Account not found"));
 
         String resetUrl = frontendUrl + "/auth/reset-password?token=" + resetToken;
         String subject = "Reset Your Password - ChatApp";
@@ -62,9 +62,11 @@ public class EmailService implements IEmailService {
         } catch (Exception ex) {
             log.error("Failed to send email to {}: {}", to, ex.getMessage(), ex);
             throw new BusinessException(
-                    ErrorCode.INTERNAL_ERROR,
+                    CommonErrorCode.INTERNAL_ERROR,
                     "Failed to send email. Please try again later."
             );
         }
     }
 }
+
+

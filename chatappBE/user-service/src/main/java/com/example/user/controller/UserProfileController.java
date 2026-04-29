@@ -1,9 +1,10 @@
 package com.example.user.controller;
 
 import com.example.common.web.controller.BaseController;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import com.example.common.web.response.ApiResponse;
+import com.example.common.security.jwt.JwtHelper;
 import com.example.user.dto.AvatarMetadataRequest;
 import com.example.user.dto.AvatarUploadResponse;
 import com.example.user.dto.UpdateProfileRequest;
@@ -41,7 +42,7 @@ public class UserProfileController extends BaseController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         return ResponseEntity.ok(
-                ApiResponse.success(service.getSelf(currentUserId(jwt)))
+                ApiResponse.success(service.getSelf(JwtHelper.extractUserId(jwt)))
         );
     }
 
@@ -50,7 +51,7 @@ public class UserProfileController extends BaseController {
             @RequestParam(required = false) String username
     ) {
         if (username == null || username.isBlank()) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST, "Username parameter is required and cannot be blank");
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST, "Username parameter is required and cannot be blank");
         }
 
         List<UserBasicProfile> profiles = service.searchByUsername(username.trim());
@@ -78,7 +79,7 @@ public class UserProfileController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody UpdateProfileRequest req
     ) {
-        service.updateProfile(currentUserId(jwt), req);
+                service.updateProfile(JwtHelper.extractUserId(jwt), req);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
@@ -115,8 +116,11 @@ public class UserProfileController extends BaseController {
             @Valid @RequestBody AvatarMetadataRequest request
     ) {
         AvatarUploadResponse response =
-                service.applyAvatarMetadata(currentUserId(jwt), request);
+                service.applyAvatarMetadata(JwtHelper.extractUserId(jwt), request);
 
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 }
+
+
+

@@ -12,8 +12,9 @@ import com.example.chat.modules.message.domain.model.AttachmentDraft;
 import com.example.common.integration.chat.AttachmentPayload;
 import com.example.common.integration.chat.MessageBlockPayload;
 import com.example.common.integration.chat.RoomInvitePayload;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.chat.exception.ChatErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -110,7 +111,7 @@ public class MessageBlockMapper {
     private List<MessageBlockRequest> normalizeBlocks(List<MessageBlockRequest> blocks) {
         if (blocks == null || blocks.isEmpty()) {
             throw new BusinessException(
-                    ErrorCode.MESSAGE_CONTENT_EMPTY,
+                    ChatErrorCode.MESSAGE_CONTENT_EMPTY,
                     "Message blocks cannot be empty"
             );
         }
@@ -122,7 +123,7 @@ public class MessageBlockMapper {
 
         if (normalized.isEmpty()) {
             throw new BusinessException(
-                    ErrorCode.MESSAGE_CONTENT_EMPTY,
+                    ChatErrorCode.MESSAGE_CONTENT_EMPTY,
                     "Message blocks cannot be empty"
             );
         }
@@ -133,7 +134,7 @@ public class MessageBlockMapper {
     private MessageBlockRequest normalizeBlock(MessageBlockRequest block) {
         if (block.getType() == null) {
             throw new BusinessException(
-                    ErrorCode.VALIDATION_ERROR,
+                    CommonErrorCode.VALIDATION_ERROR,
                     "Block type is required"
             );
         }
@@ -149,7 +150,7 @@ public class MessageBlockMapper {
         String text = block.getText() == null ? "" : block.getText();
         if (text.isBlank()) {
             throw new BusinessException(
-                    ErrorCode.MESSAGE_CONTENT_EMPTY,
+                    ChatErrorCode.MESSAGE_CONTENT_EMPTY,
                     "Text block cannot be empty"
             );
         }
@@ -163,7 +164,7 @@ public class MessageBlockMapper {
     private MessageBlockRequest normalizeAssetBlock(MessageBlockRequest block) {
         if (block.getAttachment() == null) {
             throw new BusinessException(
-                    ErrorCode.ATTACHMENT_INVALID,
+                    ChatErrorCode.ATTACHMENT_INVALID,
                     "Asset block requires attachment"
             );
         }
@@ -201,7 +202,7 @@ public class MessageBlockMapper {
             private MessageBlockRequest normalizeRoomInviteBlock(MessageBlockRequest block) {
             if (block.getRoomInvite() == null || block.getRoomInvite().getRoomId() == null) {
                 throw new BusinessException(
-                    ErrorCode.VALIDATION_ERROR,
+                    CommonErrorCode.VALIDATION_ERROR,
                     "Room invite block requires roomId"
                 );
             }
@@ -342,3 +343,4 @@ public class MessageBlockMapper {
         }
     }
 }
+

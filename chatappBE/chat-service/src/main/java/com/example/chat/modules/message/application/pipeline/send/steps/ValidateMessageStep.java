@@ -5,8 +5,8 @@ import com.example.chat.modules.message.application.dto.request.SendMessageReque
 import com.example.chat.modules.message.domain.enums.MessageBlockType;
 import com.example.chat.modules.message.application.pipeline.send.SendMessageContext;
 import com.example.common.core.pipeline.PipelineStep;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import org.springframework.stereotype.Component;
 
 import java.util.UUID;
@@ -22,7 +22,7 @@ public class ValidateMessageStep
 
         if (request == null) {
             throw new BusinessException(
-                    ErrorCode.VALIDATION_ERROR,
+                    CommonErrorCode.VALIDATION_ERROR,
                     "Request cannot be null"
             );
         }
@@ -32,14 +32,14 @@ public class ValidateMessageStep
 
         if (roomId == null) {
             throw new BusinessException(
-                    ErrorCode.VALIDATION_ERROR,
+                    CommonErrorCode.VALIDATION_ERROR,
                     "roomId is required"
             );
         }
 
         if (senderId == null) {
             throw new BusinessException(
-                    ErrorCode.VALIDATION_ERROR,
+                    CommonErrorCode.VALIDATION_ERROR,
                     "senderId is required"
             );
         }
@@ -58,7 +58,7 @@ public class ValidateMessageStep
 
                 if (!hasContent && !hasAttachments && !hasRenderableBlocks) {
             throw new BusinessException(
-                    ErrorCode.VALIDATION_ERROR,
+                    CommonErrorCode.VALIDATION_ERROR,
                     "Message must contain content or attachment"
             );
         }
@@ -80,3 +80,4 @@ public class ValidateMessageStep
                 };
         }
 }
+

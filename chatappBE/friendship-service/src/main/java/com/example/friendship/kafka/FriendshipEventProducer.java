@@ -3,10 +3,10 @@ package com.example.friendship.kafka;
 import com.example.common.integration.friendship.FriendshipEventType;
 import com.example.common.integration.friendship.FriendRequestEvent;
 import com.example.common.integration.friendship.FriendshipPayload;
-import com.example.common.kafka.Topics;
+import com.example.common.integration.kafka.KafkaTopics;
 import com.example.common.kafka.api.KafkaEventPublisher;
-import com.example.common.kafka.event.FriendRequestKafkaEvent;
-import com.example.common.kafka.event.FriendshipEvent;
+import com.example.common.integration.kafka.event.FriendRequestKafkaEvent;
+import com.example.common.integration.kafka.event.FriendshipEvent;
 import com.example.common.web.response.ApiResponse;
 import com.example.friendship.client.UserClient;
 import com.example.friendship.dto.UserProfileResponse;
@@ -39,7 +39,7 @@ public class FriendshipEventProducer {
         );
 
         kafkaEventPublisher.publish(
-                Topics.FRIENDSHIP_EVENTS,
+                KafkaTopics.FRIENDSHIP_EVENTS,
                 friendship.getId().toString(),
                 FriendshipEvent.of(sourceService, type, payload)
         );
@@ -64,7 +64,7 @@ public class FriendshipEventProducer {
                 .build();
 
             kafkaEventPublisher.publish(
-                Topics.FRIENDSHIP_REQUEST_EVENTS,
+                KafkaTopics.FRIENDSHIP_REQUEST_EVENTS,
                 requestId.toString(),
                 FriendRequestKafkaEvent.of(sourceService, payload)
             );

@@ -2,6 +2,7 @@ package com.example.notification.controller;
 
 import com.example.common.web.controller.BaseController;
 import com.example.common.web.response.ApiResponse;
+import com.example.common.security.jwt.JwtHelper;
 import com.example.notification.dto.NotificationListResponse;
 import com.example.notification.dto.NotificationResponse;
 import com.example.notification.dto.UnreadCountResponse;
@@ -35,7 +36,7 @@ public class NotificationController extends BaseController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant beforeCreatedAt
     ) {
         return ResponseEntity.ok(
-                ApiResponse.success(queryService.getNotificationsForUser(currentUserId(jwt), page, size, beforeCreatedAt))
+                                ApiResponse.success(queryService.getNotificationsForUser(JwtHelper.extractUserId(jwt), page, size, beforeCreatedAt))
         );
     }
 
@@ -44,7 +45,7 @@ public class NotificationController extends BaseController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         return ResponseEntity.ok(
-                ApiResponse.success(queryService.getUnreadNotifications(currentUserId(jwt)))
+                ApiResponse.success(queryService.getUnreadNotifications(JwtHelper.extractUserId(jwt)))
         );
     }
 
@@ -53,7 +54,7 @@ public class NotificationController extends BaseController {
             @PathVariable UUID id,
             @AuthenticationPrincipal Jwt jwt
     ) {
-        commandService.markRead(id, currentUserId(jwt));
+                commandService.markRead(id, JwtHelper.extractUserId(jwt));
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
@@ -61,7 +62,7 @@ public class NotificationController extends BaseController {
     public ResponseEntity<ApiResponse<Void>> markAllRead(
             @AuthenticationPrincipal Jwt jwt
     ) {
-        commandService.markAllRead(currentUserId(jwt));
+                commandService.markAllRead(JwtHelper.extractUserId(jwt));
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
@@ -70,7 +71,7 @@ public class NotificationController extends BaseController {
             @PathVariable UUID roomId,
             @AuthenticationPrincipal Jwt jwt
     ) {
-        commandService.clearRoom(currentUserId(jwt), roomId);
+                commandService.clearRoom(JwtHelper.extractUserId(jwt), roomId);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
@@ -79,7 +80,7 @@ public class NotificationController extends BaseController {
                         @PathVariable UUID roomId,
                         @AuthenticationPrincipal Jwt jwt
         ) {
-                commandService.markReadByRoom(currentUserId(jwt), roomId);
+                commandService.markReadByRoom(JwtHelper.extractUserId(jwt), roomId);
                 return ResponseEntity.ok(ApiResponse.success(null));
         }
 
@@ -87,7 +88,7 @@ public class NotificationController extends BaseController {
     public ResponseEntity<ApiResponse<UnreadCountResponse>> getUnreadCount(
             @AuthenticationPrincipal Jwt jwt
     ) {
-        long count = queryService.countUnread(currentUserId(jwt));
+        long count = queryService.countUnread(JwtHelper.extractUserId(jwt));
 
         UnreadCountResponse response = UnreadCountResponse.builder()
                 .unreadCount(count)
@@ -96,6 +97,7 @@ public class NotificationController extends BaseController {
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 }
+
 
 
 

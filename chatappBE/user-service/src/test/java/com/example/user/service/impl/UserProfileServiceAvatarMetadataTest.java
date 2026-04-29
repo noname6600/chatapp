@@ -2,8 +2,8 @@ package com.example.user.service.impl;
 
 import com.example.common.redis.api.ITimeRedisCache;
 import com.example.common.redis.api.ITimeRedisCacheManager;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import com.example.user.dto.AvatarMetadataRequest;
 import com.example.user.dto.AvatarUploadResponse;
 import com.example.user.entity.UserProfile;
@@ -49,7 +49,7 @@ class UserProfileServiceAvatarMetadataTest {
         assertThatThrownBy(() -> service.applyAvatarMetadata(accountId, request))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.VALIDATION_ERROR);
+                .isEqualTo(CommonErrorCode.VALIDATION_ERROR);
     }
 
     @Test
@@ -89,3 +89,5 @@ class UserProfileServiceAvatarMetadataTest {
         return request;
     }
 }
+
+

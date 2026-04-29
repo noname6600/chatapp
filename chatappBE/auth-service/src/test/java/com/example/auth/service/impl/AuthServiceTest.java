@@ -10,8 +10,8 @@ import com.example.auth.service.IPasswordService;
 import com.example.auth.service.ITokenServiceFacade;
 import com.example.auth.service.IUserProfileReadinessService;
 import com.example.auth.service.IVerificationTokenService;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.auth.exception.AuthErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -73,12 +73,12 @@ class AuthServiceTest {
         UUID accountId = UUID.randomUUID();
         when(localAuthService.register("new@example.com", "Password1!")).thenReturn(accountId);
         when(authSessionService.issueTokensWhenProfileReady(accountId))
-            .thenThrow(new BusinessException(ErrorCode.INCOMPLETE_ACCOUNT));
+            .thenThrow(new BusinessException(AuthErrorCode.INCOMPLETE_ACCOUNT));
 
         assertThatThrownBy(() -> authService.register("new@example.com", "Password1!"))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.INCOMPLETE_ACCOUNT);
+                .isEqualTo(AuthErrorCode.INCOMPLETE_ACCOUNT);
 
         verify(localAuthService).register("new@example.com", "Password1!");
         verify(authSessionService).issueTokensWhenProfileReady(accountId);
@@ -90,12 +90,12 @@ class AuthServiceTest {
         UUID accountId = UUID.randomUUID();
         when(localAuthService.login("user@example.com", "Password1!")).thenReturn(accountId);
         when(authSessionService.issueTokensWhenProfileReady(accountId))
-            .thenThrow(new BusinessException(ErrorCode.INCOMPLETE_ACCOUNT));
+            .thenThrow(new BusinessException(AuthErrorCode.INCOMPLETE_ACCOUNT));
 
         assertThatThrownBy(() -> authService.login("user@example.com", "Password1!"))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.INCOMPLETE_ACCOUNT);
+                .isEqualTo(AuthErrorCode.INCOMPLETE_ACCOUNT);
 
         verify(localAuthService).login("user@example.com", "Password1!");
         verify(authSessionService).issueTokensWhenProfileReady(accountId);
@@ -116,3 +116,4 @@ class AuthServiceTest {
         verify(authSessionService).issueTokensWhenProfileReady(accountId);
     }
 }
+

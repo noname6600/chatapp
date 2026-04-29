@@ -3,8 +3,8 @@ package com.example.auth.service.impl;
 import com.example.auth.dto.AuthResponse;
 import com.example.auth.service.ITokenServiceFacade;
 import com.example.auth.service.IUserProfileReadinessService;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.auth.exception.AuthErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -27,7 +27,7 @@ public class AuthSessionService {
         if (!userProfileReadinessService.waitUntilReady(accountId)) {
             log.warn("auth_issue_blocked reason=user_profile_not_ready accountId={}", accountId);
             throw new BusinessException(
-                    ErrorCode.INCOMPLETE_ACCOUNT,
+                    AuthErrorCode.INCOMPLETE_ACCOUNT,
                     INCOMPLETE_ACCOUNT_MESSAGE,
                     Map.of("authCode", "incomplete_account")
             );

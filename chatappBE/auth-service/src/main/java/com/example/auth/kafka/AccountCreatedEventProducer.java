@@ -1,9 +1,9 @@
 package com.example.auth.kafka;
 
 import com.example.common.integration.account.AccountCreatedPayload;
-import com.example.common.kafka.Topics;
+import com.example.common.integration.kafka.KafkaTopics;
 import com.example.common.kafka.api.KafkaEventPublisher;
-import com.example.common.kafka.event.AccountCreatedEvent;
+import com.example.common.integration.kafka.event.AccountCreatedEvent;
 import com.example.auth.entity.Account;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,7 +23,7 @@ public class AccountCreatedEventProducer {
     public boolean publish(Account account) {
         try {
             kafkaEventPublisher.publish(
-                Topics.ACCOUNT_CREATED,
+                KafkaTopics.ACCOUNT_CREATED,
                 account.getId().toString(),
                 AccountCreatedEvent.from(
                     sourceService,

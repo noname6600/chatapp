@@ -19,8 +19,8 @@ import com.example.chat.modules.room.enums.Role;
 import com.example.chat.modules.room.enums.RoomType;
 import com.example.chat.modules.room.repository.RoomMemberRepository;
 import com.example.chat.modules.room.repository.RoomRepository;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -176,7 +176,7 @@ class MessageCommandServiceForwardIntegrationTest {
         assertThatThrownBy(() -> messageCommandService.forwardMessage(request))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.BAD_REQUEST);
+                .isEqualTo(CommonErrorCode.BAD_REQUEST);
     }
 
     @Test
@@ -194,7 +194,7 @@ class MessageCommandServiceForwardIntegrationTest {
         assertThatThrownBy(() -> messageCommandService.forwardMessage(request))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.FORBIDDEN);
+                .isEqualTo(CommonErrorCode.FORBIDDEN);
     }
 
     private UUID createRoomId() {
@@ -241,3 +241,5 @@ class MessageCommandServiceForwardIntegrationTest {
         }
     }
 }
+
+

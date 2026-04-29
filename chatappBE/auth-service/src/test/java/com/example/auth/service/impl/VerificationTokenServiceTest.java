@@ -4,8 +4,8 @@ import com.example.auth.entity.Account;
 import com.example.auth.entity.VerificationToken;
 import com.example.auth.repository.AccountRepository;
 import com.example.auth.repository.VerificationTokenRepository;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -120,7 +120,7 @@ class VerificationTokenServiceTest {
         assertThatThrownBy(() -> verificationTokenService.confirmEmail("some-raw-token"))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.VALIDATION_ERROR);
+                .isEqualTo(CommonErrorCode.VALIDATION_ERROR);
     }
 
     @Test
@@ -139,7 +139,7 @@ class VerificationTokenServiceTest {
         assertThatThrownBy(() -> verificationTokenService.confirmEmail("some-raw-token"))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.VALIDATION_ERROR);
+                .isEqualTo(CommonErrorCode.VALIDATION_ERROR);
     }
 
     @Test
@@ -189,3 +189,5 @@ class VerificationTokenServiceTest {
                 .build();
     }
 }
+
+

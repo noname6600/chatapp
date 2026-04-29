@@ -13,8 +13,8 @@ import com.example.chat.modules.room.repository.RoomRepository;
 import com.example.chat.modules.room.enums.RoomType;
 import com.example.common.redis.api.ITimeRedisCacheManager;
 import com.example.common.websocket.session.IRoomBroadcaster;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -101,7 +101,7 @@ class RoomServiceInviteJoinIntegrationTest {
         assertThatThrownBy(() -> roomService.joinByInviteRoomId(userId, room.getId()))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.BAD_REQUEST);
+                .isEqualTo(CommonErrorCode.BAD_REQUEST);
     }
 
     @Test
@@ -141,7 +141,7 @@ class RoomServiceInviteJoinIntegrationTest {
         assertThatThrownBy(() -> roomService.joinByInviteRoomId(userId, room.getId()))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.FORBIDDEN);
+                .isEqualTo(CommonErrorCode.FORBIDDEN);
     }
 
     @Test
@@ -232,3 +232,5 @@ class RoomServiceInviteJoinIntegrationTest {
         }
     }
 }
+
+

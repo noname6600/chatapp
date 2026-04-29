@@ -2,8 +2,8 @@ package com.example.chat.modules.message.domain.model;
 
 import com.example.chat.modules.message.domain.enums.AttachmentType;
 import com.example.chat.modules.message.domain.enums.MessageType;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.chat.exception.ChatErrorCode;
+import com.example.common.core.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -37,7 +37,7 @@ class MessageAggregateAttachmentValidationTest {
         ))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.ATTACHMENT_INVALID);
+                .isEqualTo(ChatErrorCode.ATTACHMENT_INVALID);
     }
 
     @Test
@@ -61,7 +61,7 @@ class MessageAggregateAttachmentValidationTest {
         ))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.ATTACHMENT_INVALID);
+                .isEqualTo(ChatErrorCode.ATTACHMENT_INVALID);
     }
 
     @Test
@@ -168,3 +168,4 @@ class MessageAggregateAttachmentValidationTest {
         assertThat(aggregate.getAttachments()).hasSize(1);
     }
 }
+

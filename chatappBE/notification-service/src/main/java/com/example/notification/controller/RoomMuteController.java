@@ -2,6 +2,7 @@ package com.example.notification.controller;
 
 import com.example.common.web.controller.BaseController;
 import com.example.common.web.response.ApiResponse;
+import com.example.common.security.jwt.JwtHelper;
 import com.example.notification.dto.RoomSettingsResponse;
 import com.example.notification.dto.RoomSettingsUpdateRequest;
 import com.example.notification.entity.RoomNotificationMode;
@@ -33,7 +34,7 @@ public class RoomMuteController extends BaseController {
             @PathVariable UUID roomId,
             @AuthenticationPrincipal Jwt jwt
     ) {
-        roomMuteSettingService.mute(currentUserId(jwt), roomId);
+                roomMuteSettingService.mute(JwtHelper.extractUserId(jwt), roomId);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
@@ -42,7 +43,7 @@ public class RoomMuteController extends BaseController {
             @PathVariable UUID roomId,
             @AuthenticationPrincipal Jwt jwt
     ) {
-        roomMuteSettingService.unmute(currentUserId(jwt), roomId);
+                roomMuteSettingService.unmute(JwtHelper.extractUserId(jwt), roomId);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
@@ -51,7 +52,7 @@ public class RoomMuteController extends BaseController {
             @PathVariable UUID roomId,
             @AuthenticationPrincipal Jwt jwt
     ) {
-        RoomNotificationMode mode = roomMuteSettingService.getMode(currentUserId(jwt), roomId);
+        RoomNotificationMode mode = roomMuteSettingService.getMode(JwtHelper.extractUserId(jwt), roomId);
         return ResponseEntity.ok(
                 ApiResponse.success(
                         RoomSettingsResponse.builder()
@@ -69,7 +70,7 @@ public class RoomMuteController extends BaseController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         RoomNotificationMode mode = parseMode(request == null ? null : request.getMode());
-        RoomNotificationMode updatedMode = roomMuteSettingService.setMode(currentUserId(jwt), roomId, mode);
+        RoomNotificationMode updatedMode = roomMuteSettingService.setMode(JwtHelper.extractUserId(jwt), roomId, mode);
 
         return ResponseEntity.ok(
                 ApiResponse.success(
@@ -89,3 +90,4 @@ public class RoomMuteController extends BaseController {
         return RoomNotificationMode.valueOf(rawMode.trim().toUpperCase());
     }
 }
+

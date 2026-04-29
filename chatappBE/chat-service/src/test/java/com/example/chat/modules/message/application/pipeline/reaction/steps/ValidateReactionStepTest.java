@@ -1,7 +1,7 @@
 package com.example.chat.modules.message.application.pipeline.reaction.steps;
 
 import com.example.chat.modules.message.application.pipeline.reaction.ToggleReactionContext;
-import com.example.common.web.exception.BusinessException;
+import com.example.common.core.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 
 import java.util.UUID;
@@ -34,3 +34,4 @@ class ValidateReactionStepTest {
                 .hasMessageContaining("messageId is required");
     }
 }
+

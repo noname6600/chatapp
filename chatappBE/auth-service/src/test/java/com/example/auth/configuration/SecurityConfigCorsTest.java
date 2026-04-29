@@ -1,6 +1,6 @@
 package com.example.auth.configuration;
 
-import com.example.common.web.security.CorsProperties;
+import com.example.common.web.cors.CorsProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.cors.CorsConfiguration;
 

@@ -1,6 +1,6 @@
 package com.example.notification.service.impl;
 
-import com.example.common.web.exception.BusinessException;
+import com.example.common.core.exception.BusinessException;
 import com.example.notification.entity.Notification;
 import com.example.notification.entity.NotificationType;
 import com.example.notification.repository.NotificationRepository;
@@ -107,3 +107,4 @@ class NotificationCommandServiceTest {
         verify(pushService).pushUnreadCount(userId);
     }
 }
+

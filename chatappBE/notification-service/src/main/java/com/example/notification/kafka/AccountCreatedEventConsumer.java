@@ -1,7 +1,7 @@
 package com.example.notification.kafka;
 
-import com.example.common.kafka.Topics;
-import com.example.common.kafka.event.AccountCreatedEvent;
+import com.example.common.integration.kafka.KafkaTopics;
+import com.example.common.integration.kafka.event.AccountCreatedEvent;
 import com.example.notification.service.impl.NotificationDomainService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,7 +15,7 @@ public class AccountCreatedEventConsumer {
 
     private final NotificationDomainService notificationService;
 
-    @KafkaListener(topics = Topics.ACCOUNT_CREATED)
+    @KafkaListener(topics = KafkaTopics.ACCOUNT_CREATED)
     public void listen(AccountCreatedEvent event) {
 
         var payload = event.getPayload();

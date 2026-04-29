@@ -11,8 +11,8 @@ import com.example.chat.modules.message.domain.repository.RoomPinnedMessageRepos
 import com.example.chat.modules.message.domain.service.IMessagePreviewService;
 import com.example.chat.modules.message.infrastructure.redis.ChatRedisPublisher;
 import com.example.chat.modules.room.repository.RoomMemberRepository;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -69,7 +69,7 @@ class RoomPinServiceTest {
         assertThatThrownBy(() -> roomPinService.pinMessage(roomId, actorId, messageId))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.FORBIDDEN);
+                .isEqualTo(CommonErrorCode.FORBIDDEN);
 
         verify(roomPinnedMessageRepository, never()).save(org.mockito.ArgumentMatchers.any(RoomPinnedMessage.class));
     }
@@ -94,8 +94,10 @@ class RoomPinServiceTest {
         assertThatThrownBy(() -> roomPinService.pinMessage(roomId, actorId, messageId))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.CONFLICT);
+                .isEqualTo(CommonErrorCode.CONFLICT);
 
         verify(roomPinnedMessageRepository, never()).save(org.mockito.ArgumentMatchers.any(RoomPinnedMessage.class));
     }
 }
+
+

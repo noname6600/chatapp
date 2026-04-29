@@ -2,8 +2,8 @@ package com.example.auth.controller;
 
 import com.example.auth.dto.*;
 import com.example.common.web.controller.BaseController;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import com.example.common.web.response.ApiResponse;
 import com.example.auth.service.IAuthService;
 import com.example.auth.service.IForgotPasswordService;
@@ -88,7 +88,7 @@ public class AuthController extends BaseController {
             @Valid @RequestBody ChangePasswordRequest request
     ) {
         if (principal == null) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED);
+            throw new BusinessException(CommonErrorCode.UNAUTHORIZED);
         }
         authService.changePassword(
                 principal.getAccountId(),
@@ -138,4 +138,6 @@ public class AuthController extends BaseController {
         return ok();
     }
 }
+
+
 

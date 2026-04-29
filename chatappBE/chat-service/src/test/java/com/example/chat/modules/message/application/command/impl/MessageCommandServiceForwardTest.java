@@ -14,8 +14,8 @@ import com.example.chat.modules.message.domain.repository.ChatAttachmentReposito
 import com.example.chat.modules.message.domain.repository.ChatMessageRepository;
 import com.example.chat.modules.room.repository.RoomMemberRepository;
 import com.example.chat.modules.room.repository.RoomRepository;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -81,7 +81,7 @@ class MessageCommandServiceForwardTest {
         assertThatThrownBy(() -> messageCommandService.forwardMessage(request))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.FORBIDDEN);
+                .isEqualTo(CommonErrorCode.FORBIDDEN);
 
         verify(messageRepository, never()).findById(sourceMessageId);
     }
@@ -110,8 +110,10 @@ class MessageCommandServiceForwardTest {
         assertThatThrownBy(() -> messageCommandService.forwardMessage(request))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.BAD_REQUEST);
+                .isEqualTo(CommonErrorCode.BAD_REQUEST);
 
         verify(attachmentRepository, never()).findByMessageId(sourceMessageId);
     }
 }
+
+

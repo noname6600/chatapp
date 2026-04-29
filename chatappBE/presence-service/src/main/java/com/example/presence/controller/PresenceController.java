@@ -4,6 +4,7 @@ package com.example.presence.controller;
 import com.example.common.integration.presence.PresenceUserStatePayload;
 import com.example.common.web.controller.BaseController;
 import com.example.common.web.response.ApiResponse;
+import com.example.common.security.jwt.JwtHelper;
 import com.example.presence.dto.PresenceSelfResponse;
 import com.example.presence.dto.UpdatePresenceStatusRequest;
 import com.example.presence.service.IPresenceService;
@@ -31,7 +32,7 @@ public class PresenceController extends BaseController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         return ResponseEntity.ok(
-                ApiResponse.success(presenceService.getSelfPresence(currentUserId(jwt)))
+                ApiResponse.success(presenceService.getSelfPresence(JwtHelper.extractUserId(jwt)))
         );
     }
 
@@ -40,7 +41,7 @@ public class PresenceController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody UpdatePresenceStatusRequest request
     ) {
-        UUID userId = currentUserId(jwt);
+        UUID userId = JwtHelper.extractUserId(jwt);
         presenceService.updatePresence(userId, request.getMode(), request.getStatus());
 
         return ResponseEntity.ok(
@@ -64,6 +65,7 @@ public class PresenceController extends BaseController {
         );
     }
 }
+
 
 
 

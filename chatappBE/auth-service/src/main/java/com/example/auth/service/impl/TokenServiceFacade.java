@@ -5,8 +5,8 @@ import com.example.auth.entity.RefreshToken;
 import com.example.auth.repository.RefreshTokenRepository;
 import com.example.auth.service.ITokenService;
 import com.example.auth.service.ITokenServiceFacade;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.auth.exception.AuthErrorCode;
+import com.example.common.core.exception.BusinessException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -52,25 +52,25 @@ public class TokenServiceFacade implements ITokenServiceFacade {
         RefreshToken token = refreshRepo
                 .findByTokenHash(hash)
                 .orElseThrow(() ->
-                        new BusinessException(ErrorCode.TOKEN_INVALID)
+                        new BusinessException(AuthErrorCode.TOKEN_INVALID)
                 );
 
         if (token.isRevoked()) {
 
             refreshRepo.revokeAllByAccountId(token.getAccountId(), now);
 
-            throw new BusinessException(ErrorCode.TOKEN_INVALID);
+            throw new BusinessException(AuthErrorCode.TOKEN_INVALID);
         }
 
         if (token.getExpiresAt().isBefore(now)) {
-            throw new BusinessException(ErrorCode.TOKEN_EXPIRED);
+            throw new BusinessException(AuthErrorCode.TOKEN_EXPIRED);
         }
 
         int updated = refreshRepo.revokeIfNotRevoked(hash, now);
 
         if (updated == 0) {
             refreshRepo.revokeAllByAccountId(token.getAccountId(), now);
-            throw new BusinessException(ErrorCode.TOKEN_INVALID);
+            throw new BusinessException(AuthErrorCode.TOKEN_INVALID);
         }
 
         return issue(token.getAccountId());
@@ -132,3 +132,4 @@ public class TokenServiceFacade implements ITokenServiceFacade {
         );
     }
 }
+

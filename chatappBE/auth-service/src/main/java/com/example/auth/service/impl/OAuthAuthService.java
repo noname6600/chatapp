@@ -7,8 +7,8 @@ import com.example.auth.kafka.AccountCreatedEventProducer;
 import com.example.auth.repository.AccountRepository;
 import com.example.auth.service.IIdentityProviderService;
 import com.example.auth.service.IOAuthService;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.auth.exception.AuthErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -102,10 +102,11 @@ public class OAuthAuthService implements IOAuthService {
 
     private BusinessException incompleteAccountException() {
         return new BusinessException(
-                ErrorCode.INCOMPLETE_ACCOUNT,
+                AuthErrorCode.INCOMPLETE_ACCOUNT,
                 "Account setup incomplete. Please try again in a few seconds.",
                 Map.of("authCode", "incomplete_account")
         );
     }
 }
+
 

@@ -1,6 +1,6 @@
 package com.example.chat.config;
 
-import com.example.common.web.security.CorsProperties;
+import com.example.common.web.cors.CorsProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

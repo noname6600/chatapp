@@ -8,6 +8,7 @@ import com.example.chat.modules.message.application.dto.request.SendMessageReque
 import com.example.chat.modules.message.application.dto.response.MessageResponse;
 import com.example.common.web.controller.BaseController;
 import com.example.common.web.response.ApiResponse;
+import com.example.common.security.jwt.JwtHelper;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -29,7 +30,7 @@ public class MessageCommandController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @RequestBody @Valid SendMessageRequest request
     ) {
-        request.setSenderId(currentUserId(jwt));
+        request.setSenderId(JwtHelper.extractUserId(jwt));
         MessageResponse response =
                 messageCommandService.sendMessage(request);
 
@@ -44,7 +45,7 @@ public class MessageCommandController extends BaseController {
     ) {
 
         request.setMessageId(messageId);
-        request.setActorId(currentUserId(jwt));
+        request.setActorId(JwtHelper.extractUserId(jwt));
 
         MessageResponse response =
                 messageCommandService.editMessage(request);
@@ -58,7 +59,7 @@ public class MessageCommandController extends BaseController {
             @PathVariable UUID messageId,
             @RequestBody @Valid DeleteMessageRequest request
     ) {
-        request.setActorId(currentUserId(jwt));
+                request.setActorId(JwtHelper.extractUserId(jwt));
         request.setMessageId(messageId);
         messageCommandService.deleteMessage(request);
 
@@ -70,7 +71,7 @@ public class MessageCommandController extends BaseController {
                         @AuthenticationPrincipal Jwt jwt,
                         @RequestBody @Valid ForwardMessageRequest request
         ) {
-                request.setActorId(currentUserId(jwt));
+                request.setActorId(JwtHelper.extractUserId(jwt));
 
                 MessageResponse response =
                                 messageCommandService.forwardMessage(request);
@@ -78,4 +79,5 @@ public class MessageCommandController extends BaseController {
                 return ResponseEntity.ok(ApiResponse.success(response));
         }
 }
+
 

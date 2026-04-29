@@ -5,8 +5,8 @@ import com.example.auth.dto.EmailVerificationStatusResponse;
 import com.example.auth.entity.Account;
 import com.example.auth.repository.AccountRepository;
 import com.example.auth.service.*;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -89,8 +89,8 @@ public class AuthService implements IAuthService {
     @Override
     public EmailVerificationStatusResponse getEmailVerificationStatus(UUID accountId) {
         Account account = accountRepository.findById(accountId)
-                .orElseThrow(() -> new com.example.common.web.exception.BusinessException(
-                        com.example.common.web.exception.ErrorCode.UNAUTHORIZED, "Account not found"
+                .orElseThrow(() -> new com.example.common.core.exception.BusinessException(
+                        com.example.common.core.exception.CommonErrorCode.UNAUTHORIZED, "Account not found"
                 ));
         boolean isVerified = verificationTokenService.isEmailVerified(accountId);
         return new EmailVerificationStatusResponse(account.getEmail(), isVerified);
@@ -110,3 +110,4 @@ public class AuthService implements IAuthService {
     }
 
 }
+

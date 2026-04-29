@@ -6,8 +6,9 @@ import com.example.auth.kafka.AccountCreatedEventProducer;
 import com.example.auth.repository.AccountRepository;
 import com.example.auth.service.IIdentityProviderService;
 import com.example.auth.service.ILocalAuthService;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.auth.exception.AuthErrorCode;
+import com.example.common.core.exception.CommonErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -77,7 +78,7 @@ public class LocalAuthService implements ILocalAuthService {
                 return reuseExistingRegistration(concurrent, password);
             }
             throw new BusinessException(
-                    ErrorCode.CONFLICT,
+                    CommonErrorCode.CONFLICT,
                     "Email already registered"
             );
         }
@@ -96,7 +97,7 @@ public class LocalAuthService implements ILocalAuthService {
 
         if (!account.isEnabled()) {
             throw new BusinessException(
-                    ErrorCode.FORBIDDEN,
+                    CommonErrorCode.FORBIDDEN,
                     "Account disabled"
             );
         }
@@ -107,7 +108,7 @@ public class LocalAuthService implements ILocalAuthService {
     private BusinessException invalidCredentialsException() {
         log.info("auth_failure reason=invalid_credentials");
         return new BusinessException(
-                ErrorCode.UNAUTHORIZED,
+                CommonErrorCode.UNAUTHORIZED,
                 INVALID_CREDENTIALS_MESSAGE,
                 Map.of("authCode", "invalid_credentials")
         );
@@ -116,7 +117,7 @@ public class LocalAuthService implements ILocalAuthService {
     private UUID reuseExistingRegistration(Account account, String password) {
         if (account.getPasswordHash() == null || !passwordEncoder.matches(password, account.getPasswordHash())) {
             throw new BusinessException(
-                    ErrorCode.CONFLICT,
+                    CommonErrorCode.CONFLICT,
                     "Email already registered"
             );
         }
@@ -142,9 +143,11 @@ public class LocalAuthService implements ILocalAuthService {
 
     private BusinessException incompleteAccountException() {
         return new BusinessException(
-                ErrorCode.INCOMPLETE_ACCOUNT,
+                AuthErrorCode.INCOMPLETE_ACCOUNT,
                 INCOMPLETE_ACCOUNT_MESSAGE,
                 Map.of("authCode", "incomplete_account")
         );
     }
 }
+
+

@@ -2,9 +2,10 @@ package com.example.chat.modules.message.application.pipeline.edit.steps;
 
 import com.example.chat.modules.message.application.dto.request.EditMessageRequest;
 import com.example.chat.modules.message.application.pipeline.edit.EditMessageContext;
+import com.example.chat.exception.ChatErrorCode;
 import com.example.common.core.pipeline.PipelineStep;
-import com.example.common.web.exception.BusinessException;
-import com.example.common.web.exception.ErrorCode;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -18,21 +19,21 @@ public class ValidateEditMessageStep
 
         if (request == null) {
             throw new BusinessException(
-                    ErrorCode.VALIDATION_ERROR,
+                    CommonErrorCode.VALIDATION_ERROR,
                     "Request cannot be null"
             );
         }
 
         if (request.getMessageId() == null) {
             throw new BusinessException(
-                    ErrorCode.VALIDATION_ERROR,
+                    CommonErrorCode.VALIDATION_ERROR,
                     "messageId required"
             );
         }
 
         if (request.getActorId() == null) {
             throw new BusinessException(
-                    ErrorCode.VALIDATION_ERROR,
+                    CommonErrorCode.VALIDATION_ERROR,
                     "senderId required"
             );
         }
@@ -41,8 +42,10 @@ public class ValidateEditMessageStep
                 request.getContent().isBlank()) {
 
             throw new BusinessException(
-                    ErrorCode.MESSAGE_CONTENT_EMPTY
+                    ChatErrorCode.MESSAGE_CONTENT_EMPTY
             );
         }
     }
 }
+
+
