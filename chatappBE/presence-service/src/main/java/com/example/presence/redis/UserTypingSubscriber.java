@@ -2,8 +2,7 @@ package com.example.presence.redis;
 
 import com.example.common.integration.presence.PresenceEventType;
 import com.example.common.integration.presence.PresenceTypingPayload;
-import com.example.common.integration.websocket.WsEvent;
-import com.example.common.redis.api.IRedisSubscriber;
+import com.example.common.websocket.protocol.RealtimeWsEvent;
 import com.example.common.redis.message.RedisMessage;
 import com.example.common.websocket.session.IRoomBroadcaster;
 import lombok.RequiredArgsConstructor;
@@ -12,7 +11,7 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class UserTypingSubscriber
-        implements IRedisSubscriber<RedisMessage<PresenceTypingPayload>> {
+        implements RedisEventSubscriber<RedisMessage<PresenceTypingPayload>> {
 
     private final IRoomBroadcaster roomBroadcaster;
 
@@ -26,7 +25,7 @@ public class UserTypingSubscriber
 
         PresenceTypingPayload payload = message.getPayload();
 
-        WsEvent wsEvent = WsEvent.builder()
+        RealtimeWsEvent wsEvent = RealtimeWsEvent.builder()
                 .type(message.getEventType())
                 .payload(payload)
                 .build();

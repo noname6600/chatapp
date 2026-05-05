@@ -1,13 +1,13 @@
 package com.example.upload.service;
 
 import com.cloudinary.Cloudinary;
+import com.example.upload.application.ConfirmUploadCommand;
+import com.example.upload.application.ConfirmUploadResult;
+import com.example.upload.application.PrepareUploadCommand;
+import com.example.upload.application.PrepareUploadResult;
 import com.example.common.core.exception.BusinessException;
-import com.example.common.media.UploadAssetMetadata;
+import com.example.upload.contract.UploadAssetMetadata;
 import com.example.common.core.exception.CommonErrorCode;
-import com.example.upload.dto.ConfirmUploadRequest;
-import com.example.upload.dto.PrepareUploadRequest;
-import com.example.upload.dto.PrepareUploadResponse;
-import com.example.upload.dto.UploadAssetResponse;
 import com.example.upload.domain.UploadPolicy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -35,11 +35,13 @@ public class UploadSigningService {
     @Value("${cloudinary.api-secret}")
     private String apiSecret;
 
-    public PrepareUploadResponse prepare(PrepareUploadRequest request) {
-        UploadPolicy policy = policyRegistry.getOrThrow(request.getPurpose());
+    public PrepareUploadResult prepare(PrepareUploadCommand command) {
+        UploadPolicy policy = policyRegistry.getOrThrow(command.purpose());
 
         long timestamp = Instant.now().getEpochSecond();
         String publicId = policy.getFolder() + "/" + UUID.randomUUID();
+        String uploadUrl = "https://api.cloudinary.com/v1_1/" + cloudName + "/auto/upload";
+        String publicUrl = "https://res.cloudinary.com/" + cloudName + "/" + publicId;
 
         Map<String, Object> paramsToSign = new HashMap<>();
         paramsToSign.put("folder", policy.getFolder());
@@ -48,27 +50,28 @@ public class UploadSigningService {
 
         String signature = cloudinary.apiSignRequest(paramsToSign, apiSecret);
 
-        return PrepareUploadResponse.builder()
-                .purpose(request.getPurpose().value())
-                .cloudName(cloudName)
-                .apiKey(apiKey)
-                .uploadUrl("https://api.cloudinary.com/v1_1/" + cloudName + "/auto/upload")
-                .timestamp(timestamp)
-                .signature(signature)
-                .folder(policy.getFolder())
-                .publicId(publicId)
-                .maxBytes(policy.getMaxBytes())
-                .allowedFormats(policy.getAllowedFormatsForClient())
-                .build();
+        return new PrepareUploadResult(
+                command.purpose().value(),
+                uploadUrl,
+                publicUrl,
+                publicId,
+                cloudName,
+                apiKey,
+                timestamp,
+                signature,
+                policy.getFolder(),
+                policy.getMaxBytes(),
+                policy.getAllowedFormatsForClient()
+        );
     }
 
-    public UploadAssetResponse confirm(ConfirmUploadRequest request) {
-        UploadPolicy policy = policyRegistry.getOrThrow(request.getPurpose());
+    public ConfirmUploadResult confirm(ConfirmUploadCommand command) {
+        UploadPolicy policy = policyRegistry.getOrThrow(command.purpose());
 
-        String format = lower(request.getFormat());
-        String resourceType = lower(request.getResourceType());
-        String publicId = request.getPublicId() == null ? "" : request.getPublicId().trim();
-        String secureUrl = request.getSecureUrl() == null ? "" : request.getSecureUrl().trim();
+        String format = lower(command.format());
+        String resourceType = lower(command.resourceType());
+        String publicId = command.assetKey() == null ? "" : command.assetKey().trim();
+        String secureUrl = command.publicUrl() == null ? "" : command.publicUrl().trim();
 
         if (!publicId.startsWith(policy.getFolder() + "/")) {
             throw new BusinessException(CommonErrorCode.VALIDATION_ERROR, "publicId does not match purpose folder policy");
@@ -86,11 +89,11 @@ public class UploadSigningService {
             throw new BusinessException(CommonErrorCode.VALIDATION_ERROR, "format is not allowed for this purpose");
         }
 
-        if (request.getBytes() > policy.getMaxBytes()) {
+        if (command.bytes() > policy.getMaxBytes()) {
             throw new BusinessException(CommonErrorCode.VALIDATION_ERROR, "file exceeds maxBytes policy");
         }
 
-        if ("image".equals(resourceType) && (request.getWidth() == null || request.getHeight() == null)) {
+        if ("image".equals(resourceType) && (command.width() == null || command.height() == null)) {
             throw new BusinessException(CommonErrorCode.VALIDATION_ERROR, "image requires width and height");
         }
 
@@ -99,25 +102,14 @@ public class UploadSigningService {
             .secureUrl(secureUrl)
             .resourceType(resourceType)
             .format(format)
-            .bytes(request.getBytes())
-            .width(request.getWidth())
-            .height(request.getHeight())
-            .duration(request.getDuration())
-            .originalFilename(request.getOriginalFilename())
+            .bytes(command.bytes())
+            .width(command.width())
+            .height(command.height())
+            .duration(command.duration())
+            .originalFilename(command.originalFilename())
             .build();
 
-        return UploadAssetResponse.builder()
-                .purpose(request.getPurpose().value())
-            .publicId(metadata.getPublicId())
-            .secureUrl(metadata.getSecureUrl())
-            .resourceType(metadata.getResourceType())
-            .format(metadata.getFormat())
-            .bytes(metadata.getBytes())
-            .width(metadata.getWidth())
-            .height(metadata.getHeight())
-            .duration(metadata.getDuration())
-            .originalFilename(metadata.getOriginalFilename())
-                .build();
+        return new ConfirmUploadResult(metadata);
     }
 
     private String lower(String raw) {

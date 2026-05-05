@@ -1,26 +1,25 @@
 package com.example.auth.exception;
 
 import com.example.common.core.exception.IErrorCode;
-import org.springframework.http.HttpStatus;
 
 public enum AuthErrorCode implements IErrorCode {
-    INCOMPLETE_ACCOUNT(HttpStatus.CONFLICT),
+    INCOMPLETE_ACCOUNT(409),
 
-    TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED),
-    TOKEN_INVALID(HttpStatus.UNAUTHORIZED),
+    TOKEN_EXPIRED(401),
+    TOKEN_INVALID(401),
 
-    REFRESH_TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED),
-    REFRESH_TOKEN_INVALID(HttpStatus.UNAUTHORIZED),
-    REFRESH_TOKEN_REVOKED(HttpStatus.UNAUTHORIZED);
+    REFRESH_TOKEN_EXPIRED(401),
+    REFRESH_TOKEN_INVALID(401),
+    REFRESH_TOKEN_REVOKED(401);
 
-    private final HttpStatus status;
+    private final int status;
 
-    AuthErrorCode(HttpStatus status) {
+    AuthErrorCode(int status) {
         this.status = status;
     }
 
     @Override
-    public HttpStatus getStatus() {
+    public int httpStatus() {
         return status;
     }
 }

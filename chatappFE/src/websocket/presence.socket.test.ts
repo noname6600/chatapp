@@ -3,6 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { PresenceEventType } from "../constants/presenceEvents"
+import { getGlobalPresenceApi } from "../api/presence.service"
 import { usePresenceStore } from "../store/presence.store"
 
 class MockWebSocket {
@@ -82,6 +83,36 @@ describe("presence.socket", () => {
     } as MessageEvent)
 
     expect(usePresenceStore.getState().getTypingUsers("room-1")).toEqual([])
+
+    mod.disconnectPresenceSocket()
+  })
+
+  it("bounds reconnect snapshot fetches under rapid reconnect churn", async () => {
+    const mod = await import("./presence.socket")
+
+    mod.connectPresenceSocket()
+    const ws1 = MockWebSocket.instances[0]
+    ws1.onopen?.({} as Event)
+
+    expect(getGlobalPresenceApi).toHaveBeenCalledTimes(1)
+
+    ws1.onclose?.({} as CloseEvent)
+
+    // First reconnect at 1s backoff.
+    vi.advanceTimersByTime(1100)
+    const ws2 = MockWebSocket.instances[1]
+    ws2.onopen?.({} as Event)
+
+    // Within cooldown window, snapshot fetch should be deduped.
+    expect(getGlobalPresenceApi).toHaveBeenCalledTimes(1)
+
+    ws2.onclose?.({} as CloseEvent)
+    vi.advanceTimersByTime(2000)
+    const ws3 = MockWebSocket.instances[2]
+    ws3.onopen?.({} as Event)
+
+    // After cooldown, next reconnect can fetch again.
+    expect(getGlobalPresenceApi).toHaveBeenCalledTimes(2)
 
     mod.disconnectPresenceSocket()
   })

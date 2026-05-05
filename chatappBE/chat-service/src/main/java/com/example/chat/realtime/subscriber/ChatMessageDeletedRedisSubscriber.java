@@ -2,8 +2,7 @@ package com.example.chat.realtime.subscriber;
 
 import com.example.common.integration.chat.ChatEventType;
 import com.example.common.integration.chat.MessageDeletedPayload;
-import com.example.common.integration.websocket.WsEvent;
-import com.example.common.redis.api.IRedisSubscriber;
+import com.example.common.websocket.protocol.RealtimeWsEvent;
 import com.example.common.redis.message.RedisMessage;
 import com.example.common.websocket.session.IRoomBroadcaster;
 import lombok.RequiredArgsConstructor;
@@ -14,9 +13,10 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 @Slf4j
 public class ChatMessageDeletedRedisSubscriber
-        implements IRedisSubscriber<RedisMessage<MessageDeletedPayload>> {
+        implements RedisEventSubscriber<RedisMessage<MessageDeletedPayload>> {
 
     private final IRoomBroadcaster roomBroadcaster;
+        private final RealtimeEventDedupeGuard dedupeGuard;
 
     @Override
     public String eventType() {
@@ -27,12 +27,19 @@ public class ChatMessageDeletedRedisSubscriber
     public void onMessage(
             RedisMessage<MessageDeletedPayload> message
     ) {
+                if (message == null || message.getPayload() == null) {
+                        return;
+                }
+                if (dedupeGuard.isDuplicateKey(message.getMessageId())) {
+                        log.info("[realtime-fanout] duplicate redis message-deleted dropped messageId={}", message.getMessageId());
+                        return;
+                }
 
         MessageDeletedPayload payload =
                 message.getPayload();
 
-        WsEvent wsEvent =
-                WsEvent.builder()
+        RealtimeWsEvent wsEvent =
+                RealtimeWsEvent.builder()
                         .type(message.getEventType())
                         .payload(payload)
                         .build();
@@ -43,3 +50,4 @@ public class ChatMessageDeletedRedisSubscriber
         );
     }
 }
+

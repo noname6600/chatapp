@@ -1,32 +1,31 @@
 package com.example.chat.exception;
 
 import com.example.common.core.exception.IErrorCode;
-import org.springframework.http.HttpStatus;
 
 public enum ChatErrorCode implements IErrorCode {
-    MESSAGE_NOT_FOUND(HttpStatus.NOT_FOUND),
-    REPLY_MESSAGE_NOT_FOUND(HttpStatus.NOT_FOUND),
-    MESSAGE_CONTENT_EMPTY(HttpStatus.BAD_REQUEST),
-    MESSAGE_DELETED(HttpStatus.BAD_REQUEST),
-    INVALID_MESSAGE_TYPE(HttpStatus.BAD_REQUEST),
-    REACTION_INVALID(HttpStatus.BAD_REQUEST),
-    REACTION_NOT_ALLOWED(HttpStatus.BAD_REQUEST),
-    REMOVED_FROM_GROUP(HttpStatus.FORBIDDEN),
-    BLOCKED_SEND(HttpStatus.FORBIDDEN),
+    MESSAGE_NOT_FOUND(404),
+    REPLY_MESSAGE_NOT_FOUND(404),
+    MESSAGE_CONTENT_EMPTY(400),
+    MESSAGE_DELETED(400),
+    INVALID_MESSAGE_TYPE(400),
+    REACTION_INVALID(400),
+    REACTION_NOT_ALLOWED(400),
+    REMOVED_FROM_GROUP(403),
+    BLOCKED_SEND(403),
 
-    ATTACHMENT_TOO_LARGE(HttpStatus.BAD_REQUEST),
-    TOO_MANY_ATTACHMENTS(HttpStatus.BAD_REQUEST),
-    UNSUPPORTED_ATTACHMENT_TYPE(HttpStatus.BAD_REQUEST),
-    ATTACHMENT_INVALID(HttpStatus.BAD_REQUEST);
+    ATTACHMENT_TOO_LARGE(400),
+    TOO_MANY_ATTACHMENTS(400),
+    UNSUPPORTED_ATTACHMENT_TYPE(400),
+    ATTACHMENT_INVALID(400);
 
-    private final HttpStatus status;
+    private final int status;
 
-    ChatErrorCode(HttpStatus status) {
+    ChatErrorCode(int status) {
         this.status = status;
     }
 
     @Override
-    public HttpStatus getStatus() {
+    public int httpStatus() {
         return status;
     }
 }

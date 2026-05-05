@@ -2,8 +2,7 @@ package com.example.presence.redis;
 
 import com.example.common.integration.presence.PresenceEventType;
 import com.example.common.integration.presence.PresenceUserStatePayload;
-import com.example.common.integration.websocket.WsEvent;
-import com.example.common.redis.api.IRedisSubscriber;
+import com.example.common.websocket.protocol.RealtimeWsEvent;
 import com.example.common.redis.message.RedisMessage;
 import com.example.common.websocket.session.IGlobalBroadcaster;
 import lombok.RequiredArgsConstructor;
@@ -12,7 +11,7 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class UserStatusChangedSubscriber
-        implements IRedisSubscriber<RedisMessage<PresenceUserStatePayload>> {
+        implements RedisEventSubscriber<RedisMessage<PresenceUserStatePayload>> {
 
     private final IGlobalBroadcaster globalBroadcaster;
 
@@ -23,7 +22,7 @@ public class UserStatusChangedSubscriber
 
     @Override
     public void onMessage(RedisMessage<PresenceUserStatePayload> message) {
-        WsEvent wsEvent = WsEvent.builder()
+        RealtimeWsEvent wsEvent = RealtimeWsEvent.builder()
                 .type(message.getEventType())
                 .payload(message.getPayload())
                 .build();

@@ -1,10 +1,9 @@
 package com.example.chat.config;
 
 import com.example.chat.constants.ChatRedisChannels;
-import com.example.common.redis.dispatcher.RedisMessageDispatcher;
-import com.example.common.redis.listener.DefaultRedisMessageListener;
-import com.example.common.redis.observability.IRedisPubSubLogger;
-import com.example.common.redis.serialization.IRedisMessageSerializer;
+import com.example.common.redis.dispatcher.RedisEventDispatcher;
+import com.example.common.redis.listener.RedisEventListener;
+import com.example.common.redis.serialization.RedisEventSerializer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -17,8 +16,8 @@ import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 @RequiredArgsConstructor
 public class ChatRedisListenerConfig {
 
-    private final IRedisMessageSerializer serializer;
-    private final RedisMessageDispatcher dispatcher;
+    private final RedisEventSerializer serializer;
+    private final RedisEventDispatcher dispatcher;
     private final IRedisPubSubLogger logger;
 
     @Bean
@@ -37,7 +36,7 @@ public class ChatRedisListenerConfig {
         container.setConnectionFactory(factory);
 
         container.addMessageListener(
-                new DefaultRedisMessageListener(serializer, dispatcher, logger),
+                new RedisEventListener(serializer, dispatcher, logger),
                 new PatternTopic(ChatRedisChannels.CHAT_ROOM_PATTERN)
         );
 

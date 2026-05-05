@@ -15,8 +15,7 @@ import com.example.chat.modules.room.repository.RoomRepository;
 import com.example.common.integration.chat.ChatMessagePayload;
 import com.example.common.integration.chat.MessageDeletedPayload;
 import com.example.common.integration.chat.MessageUpdatedPayload;
-import com.example.common.integration.kafka.KafkaTopics;
-import com.example.common.kafka.api.KafkaEventPublisher;
+import com.example.common.kafka.topic.KafkaTopics;
 import com.example.common.integration.kafka.event.ChatMessageDeletedEvent;
 import com.example.common.integration.kafka.event.ChatMessageEditedEvent;
 import com.example.common.integration.kafka.event.ChatMessageSentEvent;
@@ -32,7 +31,7 @@ import java.util.UUID;
 public class KafkaChatMessageEventPublisher
         implements IMessageEventPublisher {
 
-    private final KafkaEventPublisher kafkaEventPublisher;
+        private final KafkaEventProducer kafkaEventProducer;
 
     private final ChatMessagePayloadFactory payloadFactory;
     private final MessageUpdatedPayloadFactory updatedFactory;
@@ -67,7 +66,7 @@ public class KafkaChatMessageEventPublisher
         ChatMessageSentEvent event =
                 ChatMessageSentEvent.from(sourceService, payload);
 
-        kafkaEventPublisher.publish(
+        kafkaEventProducer.publish(
                 KafkaTopics.CHAT_MESSAGE_SENT,
                 message.getRoomId().toString(),
                 event
@@ -83,7 +82,7 @@ public class KafkaChatMessageEventPublisher
         ChatMessageEditedEvent event =
                 ChatMessageEditedEvent.from(sourceService, payload);
 
-        kafkaEventPublisher.publish(
+        kafkaEventProducer.publish(
                 KafkaTopics.CHAT_MESSAGE_EDITED,
                 message.getRoomId().toString(),
                 event
@@ -102,7 +101,7 @@ public class KafkaChatMessageEventPublisher
         ChatMessageDeletedEvent event =
                 ChatMessageDeletedEvent.from(sourceService, payload);
 
-        kafkaEventPublisher.publish(
+        kafkaEventProducer.publish(
                 KafkaTopics.CHAT_MESSAGE_DELETED,
                 message.getRoomId().toString(),
                 event

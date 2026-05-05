@@ -2,7 +2,7 @@ package com.example.notification.kafka;
 
 import com.example.common.integration.chat.ReactionPayload;
 import com.example.common.integration.enums.ReactionAction;
-import com.example.common.integration.kafka.KafkaTopics;
+import com.example.common.kafka.topic.KafkaTopics;
 import com.example.common.integration.kafka.event.ChatReactionUpdatedEvent;
 import com.example.notification.entity.NotificationType;
 import com.example.notification.repository.NotificationRepository;
@@ -19,10 +19,15 @@ public class ReactionEventConsumer {
 
     private final NotificationRepository notificationRepository;
     private final NotificationCommandService notificationCommandService;
+    private final NotificationEventDedupeGuard dedupeGuard;
 
     @KafkaListener(topics = KafkaTopics.CHAT_REACTION_UPDATED, groupId = "notification-service")
     public void listen(ChatReactionUpdatedEvent event) {
         if (event == null || event.getPayload() == null) {
+            return;
+        }
+        if (dedupeGuard.isDuplicate(event.getEventId())) {
+            log.info("[NOTI] Skip duplicate chat.reaction.updated eventId={}", event.getEventId());
             return;
         }
 

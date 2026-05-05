@@ -18,6 +18,9 @@ let socket: WebSocket | null = null;
 let reconnectTimeout: number | null = null;
 let heartbeatInterval: number | null = null;
 let manualClose = false;
+let reconnectFailureCount = 0;
+let reconnectSnapshotInFlight: Promise<void> | null = null;
+let lastReconnectSnapshotAt = 0;
 
 const joinedRooms = new Set<string>();
 const pendingCommands: unknown[] = [];
@@ -27,6 +30,38 @@ const eventHandlers = new Set<(event: PresenceWsEvent) => void>();
 const offlineTimers = new Map<string, number>();
 
 const WS_URL = getWsEndpoint("PRESENCE");
+const BACKOFF_BASE = 1000;
+const BACKOFF_MAX = 30000;
+const RECONNECT_SNAPSHOT_COOLDOWN_MS = 2000;
+
+const calculateBackoffDelay = (failureCount: number): number => {
+  const exponentialDelay = BACKOFF_BASE * Math.pow(2, Math.max(0, failureCount - 1));
+  return Math.min(exponentialDelay, BACKOFF_MAX);
+};
+
+const syncGlobalPresenceAfterReconnect = () => {
+  const now = Date.now();
+
+  if (reconnectSnapshotInFlight) {
+    return reconnectSnapshotInFlight;
+  }
+
+  if (now - lastReconnectSnapshotAt < RECONNECT_SNAPSHOT_COOLDOWN_MS) {
+    return Promise.resolve();
+  }
+
+  reconnectSnapshotInFlight = getGlobalPresenceApi()
+    .then((users) => {
+      usePresenceStore.getState().setGlobalPresence(users);
+    })
+    .catch(() => {})
+    .finally(() => {
+      lastReconnectSnapshotAt = Date.now();
+      reconnectSnapshotInFlight = null;
+    });
+
+  return reconnectSnapshotInFlight;
+};
 
 let activityTrackingBound = false;
 let lastActivityAt = Date.now();
@@ -120,7 +155,7 @@ const getSnapshotUsers = (payload: unknown): PresenceUserState[] => {
 };
 
 export const connectPresenceSocket = () => {
-  if (socket && socket.readyState === WebSocket.OPEN) return;
+  if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
 
   const token = localStorage.getItem("access_token");
   if (!token) return;
@@ -130,14 +165,16 @@ export const connectPresenceSocket = () => {
   socket = new WebSocket(`${WS_URL}?token=${token}`);
 
   socket.onopen = () => {
+    reconnectFailureCount = 0;
+    if (reconnectTimeout != null) {
+      clearTimeout(reconnectTimeout);
+      reconnectTimeout = null;
+    }
+
     startHeartbeat();
     bindActivityTracking();
 
-    void getGlobalPresenceApi()
-      .then((users) => {
-        usePresenceStore.getState().setGlobalPresence(users);
-      })
-      .catch(() => {});
+    void syncGlobalPresenceAfterReconnect();
 
     joinedRooms.forEach((roomId) => {
       socket?.send(
@@ -171,7 +208,11 @@ export const connectPresenceSocket = () => {
     socket = null;
 
     if (!manualClose && localStorage.getItem("access_token")) {
-      reconnectTimeout = window.setTimeout(connectPresenceSocket, 3000);
+      reconnectFailureCount += 1;
+      reconnectTimeout = window.setTimeout(
+        connectPresenceSocket,
+        calculateBackoffDelay(reconnectFailureCount)
+      );
     }
   };
 
@@ -191,6 +232,8 @@ export const disconnectPresenceSocket = () => {
   clearPendingOfflines();
   joinedRooms.clear();
   pendingCommands.length = 0;
+  reconnectFailureCount = 0;
+  reconnectSnapshotInFlight = null;
 
   socket?.close();
   socket = null;

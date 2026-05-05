@@ -7,6 +7,7 @@ import { getWsEndpoint } from "../config/ws.config"
 let socket: WebSocket | null = null
 let reconnectTimeout: number | null = null
 let manualClose = false
+let reconnectFailureCount = 0
 
 const eventHandlers = new Set<(event: ChatSocketEvent) => void>()
 const openHandlers = new Set<() => void>()
@@ -14,7 +15,13 @@ const openHandlers = new Set<() => void>()
 const subscribedRooms = new Set<string>()
 
 const WS_URL = getWsEndpoint("CHAT")
-const RECONNECT_DELAY = 3000
+const BACKOFF_BASE = 1000
+const BACKOFF_MAX = 30000
+
+const calculateBackoffDelay = (failureCount: number): number => {
+  const exponentialDelay = BACKOFF_BASE * Math.pow(2, Math.max(0, failureCount - 1))
+  return Math.min(exponentialDelay, BACKOFF_MAX)
+}
 
 const logSendFlow = (event: string, payload: Record<string, unknown>) => {
   if (!import.meta.env.DEV) return
@@ -87,6 +94,12 @@ export const connectChatSocket = () => {
   logSendFlow("socket_connecting", { wsUrl: WS_URL })
 
   socket.onopen = () => {
+    reconnectFailureCount = 0
+    if (reconnectTimeout != null) {
+      clearTimeout(reconnectTimeout)
+      reconnectTimeout = null
+    }
+
     logSendFlow("socket_open", { subscribedRooms: subscribedRooms.size })
 
     subscribedRooms.forEach((roomId) => {
@@ -203,7 +216,11 @@ export const connectChatSocket = () => {
     socket = null
 
     if (!manualClose && localStorage.getItem("access_token")) {
-      reconnectTimeout = window.setTimeout(connectChatSocket, RECONNECT_DELAY)
+      reconnectFailureCount += 1
+      reconnectTimeout = window.setTimeout(
+        connectChatSocket,
+        calculateBackoffDelay(reconnectFailureCount)
+      )
     }
   }
 
@@ -221,6 +238,8 @@ export const disconnectChatSocket = () => {
     clearTimeout(reconnectTimeout)
     reconnectTimeout = null
   }
+
+  reconnectFailureCount = 0
 
   socket?.close()
   socket = null

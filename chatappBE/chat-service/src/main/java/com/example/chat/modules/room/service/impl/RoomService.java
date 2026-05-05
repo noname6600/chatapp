@@ -3,7 +3,7 @@ package com.example.chat.modules.room.service.impl;
 import com.example.chat.config.InviteCodeGenerator;
 import com.example.chat.modules.message.application.service.ISystemMessageService;
 import com.example.chat.modules.message.domain.enums.SystemEventType;
-import com.example.chat.modules.message.infrastructure.cache.CacheNames;
+import com.example.chat.modules.room.cache.policy.RoomCacheInvalidationPolicy;
 import com.example.chat.modules.message.infrastructure.client.UserBasicProfile;
 import com.example.chat.modules.message.infrastructure.client.UserClient;
 import com.example.chat.modules.room.dto.CloudinaryUploadResult;
@@ -12,9 +12,9 @@ import com.example.chat.modules.room.dto.RoomAvatarUploadResponse;
 import com.example.chat.modules.room.dto.RoomMemberJoinedPayload;
 import com.example.chat.modules.room.dto.RoomMemberLeftPayload;
 import com.example.chat.modules.room.dto.RoomResponse;
+import com.example.chat.realtime.port.ChatRealtimePort;
 import com.example.common.integration.chat.ChatEventType;
-import com.example.common.integration.websocket.WsEvent;
-import com.example.common.websocket.session.IRoomBroadcaster;
+import com.example.common.realtime.policy.RealtimeFlowId;
 import com.example.chat.modules.room.entity.Room;
 import com.example.chat.modules.room.entity.RoomBan;
 import com.example.chat.modules.room.entity.RoomMember;
@@ -24,8 +24,6 @@ import com.example.chat.modules.room.repository.RoomBanRepository;
 import com.example.chat.modules.room.repository.RoomMemberRepository;
 import com.example.chat.modules.room.repository.RoomRepository;
 import com.example.chat.modules.room.service.IRoomService;
-import com.example.common.redis.api.ITimeRedisCacheManager;
-import com.example.common.redis.exception.CreateCacheException;
 import com.example.common.core.exception.BusinessException;
 import com.example.common.core.exception.CommonErrorCode;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -53,8 +51,8 @@ public class RoomService implements IRoomService {
     private final InviteCodeGenerator inviteCodeGenerator;
     private final GroupAvatarGenerator avatarGenerator;
     private final CloudinaryService cloudinaryService;
-    private final ITimeRedisCacheManager cacheManager;
-    private final IRoomBroadcaster roomBroadcaster;
+    private final RoomCacheInvalidationPolicy roomCacheInvalidationPolicy;
+    private final ChatRealtimePort chatRealtimePort;
     private final ISystemMessageService systemMessageService;
 
     @Override
@@ -144,15 +142,18 @@ public class RoomService implements IRoomService {
 
         evictRoomsCache(userId);
 
-        roomBroadcaster.sendToRoom(roomId, WsEvent.builder()
-                .type(ChatEventType.MEMBER_JOINED.value())
-                .payload(RoomMemberJoinedPayload.builder()
-                        .roomId(roomId)
-                        .userId(userId)
-                        .role(Role.MEMBER.name())
-                        .joinedAt(saved.getJoinedAt())
-                        .build())
-                .build());
+        chatRealtimePort.publishRoomEvent(
+            roomId,
+            ChatEventType.MEMBER_JOINED.value(),
+            RoomMemberJoinedPayload.builder()
+                .roomId(roomId)
+                .userId(userId)
+                .role(Role.MEMBER.name())
+                .joinedAt(saved.getJoinedAt())
+                .build()
+            ,
+            RealtimeFlowId.CHAT_ROOM_MEMBER_ADD
+        );
 
                 systemMessageService.sendSystemMessage(
                     roomId,
@@ -190,13 +191,16 @@ public class RoomService implements IRoomService {
         evictRoomsCache(userId);
         evictRoomMembers(roomId);
 
-        roomBroadcaster.sendToRoom(roomId, WsEvent.builder()
-                .type(ChatEventType.MEMBER_LEFT.value())
-                .payload(RoomMemberLeftPayload.builder()
-                        .roomId(roomId)
-                        .userId(userId)
-                        .build())
-                .build());
+        chatRealtimePort.publishRoomEvent(
+            roomId,
+            ChatEventType.MEMBER_LEFT.value(),
+            RoomMemberLeftPayload.builder()
+                .roomId(roomId)
+                .userId(userId)
+                .build()
+            ,
+            RealtimeFlowId.CHAT_ROOM_MEMBER_REMOVE
+        );
     }
 
     @Override
@@ -262,13 +266,16 @@ public class RoomService implements IRoomService {
         evictRoomsCache(targetUser);
         evictRoomMembers(roomId);
 
-        roomBroadcaster.sendToRoom(roomId, WsEvent.builder()
-                .type(ChatEventType.MEMBER_REMOVED.value())
-                .payload(RoomMemberLeftPayload.builder()
-                        .roomId(roomId)
-                        .userId(targetUser)
-                        .build())
-                .build());
+        chatRealtimePort.publishRoomEvent(
+            roomId,
+            ChatEventType.MEMBER_REMOVED.value(),
+            RoomMemberLeftPayload.builder()
+                .roomId(roomId)
+                .userId(targetUser)
+                .build()
+            ,
+            RealtimeFlowId.CHAT_ROOM_MEMBER_REMOVE
+        );
     }
 
     @Override
@@ -292,13 +299,16 @@ public class RoomService implements IRoomService {
         evictRoomsCache(targetUser);
         evictRoomMembers(roomId);
 
-        roomBroadcaster.sendToRoom(roomId, WsEvent.builder()
-                .type(ChatEventType.MEMBER_REMOVED.value())
-                .payload(RoomMemberLeftPayload.builder()
-                        .roomId(roomId)
-                        .userId(targetUser)
-                        .build())
-                .build());
+        chatRealtimePort.publishRoomEvent(
+            roomId,
+            ChatEventType.MEMBER_REMOVED.value(),
+            RoomMemberLeftPayload.builder()
+                .roomId(roomId)
+                .userId(targetUser)
+                .build()
+            ,
+            RealtimeFlowId.CHAT_ROOM_MEMBER_REMOVE
+        );
     }
 
     @Override
@@ -476,22 +486,11 @@ public class RoomService implements IRoomService {
     }
 
     private void evictRoomsCache(UUID userId) {
-        try {
-            cacheManager.evict(CacheNames.ROOMS, roomsKey(userId));
-        } catch (CreateCacheException e) {
-            log.warn("Evict rooms cache failed for user {}", userId);
-        }
+        roomCacheInvalidationPolicy.evictRoomsForUser(userId);
     }
 
     private void evictRoomMembers(UUID roomId) {
-        List<UUID> members = memberRepo.findUserIdsByRoomId(roomId);
-        for (UUID id : members) {
-            evictRoomsCache(id);
-        }
-    }
-
-    private String roomsKey(UUID userId) {
-        return "rooms:user:" + userId;
+        roomCacheInvalidationPolicy.evictRoomsForRoomMembers(roomId);
     }
 
     private long safe(Long v) {

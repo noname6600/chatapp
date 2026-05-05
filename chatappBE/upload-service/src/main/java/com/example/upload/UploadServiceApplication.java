@@ -1,13 +1,16 @@
 package com.example.upload;
 
+import com.example.common.web.cors.CorsProperties;
+import com.example.common.web.exception.GlobalExceptionHandler;
+import com.example.common.web.filter.TraceIdFilter;
 import com.example.upload.config.UploadPolicyProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.Import;
 
 @SpringBootApplication
-@ComponentScan(basePackages = {"com.example.common", "com.example.upload"})
+@Import({CorsProperties.class, GlobalExceptionHandler.class, TraceIdFilter.class})
 @EnableConfigurationProperties(UploadPolicyProperties.class)
 public class UploadServiceApplication {
 

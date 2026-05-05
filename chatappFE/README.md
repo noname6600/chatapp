@@ -91,11 +91,11 @@ The frontend listens to friendship websocket messages from the friendship servic
 
 Supported friendship websocket message types:
 
-- `FRIEND_REQUEST_RECEIVED`: increments the unread friend-request badge and inserts the requester into the pending list.
-- `FRIEND_REQUEST_ACCEPTED`: reconciles badge state and promotes the relationship to `FRIENDS` in the UI.
-- `FRIEND_REQUEST_DECLINED`: removes the pending request from local UI state.
-- `FRIEND_REQUEST_CANCELLED`: removes the cancelled request from local UI state.
-- `FRIEND_STATUS_CHANGED`: reconciles friendship status changes such as unfriend/block flows.
+- `friendship.request.received`: increments the unread friend-request badge and inserts the requester into the pending list.
+- `friendship.request.accepted`: reconciles badge state and promotes the relationship to `FRIENDS` in the UI.
+- `friendship.request.declined`: removes the pending request from local UI state.
+- `friendship.request.cancelled`: removes the cancelled request from local UI state.
+- `friendship.status.changed`: reconciles friendship status changes such as unfriend/block flows.
 
 Related files:
 

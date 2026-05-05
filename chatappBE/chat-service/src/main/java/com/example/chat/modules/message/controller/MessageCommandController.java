@@ -9,6 +9,8 @@ import com.example.chat.modules.message.application.dto.response.MessageResponse
 import com.example.common.web.controller.BaseController;
 import com.example.common.web.response.ApiResponse;
 import com.example.common.security.jwt.JwtHelper;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -30,7 +32,7 @@ public class MessageCommandController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @RequestBody @Valid SendMessageRequest request
     ) {
-        request.setSenderId(JwtHelper.extractUserId(jwt));
+        request.setSenderId(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")));
         MessageResponse response =
                 messageCommandService.sendMessage(request);
 
@@ -45,7 +47,7 @@ public class MessageCommandController extends BaseController {
     ) {
 
         request.setMessageId(messageId);
-        request.setActorId(JwtHelper.extractUserId(jwt));
+        request.setActorId(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")));
 
         MessageResponse response =
                 messageCommandService.editMessage(request);
@@ -59,7 +61,7 @@ public class MessageCommandController extends BaseController {
             @PathVariable UUID messageId,
             @RequestBody @Valid DeleteMessageRequest request
     ) {
-                request.setActorId(JwtHelper.extractUserId(jwt));
+                request.setActorId(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")));
         request.setMessageId(messageId);
         messageCommandService.deleteMessage(request);
 
@@ -71,7 +73,7 @@ public class MessageCommandController extends BaseController {
                         @AuthenticationPrincipal Jwt jwt,
                         @RequestBody @Valid ForwardMessageRequest request
         ) {
-                request.setActorId(JwtHelper.extractUserId(jwt));
+                request.setActorId(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")));
 
                 MessageResponse response =
                                 messageCommandService.forwardMessage(request);

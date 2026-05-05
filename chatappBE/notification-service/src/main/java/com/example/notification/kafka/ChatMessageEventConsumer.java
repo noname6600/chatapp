@@ -1,6 +1,6 @@
 package com.example.notification.kafka;
 
-import com.example.common.integration.kafka.KafkaTopics;
+import com.example.common.kafka.topic.KafkaTopics;
 import com.example.common.integration.kafka.event.ChatMessageSentEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

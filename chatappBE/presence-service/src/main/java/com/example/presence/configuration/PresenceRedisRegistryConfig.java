@@ -1,7 +1,7 @@
 package com.example.presence.configuration;
 
 import com.example.common.integration.presence.*;
-import com.example.common.redis.registry.IRedisMessageRegistry;
+import com.example.common.redis.registry.RedisEventRegistry;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
@@ -10,7 +10,7 @@ import org.springframework.context.annotation.Configuration;
 @RequiredArgsConstructor
 public class PresenceRedisRegistryConfig {
 
-    private final IRedisMessageRegistry registry;
+    private final RedisEventRegistry registry;
 
     @PostConstruct
     public void register() {

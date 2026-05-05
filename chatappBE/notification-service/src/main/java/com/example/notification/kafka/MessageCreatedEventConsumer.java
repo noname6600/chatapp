@@ -1,6 +1,7 @@
 package com.example.notification.kafka;
 
 import com.example.common.integration.chat.ChatMessagePayload;
+import com.example.common.kafka.topic.KafkaTopics;
 import com.example.common.integration.kafka.event.ChatMessageSentEvent;
 import com.example.notification.entity.RoomNotificationMode;
 import com.example.notification.entity.NotificationType;
@@ -27,10 +28,15 @@ public class MessageCreatedEventConsumer {
     private final RoomMuteSettingService roomMuteSettingService;
     private final NotificationModePolicy notificationModePolicy;
     private final NotificationCommandService notificationCommandService;
+    private final NotificationEventDedupeGuard dedupeGuard;
 
-    @KafkaListener(topics = "chat.message.sent", groupId = "notification-service")
+    @KafkaListener(topics = KafkaTopics.CHAT_MESSAGE_SENT, groupId = "notification-service")
     public void listen(ChatMessageSentEvent event) {
         if (event == null || event.getPayload() == null) {
+            return;
+        }
+        if (dedupeGuard.isDuplicate(event.getEventId())) {
+            log.info("[NOTI] Skip duplicate chat.message.sent eventId={}", event.getEventId());
             return;
         }
 

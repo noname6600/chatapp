@@ -11,8 +11,8 @@ import com.example.chat.modules.room.repository.RoomBanRepository;
 import com.example.chat.modules.room.repository.RoomMemberRepository;
 import com.example.chat.modules.room.repository.RoomRepository;
 import com.example.chat.modules.room.enums.RoomType;
-import com.example.common.redis.api.ITimeRedisCacheManager;
-import com.example.common.websocket.session.IRoomBroadcaster;
+import com.example.chat.modules.room.cache.policy.RoomCacheInvalidationPolicy;
+import com.example.chat.realtime.port.ChatRealtimePort;
 import com.example.common.core.exception.BusinessException;
 import com.example.common.core.exception.CommonErrorCode;
 import org.junit.jupiter.api.BeforeEach;
@@ -67,8 +67,8 @@ class RoomServiceInviteJoinIntegrationTest {
                 mock(InviteCodeGenerator.class),
                 mock(GroupAvatarGenerator.class),
                 mock(CloudinaryService.class),
-                                mock(ITimeRedisCacheManager.class),
-                                mock(IRoomBroadcaster.class),
+                                mock(RoomCacheInvalidationPolicy.class),
+                                mock(ChatRealtimePort.class),
                                 mock(ISystemMessageService.class)
         );
     }

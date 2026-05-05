@@ -3,6 +3,8 @@ package com.example.friendship.controller;
 import com.example.common.web.controller.BaseController;
 import com.example.common.web.response.ApiResponse;
 import com.example.common.security.jwt.JwtHelper;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import com.example.friendship.dto.SendFriendRequestByUsernameRequest;
 import com.example.friendship.dto.UnreadCountResponse;
 import com.example.friendship.enums.FriendshipStatus;
@@ -35,7 +37,7 @@ public class FriendController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody SendFriendRequestByUsernameRequest request
     ) {
-        commandService.sendRequestByUsername(JwtHelper.extractUserId(jwt), request.getUsername().trim());
+        commandService.sendRequestByUsername(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), request.getUsername().trim());
         return ok();
     }
 
@@ -44,7 +46,7 @@ public class FriendController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID userId
     ) {
-        commandService.sendRequest(JwtHelper.extractUserId(jwt), userId);
+        commandService.sendRequest(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), userId);
         return ok();
     }
 
@@ -53,7 +55,7 @@ public class FriendController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID userId
     ) {
-        commandService.accept(JwtHelper.extractUserId(jwt), userId);
+        commandService.accept(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), userId);
         return ok();
     }
 
@@ -62,7 +64,7 @@ public class FriendController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID userId
     ) {
-        commandService.decline(JwtHelper.extractUserId(jwt), userId);
+        commandService.decline(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), userId);
         return ok();
     }
 
@@ -71,7 +73,7 @@ public class FriendController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID userId
     ) {
-        commandService.cancel(JwtHelper.extractUserId(jwt), userId);
+        commandService.cancel(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), userId);
         return ok();
     }
 
@@ -80,7 +82,7 @@ public class FriendController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID userId
     ) {
-        commandService.unfriend(JwtHelper.extractUserId(jwt), userId);
+        commandService.unfriend(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), userId);
         return ok();
     }
 
@@ -89,7 +91,7 @@ public class FriendController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID userId
     ) {
-        commandService.block(JwtHelper.extractUserId(jwt), userId);
+        commandService.block(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), userId);
         return ok();
     }
 
@@ -98,7 +100,7 @@ public class FriendController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID userId
     ) {
-        commandService.unblock(JwtHelper.extractUserId(jwt), userId);
+        commandService.unblock(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), userId);
         return ok();
     }
 
@@ -107,35 +109,35 @@ public class FriendController extends BaseController {
     public ResponseEntity<ApiResponse<List<UUID>>> friends(
             @AuthenticationPrincipal Jwt jwt
     ) {
-        return ok(queryService.getFriends(JwtHelper.extractUserId(jwt)));
+        return ok(queryService.getFriends(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized"))));
     }
 
     @GetMapping("/requests/incoming")
     public ResponseEntity<ApiResponse<List<UUID>>> incomingRequests(
             @AuthenticationPrincipal Jwt jwt
     ) {
-        return ok(queryService.getIncomingRequests(JwtHelper.extractUserId(jwt)));
+        return ok(queryService.getIncomingRequests(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized"))));
     }
 
     @GetMapping("/requests/outgoing")
     public ResponseEntity<ApiResponse<List<UUID>>> outgoingRequests(
             @AuthenticationPrincipal Jwt jwt
     ) {
-        return ok(queryService.getOutgoingRequests(JwtHelper.extractUserId(jwt)));
+        return ok(queryService.getOutgoingRequests(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized"))));
     }
 
     @GetMapping("/blocks/me")
     public ResponseEntity<ApiResponse<List<UUID>>> blockedByMe(
             @AuthenticationPrincipal Jwt jwt
     ) {
-        return ok(queryService.getBlockedByMe(JwtHelper.extractUserId(jwt)));
+        return ok(queryService.getBlockedByMe(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized"))));
     }
 
     @GetMapping("/blocks/by-others")
     public ResponseEntity<ApiResponse<List<UUID>>> blockedMe(
             @AuthenticationPrincipal Jwt jwt
     ) {
-        return ok(queryService.getBlockedMe(JwtHelper.extractUserId(jwt)));
+        return ok(queryService.getBlockedMe(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized"))));
     }
 
     @GetMapping("/status/{userId}")
@@ -143,7 +145,7 @@ public class FriendController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID userId
     ) {
-        FriendshipStatus status = queryService.getStatus(JwtHelper.extractUserId(jwt), userId);
+        FriendshipStatus status = queryService.getStatus(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), userId);
         return ok(status != null ? status.name() : "NONE");
     }
 
@@ -159,7 +161,7 @@ public class FriendController extends BaseController {
     public ResponseEntity<ApiResponse<UnreadCountResponse>> getUnreadCount(
             @AuthenticationPrincipal Jwt jwt
     ) {
-        long unreadCount = queryService.getUnreadFriendRequestCount(JwtHelper.extractUserId(jwt));
+        long unreadCount = queryService.getUnreadFriendRequestCount(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")));
         return ok(UnreadCountResponse.builder()
                 .unreadCount(unreadCount)
                 .build());

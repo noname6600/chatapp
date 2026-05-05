@@ -1,6 +1,6 @@
 package com.example.notification.websocket.redis;
 
-import com.example.common.websocket.dto.WsOutgoingMessage;
+import com.example.common.websocket.protocol.RealtimeWsEvent;
 import com.example.notification.constants.NotificationRedisChannels;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -19,8 +19,8 @@ public class RedisNotificationPublisher {
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
 
-    public void publish(UUID userId, WsOutgoingMessage payload) {
-        String channel = NotificationRedisChannels.NOTIFICATION_USER_PREFIX + userId;
+    public void publish(UUID userId, RealtimeWsEvent payload) {
+        String channel = NotificationRedisChannels.userChannel(userId);
 
         try {
             String json = objectMapper.writeValueAsString(payload);

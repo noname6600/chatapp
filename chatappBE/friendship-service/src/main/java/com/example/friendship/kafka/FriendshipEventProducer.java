@@ -3,8 +3,7 @@ package com.example.friendship.kafka;
 import com.example.common.integration.friendship.FriendshipEventType;
 import com.example.common.integration.friendship.FriendRequestEvent;
 import com.example.common.integration.friendship.FriendshipPayload;
-import com.example.common.integration.kafka.KafkaTopics;
-import com.example.common.kafka.api.KafkaEventPublisher;
+import com.example.common.kafka.topic.KafkaTopics;
 import com.example.common.integration.kafka.event.FriendRequestKafkaEvent;
 import com.example.common.integration.kafka.event.FriendshipEvent;
 import com.example.common.web.response.ApiResponse;
@@ -23,7 +22,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class FriendshipEventProducer {
 
-    private final KafkaEventPublisher kafkaEventPublisher;
+    private final KafkaEventProducer kafkaEventProducer;
     private final UserClient userClient;
 
     @Value("${spring.application.name}")
@@ -38,7 +37,7 @@ public class FriendshipEventProducer {
                 friendship.getStatus().name()
         );
 
-        kafkaEventPublisher.publish(
+        kafkaEventProducer.publish(
                 KafkaTopics.FRIENDSHIP_EVENTS,
                 friendship.getId().toString(),
                 FriendshipEvent.of(sourceService, type, payload)
@@ -63,7 +62,7 @@ public class FriendshipEventProducer {
                 .type(type)
                 .build();
 
-            kafkaEventPublisher.publish(
+            kafkaEventProducer.publish(
                 KafkaTopics.FRIENDSHIP_REQUEST_EVENTS,
                 requestId.toString(),
                 FriendRequestKafkaEvent.of(sourceService, payload)

@@ -7,8 +7,11 @@ import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.context.EnvironmentAware;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
+import org.springframework.web.cors.CorsConfiguration;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
 @Configuration
 @ConfigurationProperties("common.web")
@@ -33,6 +36,30 @@ public class CorsProperties implements EnvironmentAware {
 
     public void setCors(Cors cors) {
         this.cors = cors;
+    }
+
+    public static CorsConfiguration buildCorsConfiguration(CorsProperties props) {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowCredentials(true);
+        Cors cors = props != null ? props.getCors() : null;
+        if (Objects.nonNull(cors)) {
+            if (Objects.nonNull(cors.getAllowedOrigins())) {
+                List<String> origins = cors.getAllowedOrigins().stream()
+                        .filter(Objects::nonNull)
+                        .flatMap(allowedOrigin -> Arrays.stream(allowedOrigin.split("\\s*,\\s*")))
+                        .map(String::trim)
+                        .filter(origin -> !origin.isBlank())
+                        .toList();
+                configuration.setAllowedOrigins(origins);
+            }
+            if (Objects.nonNull(cors.getAllowedMethods())) {
+                configuration.setAllowedMethods(cors.getAllowedMethods());
+            }
+            if (Objects.nonNull(cors.getAllowedHeaders())) {
+                configuration.setAllowedHeaders(cors.getAllowedHeaders());
+            }
+        }
+        return configuration;
     }
 
     @Override

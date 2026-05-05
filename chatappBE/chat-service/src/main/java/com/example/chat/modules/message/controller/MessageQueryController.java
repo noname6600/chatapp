@@ -6,6 +6,8 @@ import com.example.chat.modules.message.application.query.IMessageQueryService;
 import com.example.common.web.controller.BaseController;
 import com.example.common.web.response.ApiResponse;
 import com.example.common.security.jwt.JwtHelper;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -34,7 +36,7 @@ public class MessageQueryController extends BaseController {
 
         MessagePage response =
                 messageQueryService.getLatestMessages(
-                        JwtHelper.extractUserId(jwt),
+                        JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")),
                         roomId,
                         limit
                 );
@@ -52,7 +54,7 @@ public class MessageQueryController extends BaseController {
 
         MessagePage response =
                 messageQueryService.getMessagesBefore(
-                        JwtHelper.extractUserId(jwt),
+                        JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")),
                         roomId,
                         beforeSeq,
                         limit
@@ -71,7 +73,7 @@ public class MessageQueryController extends BaseController {
 
         List<MessageResponse> response =
                 messageQueryService.getMessageRange(
-                        JwtHelper.extractUserId(jwt),
+                        JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")),
                         roomId,
                         startSeq,
                         endSeq
@@ -90,7 +92,7 @@ public class MessageQueryController extends BaseController {
 
         List<MessageResponse> response =
                 messageQueryService.getMessagesAround(
-                        JwtHelper.extractUserId(jwt),
+                        JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")),
                         roomId,
                         messageId,
                         halfWindow

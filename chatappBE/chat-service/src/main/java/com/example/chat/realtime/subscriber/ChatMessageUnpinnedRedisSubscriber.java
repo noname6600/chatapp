@@ -2,8 +2,7 @@ package com.example.chat.realtime.subscriber;
 
 import com.example.chat.modules.room.dto.RoomMessagePinEventPayload;
 import com.example.common.integration.chat.ChatEventType;
-import com.example.common.integration.websocket.WsEvent;
-import com.example.common.redis.api.IRedisSubscriber;
+import com.example.common.websocket.protocol.RealtimeWsEvent;
 import com.example.common.redis.message.RedisMessage;
 import com.example.common.websocket.session.IRoomBroadcaster;
 import lombok.RequiredArgsConstructor;
@@ -17,7 +16,7 @@ import java.time.Instant;
 @RequiredArgsConstructor
 @Slf4j
 public class ChatMessageUnpinnedRedisSubscriber
-        implements IRedisSubscriber<RedisMessage<RoomMessagePinEventPayload>> {
+        implements RedisEventSubscriber<RedisMessage<RoomMessagePinEventPayload>> {
 
     private final IRoomBroadcaster roomBroadcaster;
     private final RealtimeEventDedupeGuard dedupeGuard;
@@ -54,10 +53,11 @@ public class ChatMessageUnpinnedRedisSubscriber
 
         roomBroadcaster.sendToRoom(
                 payload.getRoomId(),
-                WsEvent.builder()
+                RealtimeWsEvent.builder()
                         .type(message.getEventType())
                         .payload(payload)
                         .build()
         );
     }
 }
+

@@ -33,6 +33,9 @@ class ReactionEventConsumerTest {
     @Mock
     private NotificationCommandService notificationCommandService;
 
+        @Mock
+        private NotificationEventDedupeGuard dedupeGuard;
+
     @InjectMocks
     private ReactionEventConsumer consumer;
 
@@ -49,6 +52,7 @@ class ReactionEventConsumerTest {
         reactorId = UUID.randomUUID();
         messageAuthorId = UUID.randomUUID();
         createdAt = Instant.parse("2026-04-17T10:15:30Z");
+                when(dedupeGuard.isDuplicate(any())).thenReturn(false);
     }
 
     @Test

@@ -1,7 +1,7 @@
 package com.example.notification.kafka;
 
 import com.example.common.integration.friendship.FriendRequestEvent;
-import com.example.common.integration.kafka.KafkaTopics;
+import com.example.common.kafka.topic.KafkaTopics;
 import com.example.common.integration.kafka.event.FriendRequestKafkaEvent;
 import com.example.notification.entity.NotificationType;
 import com.example.notification.repository.NotificationRepository;
@@ -18,9 +18,18 @@ public class FriendRequestEventConsumer {
 
     private final NotificationRepository notificationRepository;
     private final NotificationCommandService notificationCommandService;
+        private final NotificationEventDedupeGuard dedupeGuard;
 
         @KafkaListener(topics = KafkaTopics.FRIENDSHIP_REQUEST_EVENTS)
     public void listen(FriendRequestKafkaEvent event) {
+                if (event == null) {
+                        return;
+                }
+                if (dedupeGuard.isDuplicate(event.getEventId())) {
+                        log.info("[NOTI] Skip duplicate friendship request eventId={}", event.getEventId());
+                        return;
+                }
+
         FriendRequestEvent payload = event.getPayload();
         if (payload == null || payload.getType() == null) {
             return;

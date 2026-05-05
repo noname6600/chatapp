@@ -5,6 +5,8 @@ import com.example.common.integration.presence.PresenceUserStatePayload;
 import com.example.common.web.controller.BaseController;
 import com.example.common.web.response.ApiResponse;
 import com.example.common.security.jwt.JwtHelper;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import com.example.presence.dto.PresenceSelfResponse;
 import com.example.presence.dto.UpdatePresenceStatusRequest;
 import com.example.presence.service.IPresenceService;
@@ -32,7 +34,7 @@ public class PresenceController extends BaseController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         return ResponseEntity.ok(
-                ApiResponse.success(presenceService.getSelfPresence(JwtHelper.extractUserId(jwt)))
+                ApiResponse.success(presenceService.getSelfPresence(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized"))))
         );
     }
 
@@ -41,7 +43,7 @@ public class PresenceController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody UpdatePresenceStatusRequest request
     ) {
-        UUID userId = JwtHelper.extractUserId(jwt);
+        UUID userId = JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized"));
         presenceService.updatePresence(userId, request.getMode(), request.getStatus());
 
         return ResponseEntity.ok(

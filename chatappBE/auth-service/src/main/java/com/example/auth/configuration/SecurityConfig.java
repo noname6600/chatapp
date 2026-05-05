@@ -12,13 +12,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-
-import java.util.Arrays;
-import java.util.List;
-import java.util.Objects;
 
 @Configuration
 @EnableWebSecurity
@@ -72,37 +67,9 @@ public class SecurityConfig {
     }
 
     protected void cors(HttpSecurity http) throws Exception {
-        CorsConfiguration configuration = buildCorsConfiguration();
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", configuration);
-
+        source.registerCorsConfiguration("/**", CorsProperties.buildCorsConfiguration(this.securityProperties));
         http.cors(cors -> cors.configurationSource(source));
-    }
-
-    protected CorsConfiguration buildCorsConfiguration() {
-        CorsProperties.Cors cors = this.securityProperties.getCors();
-        CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowCredentials(true);
-        if (Objects.nonNull(cors)) {
-            if (Objects.nonNull(cors.getAllowedOrigins())) {
-                List<String> origins = cors.getAllowedOrigins().stream()
-                        .filter(Objects::nonNull)
-                        .flatMap(allowedOrigin -> Arrays.stream(allowedOrigin.split("\\s*,\\s*")))
-                        .map(String::trim)
-                        .filter(origin -> !origin.isBlank())
-                        .toList();
-                configuration.setAllowedOrigins(origins);
-            }
-
-            if (Objects.nonNull(cors.getAllowedMethods())) {
-                configuration.setAllowedMethods(cors.getAllowedMethods());
-            }
-
-            if (Objects.nonNull(cors.getAllowedHeaders())) {
-                configuration.setAllowedHeaders(cors.getAllowedHeaders());
-            }
-        }
-        return configuration;
     }
 }
 

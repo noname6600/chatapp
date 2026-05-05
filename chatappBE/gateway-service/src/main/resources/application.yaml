@@ -235,12 +235,21 @@ gateway:
       - http://${NOTIFICATION_SERVICE_HOST:localhost}:${NOTIFICATION_SERVICE_PORT:8086}
       - http://${UPLOAD_SERVICE_HOST:localhost}:${UPLOAD_SERVICE_PORT:8088}
 
-  cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
-    allowed-methods: "*"
-    allowed-headers: "*"
-    allow-credentials: true
-
   security:
     jwt:
       clock-skew-seconds: ${GATEWAY_JWT_CLOCK_SKEW_SECONDS:60}
+
+common:
+  web:
+    cors:
+      allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+      allowed-methods:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+        - OPTIONS
+        - HEAD
+      allowed-headers:
+        - "*"

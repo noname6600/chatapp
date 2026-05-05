@@ -36,6 +36,7 @@ dependencyManagement {
 
 dependencies {
     implementation project(':common:common-web')
+    implementation project(':common:common-feign')
     implementation project(':common:common-security')
     implementation project(':common:common-core')
     implementation project(':common:common-kafka')

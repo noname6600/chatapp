@@ -8,7 +8,7 @@ import com.example.chat.modules.room.enums.Role;
 import com.example.chat.modules.room.repository.RoomBanRepository;
 import com.example.chat.modules.room.repository.RoomMemberRepository;
 import com.example.chat.modules.room.repository.RoomRepository;
-import com.example.common.redis.api.ITimeRedisCacheManager;
+import com.example.chat.modules.room.cache.port.RoomListCachePort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -44,7 +44,7 @@ class RoomQueryServiceTest {
     private RoomBanRepository roomBanRepository;
 
     @Mock
-    private ITimeRedisCacheManager cacheManager;
+    private RoomListCachePort roomListCachePort;
 
     private RoomQueryService roomQueryService;
 
@@ -52,7 +52,7 @@ class RoomQueryServiceTest {
 
     @BeforeEach
     void setUp() {
-        roomQueryService = new RoomQueryService(roomRepository, roomMemberRepository, roomBanRepository, cacheManager);
+        roomQueryService = new RoomQueryService(roomRepository, roomMemberRepository, roomBanRepository, roomListCachePort);
         roomId = UUID.randomUUID();
     }
 

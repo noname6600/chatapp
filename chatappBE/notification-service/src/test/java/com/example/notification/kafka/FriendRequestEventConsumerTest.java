@@ -30,6 +30,9 @@ class FriendRequestEventConsumerTest {
     @Mock
     private NotificationCommandService notificationCommandService;
 
+        @Mock
+        private NotificationEventDedupeGuard dedupeGuard;
+
     @InjectMocks
     private FriendRequestEventConsumer consumer;
 
@@ -52,6 +55,7 @@ class FriendRequestEventConsumerTest {
                 NotificationType.FRIEND_REQUEST,
                 sender
         )).thenReturn(Optional.empty());
+        when(dedupeGuard.isDuplicate(org.mockito.ArgumentMatchers.any())).thenReturn(false);
 
         consumer.listen(FriendRequestKafkaEvent.of("friendship-service", payload));
 
@@ -88,6 +92,7 @@ class FriendRequestEventConsumerTest {
                 NotificationType.FRIEND_REQUEST,
                 sender
         )).thenReturn(Optional.of(Notification.builder().id(UUID.randomUUID()).build()));
+        when(dedupeGuard.isDuplicate(org.mockito.ArgumentMatchers.any())).thenReturn(false);
 
         consumer.listen(FriendRequestKafkaEvent.of("friendship-service", payload));
 
@@ -127,6 +132,7 @@ class FriendRequestEventConsumerTest {
                 NotificationType.FRIEND_REQUEST,
                 otherUserId
         )).thenReturn(Optional.of(sticky));
+        when(dedupeGuard.isDuplicate(org.mockito.ArgumentMatchers.any())).thenReturn(false);
 
         consumer.listen(FriendRequestKafkaEvent.of("friendship-service", payload));
 
@@ -164,6 +170,7 @@ class FriendRequestEventConsumerTest {
                 NotificationType.FRIEND_REQUEST,
                 sender
         )).thenReturn(Optional.of(sticky));
+        when(dedupeGuard.isDuplicate(org.mockito.ArgumentMatchers.any())).thenReturn(false);
 
         consumer.listen(FriendRequestKafkaEvent.of("friendship-service", payload));
 

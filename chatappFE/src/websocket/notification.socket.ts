@@ -103,7 +103,15 @@ export const connectNotificationSocket = () => {
 
   socket.onmessage = (event) => {
     try {
-      const data: NotificationWsEvent = JSON.parse(event.data)
+      const raw = JSON.parse(event.data) as { type?: string; payload?: unknown }
+      if (!raw || !raw.type) {
+        return
+      }
+
+      const data: NotificationWsEvent = {
+        type: raw.type,
+        data: raw.payload as unknown,
+      }
       console.log("[notification-socket] Message received", {
         type: data.type,
         rawPayload: data.data,

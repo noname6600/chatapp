@@ -1,6 +1,6 @@
 package com.example.user.service.impl;
 
-import com.example.common.media.UploadAssetMetadata;
+import com.example.upload.contract.UploadAssetMetadata;
 import com.example.common.redis.api.ITimeRedisCache;
 import com.example.common.redis.api.ITimeRedisCacheManager;
 import com.example.common.core.exception.BusinessException;

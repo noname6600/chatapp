@@ -1,6 +1,9 @@
 package com.example.chat.modules.room.service.impl;
 
 import com.example.chat.config.InviteCodeGenerator;
+import com.example.chat.modules.message.application.service.ISystemMessageService;
+import com.example.chat.modules.message.infrastructure.client.UserClient;
+import com.example.chat.modules.room.cache.policy.RoomCacheInvalidationPolicy;
 import com.example.chat.modules.room.entity.Room;
 import com.example.chat.modules.room.entity.RoomMember;
 import com.example.chat.modules.room.enums.Role;
@@ -8,9 +11,7 @@ import com.example.chat.modules.room.enums.RoomType;
 import com.example.chat.modules.room.repository.RoomBanRepository;
 import com.example.chat.modules.room.repository.RoomMemberRepository;
 import com.example.chat.modules.room.repository.RoomRepository;
-import com.example.common.websocket.session.IRoomBroadcaster;
-import com.example.chat.modules.message.application.service.ISystemMessageService;
-import com.example.common.redis.api.ITimeRedisCacheManager;
+import com.example.chat.realtime.port.ChatRealtimePort;
 import com.example.common.core.exception.BusinessException;
 import com.example.common.core.exception.CommonErrorCode;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -41,15 +42,17 @@ class RoomServiceTest {
 	@Mock
 	private RoomBanRepository roomBanRepository;
 	@Mock
+	private UserClient userClient;
+	@Mock
 	private InviteCodeGenerator inviteCodeGenerator;
 	@Mock
 	private GroupAvatarGenerator avatarGenerator;
 	@Mock
 	private CloudinaryService cloudinaryService;
 	@Mock
-	private ITimeRedisCacheManager cacheManager;
+	private RoomCacheInvalidationPolicy roomCacheInvalidationPolicy;
 	@Mock
-	private IRoomBroadcaster roomBroadcaster;
+	private ChatRealtimePort chatRealtimePort;
 	@Mock
 	private ISystemMessageService systemMessageService;
 
@@ -148,7 +151,7 @@ class RoomServiceTest {
 		roomService.removeMember(roomId, ownerId, targetId);
 
 		verify(memberRepo).deleteByRoomIdAndUserId(roomId, targetId);
-		verify(roomBroadcaster).sendToRoom(any(), any());
+		verify(chatRealtimePort).publishRoomEvent(any(), any(), any(), any());
 	}
 
 	@Test

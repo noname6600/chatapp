@@ -42,7 +42,7 @@ public class UserProfileController extends BaseController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         return ResponseEntity.ok(
-                ApiResponse.success(service.getSelf(JwtHelper.extractUserId(jwt)))
+                ApiResponse.success(service.getSelf(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized"))))
         );
     }
 
@@ -79,7 +79,7 @@ public class UserProfileController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody UpdateProfileRequest req
     ) {
-                service.updateProfile(JwtHelper.extractUserId(jwt), req);
+                service.updateProfile(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), req);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
@@ -116,7 +116,7 @@ public class UserProfileController extends BaseController {
             @Valid @RequestBody AvatarMetadataRequest request
     ) {
         AvatarUploadResponse response =
-                service.applyAvatarMetadata(JwtHelper.extractUserId(jwt), request);
+                service.applyAvatarMetadata(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), request);
 
         return ResponseEntity.ok(ApiResponse.success(response));
     }

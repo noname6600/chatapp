@@ -31,6 +31,7 @@ import {
 
 const ROOM_NOTIFICATION_MODE_STORAGE_KEY = "notification_modes_by_room"
 const LEGACY_ROOM_MUTE_STORAGE_KEY = "notification_mutes_by_room"
+const RECONNECT_RECONCILE_COOLDOWN_MS = 2000
 
 const toTimestamp = (value: string | null | undefined): number => {
   if (!value) return 0
@@ -92,6 +93,8 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
   roomsByIdRef.current = roomsById
   const sortDebounceRef = useRef<number | null>(null)
   const missingRoomReconcileTimeoutRef = useRef<number | null>(null)
+  const reconnectReconcileInFlightRef = useRef<Promise<void> | null>(null)
+  const lastReconnectReconcileAtRef = useRef(0)
   const subscribedRoomIdsRef = useRef<Set<string>>(new Set())
 
   // Track processed MESSAGE_SENT events to prevent duplicate unread increments.
@@ -321,6 +324,26 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
     }, 120)
   }, [reconcileRoomState])
 
+  const reconcileRoomStateAfterReconnect = useCallback(async () => {
+    const now = Date.now()
+
+    if (reconnectReconcileInFlightRef.current) {
+      return reconnectReconcileInFlightRef.current
+    }
+
+    if (now - lastReconnectReconcileAtRef.current < RECONNECT_RECONCILE_COOLDOWN_MS) {
+      return
+    }
+
+    const reconcilePromise = reconcileRoomState().finally(() => {
+      lastReconnectReconcileAtRef.current = Date.now()
+      reconnectReconcileInFlightRef.current = null
+    })
+
+    reconnectReconcileInFlightRef.current = reconcilePromise
+    return reconcilePromise
+  }, [reconcileRoomState])
+
   const applyIncomingMessageToRoom = useCallback(
     (room: Room, msg: ChatMessage): Room => {
       const isSender = userId != null && msg.senderId === userId
@@ -547,14 +570,14 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
     const unsubscribe = onSocketOpen(() => {
       // Schedule reconciliation asynchronously to avoid calling during render.
       setTimeout(() => {
-        reconcileRoomState()
+        void reconcileRoomStateAfterReconnect()
       }, 100)
     })
 
     return () => {
       unsubscribe()
     }
-  }, [reconcileRoomState])
+  }, [reconcileRoomStateAfterReconnect])
 
   useEffect(() => {
     return () => {

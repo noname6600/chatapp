@@ -11,7 +11,7 @@ import com.example.chat.modules.message.domain.repository.ChatMessageRepository;
 import com.example.chat.modules.message.domain.repository.RoomPinnedMessageRepository;
 import com.example.chat.modules.message.domain.service.IMessagePreviewService;
 import com.example.chat.modules.message.infrastructure.service.DefaultMessagePreviewService;
-import com.example.chat.modules.message.infrastructure.redis.ChatRedisPublisher;
+import com.example.chat.realtime.port.ChatRealtimePort;
 import com.example.chat.modules.room.entity.Room;
 import com.example.chat.modules.room.entity.RoomMember;
 import com.example.chat.modules.room.enums.Role;
@@ -90,7 +90,7 @@ class RoomPinServiceIntegrationTest {
                 roomPinnedMessageRepository,
                 systemMessageService,
                 messageMapper,
-                mock(ChatRedisPublisher.class),
+                                mock(ChatRealtimePort.class),
                 previewService
         );
     }

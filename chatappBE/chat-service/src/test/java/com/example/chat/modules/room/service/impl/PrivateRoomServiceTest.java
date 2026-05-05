@@ -2,13 +2,13 @@ package com.example.chat.modules.room.service.impl;
 
 import com.example.chat.modules.message.infrastructure.client.UserBasicProfile;
 import com.example.chat.modules.message.infrastructure.client.UserClient;
+import com.example.chat.modules.room.cache.policy.RoomCacheInvalidationPolicy;
 import com.example.chat.modules.room.entity.PrivateRoom;
 import com.example.chat.modules.room.entity.Room;
 import com.example.chat.modules.room.entity.RoomMember;
 import com.example.chat.modules.room.repository.PrivateRoomRepository;
 import com.example.chat.modules.room.repository.RoomMemberRepository;
 import com.example.chat.modules.room.repository.RoomRepository;
-import com.example.common.redis.api.ITimeRedisCacheManager;
 import com.example.common.core.exception.BusinessException;
 import com.example.common.core.exception.CommonErrorCode;
 import com.example.common.web.response.ApiResponse;
@@ -41,9 +41,9 @@ class PrivateRoomServiceTest {
     @Mock
     private PrivateRoomRepository privateRoomRepo;
     @Mock
-    private ITimeRedisCacheManager cacheManager;
-    @Mock
     private UserClient userClient;
+    @Mock
+    private RoomCacheInvalidationPolicy roomCacheInvalidationPolicy;
 
     @InjectMocks
     private PrivateRoomService privateRoomService;

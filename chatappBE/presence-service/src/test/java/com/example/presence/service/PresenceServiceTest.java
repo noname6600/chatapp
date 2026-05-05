@@ -2,11 +2,15 @@ package com.example.presence.service;
 
 import com.example.common.integration.presence.PresenceMode;
 import com.example.common.integration.presence.PresenceStatus;
+import com.example.common.integration.presence.PresenceEventType;
+import com.example.common.integration.presence.PresenceUserOfflinePayload;
+import com.example.common.integration.presence.PresenceUserOnlinePayload;
 import com.example.common.integration.presence.PresenceUserStatePayload;
-import com.example.common.redis.api.ITimeRedisCacheManager;
-import com.example.common.redis.exception.CreateCacheException;
-import com.example.presence.redis.PresenceRedisPublisher;
+import com.example.common.realtime.policy.RealtimeFlowId;
+import com.example.presence.realtime.port.PresenceRealtimePort;
 import com.example.presence.service.model.StoredPresenceState;
+import com.example.presence.state.port.PresenceEphemeralStatePort;
+import com.example.presence.state.port.PresenceTtlCachePort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,6 +35,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -38,16 +43,13 @@ import static org.mockito.Mockito.when;
 class PresenceServiceTest {
 
     @Mock
-    private ITimeRedisCacheManager cacheManager;
+    private PresenceTtlCachePort presenceTtlCachePort;
 
     @Mock
-    private PresenceRedisPublisher redisPublisher;
+    private PresenceEphemeralStatePort presenceEphemeralStatePort;
 
     @Mock
-    private StringRedisTemplate redis;
-
-    @Mock
-    private SetOperations<String, String> setOperations;
+    private PresenceRealtimePort presenceRealtimePort;
 
     private final Map<String, StoredPresenceState> presenceStates = new HashMap<>();
     private final Map<String, Set<String>> redisSets = new HashMap<>();
@@ -55,47 +57,86 @@ class PresenceServiceTest {
     private PresenceService service;
 
     @BeforeEach
-    void setUp() throws CreateCacheException {
-        service = new PresenceService(cacheManager, redisPublisher, redis);
+    void setUp() {
+        service = new PresenceService(presenceTtlCachePort, presenceEphemeralStatePort, presenceRealtimePort);
 
-        when(redis.opsForSet()).thenReturn(setOperations);
-
-        when(cacheManager.get(eq("presence"), any(), eq(StoredPresenceState.class)))
-                .thenAnswer(invocation -> presenceStates.get(invocation.getArgument(1).toString()));
+        when(presenceTtlCachePort.get(any())).thenAnswer(invocation -> presenceStates.get(invocation.getArgument(0).toString()));
 
         doAnswer(invocation -> {
-            String key = invocation.getArgument(1).toString();
-            StoredPresenceState state = invocation.getArgument(2);
-            presenceStates.put(key, state);
+            UUID userId = invocation.getArgument(0);
+            StoredPresenceState state = invocation.getArgument(1);
+            presenceStates.put(userId.toString(), state);
             return null;
-        }).when(cacheManager).put(eq("presence"), any(), any(), any(Duration.class));
+        }).when(presenceTtlCachePort).put(any(), any());
 
         doAnswer(invocation -> {
-            presenceStates.remove(invocation.getArgument(1).toString());
+            UUID userId = invocation.getArgument(0);
+            presenceStates.remove(userId.toString());
             return null;
-        }).when(cacheManager).evict(eq("presence"), any());
+        }).when(presenceTtlCachePort).evict(any());
 
-        when(setOperations.add(anyString(), anyString())).thenAnswer(invocation -> {
-            String key = invocation.getArgument(0);
-            String value = invocation.getArgument(1);
-            redisSets.computeIfAbsent(key, ignored -> new HashSet<>()).add(value);
-            return 1L;
-        });
+        doAnswer(invocation -> {
+            UUID userId = invocation.getArgument(0);
+            redisSets.computeIfAbsent("presence::users:online", ignored -> new HashSet<>()).add(userId.toString());
+            return null;
+        }).when(presenceEphemeralStatePort).addOnlineUser(any());
 
-        when(setOperations.remove(anyString(), anyString())).thenAnswer(invocation -> {
-            String key = invocation.getArgument(0);
-            String value = invocation.getArgument(1);
-            Set<String> values = redisSets.get(key);
-            if (values != null) {
-                values.remove(value);
+        doAnswer(invocation -> {
+            UUID userId = invocation.getArgument(0);
+            Set<String> users = redisSets.get("presence::users:online");
+            if (users != null) {
+                users.remove(userId.toString());
             }
-            return 1L;
+            return null;
+        }).when(presenceEphemeralStatePort).removeOnlineUser(any());
+
+        when(presenceEphemeralStatePort.getOnlineUsers()).thenAnswer(invocation ->
+                redisSets.getOrDefault("presence::users:online", Set.of()).stream()
+                        .map(UUID::fromString)
+                        .collect(java.util.stream.Collectors.toSet())
+        );
+
+        doAnswer(invocation -> {
+            UUID roomId = invocation.getArgument(0);
+            UUID userId = invocation.getArgument(1);
+            redisSets.computeIfAbsent("presence::room:" + roomId, ignored -> new HashSet<>()).add(userId.toString());
+            redisSets.computeIfAbsent("presence::user:rooms:" + userId, ignored -> new HashSet<>()).add(roomId.toString());
+            return null;
+        }).when(presenceEphemeralStatePort).addUserToRoom(any(), any());
+
+        doAnswer(invocation -> {
+            UUID roomId = invocation.getArgument(0);
+            UUID userId = invocation.getArgument(1);
+            Set<String> roomUsers = redisSets.get("presence::room:" + roomId);
+            if (roomUsers != null) {
+                roomUsers.remove(userId.toString());
+            }
+            Set<String> userRooms = redisSets.get("presence::user:rooms:" + userId);
+            if (userRooms != null) {
+                userRooms.remove(roomId.toString());
+            }
+            return null;
+        }).when(presenceEphemeralStatePort).removeUserFromRoom(any(), any());
+
+        when(presenceEphemeralStatePort.getRoomUsers(any())).thenAnswer(invocation -> {
+            UUID roomId = invocation.getArgument(0);
+            return redisSets.getOrDefault("presence::room:" + roomId, Set.of()).stream()
+                    .map(UUID::fromString)
+                    .collect(java.util.stream.Collectors.toSet());
         });
 
-        when(setOperations.members(anyString())).thenAnswer(invocation -> {
-            String key = invocation.getArgument(0);
-            return redisSets.containsKey(key) ? new HashSet<>(redisSets.get(key)) : Set.of();
+        when(presenceEphemeralStatePort.getUserRooms(any())).thenAnswer(invocation -> {
+            UUID userId = invocation.getArgument(0);
+            return redisSets.getOrDefault("presence::user:rooms:" + userId, Set.of()).stream()
+                    .map(UUID::fromString)
+                    .collect(java.util.stream.Collectors.toSet());
         });
+
+        doAnswer(invocation -> {
+            UUID userId = invocation.getArgument(0);
+            redisSets.remove("presence::user:rooms:" + userId);
+            return null;
+        }).when(presenceEphemeralStatePort).clearUserRooms(any());
     }
 
     @Test
@@ -109,9 +150,13 @@ class PresenceServiceTest {
         assertThat(service.getSelfPresence(userId).getEffectiveStatus()).isEqualTo(PresenceStatus.OFFLINE);
         assertThat(service.getSelfPresence(userId).getMode()).isEqualTo(PresenceMode.MANUAL);
 
-        verify(redisPublisher).online(userId, PresenceStatus.ONLINE);
-        verify(redisPublisher).statusChanged(userId, PresenceStatus.AWAY);
-        verify(redisPublisher).statusChanged(userId, PresenceStatus.OFFLINE);
+        verify(presenceRealtimePort).publishUserEvent(eq(PresenceEventType.USER_ONLINE.value()), any(PresenceUserOnlinePayload.class));
+        verify(presenceRealtimePort).publishUserEvent(eq(PresenceEventType.USER_STATUS_CHANGED.value()), any(PresenceUserStatePayload.class));
+        verify(presenceRealtimePort).publishUserEvent(
+            eq(PresenceEventType.USER_STATUS_CHANGED.value()),
+            any(PresenceUserStatePayload.class),
+            eq(RealtimeFlowId.PRESENCE_USER_STATUS_CHANGED)
+        );
     }
 
     @Test
@@ -145,6 +190,6 @@ class PresenceServiceTest {
         service.offline(userId);
 
         assertThat(service.getRoomPresence(roomId)).isEmpty();
-        verify(redisPublisher).offline(userId);
+        verify(presenceRealtimePort).publishUserEvent(eq(PresenceEventType.USER_OFFLINE.value()), any(PresenceUserOfflinePayload.class));
     }
 }

@@ -11,7 +11,7 @@ import com.example.chat.realtime.subscriber.RealtimeEventDedupeGuard;
 import com.example.common.integration.chat.ChatEventType;
 import com.example.common.integration.chat.ChatMessagePayload;
 import com.example.common.integration.enums.MessageType;
-import com.example.common.integration.websocket.WsEvent;
+import com.example.common.websocket.protocol.RealtimeWsEvent;
 import com.example.common.redis.api.IRedisPublisher;
 import com.example.common.redis.message.RedisMessage;
 import com.example.common.websocket.session.IRoomBroadcaster;
@@ -198,9 +198,9 @@ class CrossInstanceRealtimeFanoutIntegrationTest {
         RedisMessage<ChatMessagePayload> publishedMessage = capturePublishedMessageSent(payload);
 
         ChatMessageSentRedisSubscriber instanceASubscriber =
-                new ChatMessageSentRedisSubscriber(instanceABroadcaster, instanceAUserBroadcaster);
+                new ChatMessageSentRedisSubscriber(instanceABroadcaster, instanceAUserBroadcaster, new RealtimeEventDedupeGuard());
         ChatMessageSentRedisSubscriber instanceBSubscriber =
-                new ChatMessageSentRedisSubscriber(instanceBBroadcaster, instanceBUserBroadcaster);
+                new ChatMessageSentRedisSubscriber(instanceBBroadcaster, instanceBUserBroadcaster, new RealtimeEventDedupeGuard());
 
         instanceASubscriber.onMessage(publishedMessage);
         instanceBSubscriber.onMessage(publishedMessage);
@@ -237,7 +237,7 @@ class CrossInstanceRealtimeFanoutIntegrationTest {
         ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
         verify(broadcaster).sendToRoom(eq(roomId), eventCaptor.capture());
 
-        WsEvent event = (WsEvent) eventCaptor.getValue();
+        RealtimeWsEvent event = (RealtimeWsEvent) eventCaptor.getValue();
         assertThat(event.getType()).isEqualTo(expectedEventType);
 
         RoomMessagePinEventPayload payload = (RoomMessagePinEventPayload) event.getPayload();
@@ -257,7 +257,7 @@ class CrossInstanceRealtimeFanoutIntegrationTest {
         ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
         verify(broadcaster).sendToRoom(eq(roomId), eventCaptor.capture());
 
-        WsEvent event = (WsEvent) eventCaptor.getValue();
+        RealtimeWsEvent event = (RealtimeWsEvent) eventCaptor.getValue();
         assertThat(event.getType()).isEqualTo(ChatEventType.MESSAGE_SENT.value());
 
         ChatMessagePayload deliveredPayload = (ChatMessagePayload) event.getPayload();

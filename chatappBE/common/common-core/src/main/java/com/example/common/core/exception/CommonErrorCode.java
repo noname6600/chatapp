@@ -1,25 +1,23 @@
 package com.example.common.core.exception;
 
-import org.springframework.http.HttpStatus;
-
 public enum CommonErrorCode implements IErrorCode {
-    BAD_REQUEST(HttpStatus.BAD_REQUEST),
-    VALIDATION_ERROR(HttpStatus.BAD_REQUEST),
-    UNAUTHORIZED(HttpStatus.UNAUTHORIZED),
-    FORBIDDEN(HttpStatus.FORBIDDEN),
-    PERMISSION_DENIED(HttpStatus.FORBIDDEN),
-    RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND),
-    CONFLICT(HttpStatus.CONFLICT),
-    INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR);
+    BAD_REQUEST(400),
+    VALIDATION_ERROR(400),
+    UNAUTHORIZED(401),
+    FORBIDDEN(403),
+    PERMISSION_DENIED(403),
+    RESOURCE_NOT_FOUND(404),
+    CONFLICT(409),
+    INTERNAL_ERROR(500);
 
-    private final HttpStatus status;
+    private final int status;
 
-    CommonErrorCode(HttpStatus status) {
+    CommonErrorCode(int status) {
         this.status = status;
     }
 
     @Override
-    public HttpStatus getStatus() {
+    public int httpStatus() {
         return status;
     }
 }

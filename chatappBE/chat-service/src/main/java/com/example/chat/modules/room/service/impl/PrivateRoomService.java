@@ -1,10 +1,10 @@
 package com.example.chat.modules.room.service.impl;
 
-import com.example.chat.modules.message.infrastructure.cache.CacheNames;
 import com.example.chat.modules.message.infrastructure.client.UserClient;
 import com.example.chat.modules.room.dto.LastMessagePreview;
 import com.example.chat.modules.room.dto.RoomResponse;
 import com.example.chat.modules.message.infrastructure.client.UserBasicProfile;
+import com.example.chat.modules.room.cache.policy.RoomCacheInvalidationPolicy;
 import com.example.chat.modules.room.entity.PrivateRoom;
 import com.example.chat.modules.room.entity.Room;
 import com.example.chat.modules.room.entity.RoomMember;
@@ -14,8 +14,6 @@ import com.example.chat.modules.room.repository.PrivateRoomRepository;
 import com.example.chat.modules.room.repository.RoomMemberRepository;
 import com.example.chat.modules.room.repository.RoomRepository;
 import com.example.chat.modules.room.service.IPrivateRoomService;
-import com.example.common.redis.api.ITimeRedisCacheManager;
-import com.example.common.redis.exception.CreateCacheException;
 import com.example.common.core.exception.BusinessException;
 import com.example.common.core.exception.CommonErrorCode;
 import jakarta.transaction.Transactional;
@@ -39,7 +37,7 @@ public class PrivateRoomService implements IPrivateRoomService {
     private final RoomRepository roomRepo;
     private final RoomMemberRepository memberRepo;
     private final PrivateRoomRepository privateRoomRepo;
-    private final ITimeRedisCacheManager cacheManager;
+        private final RoomCacheInvalidationPolicy roomCacheInvalidationPolicy;
 
     private final UserClient userClient;
 
@@ -203,15 +201,7 @@ public class PrivateRoomService implements IPrivateRoomService {
     }
 
     private void evictRoomsCache(UUID userId) {
-
-        try {
-            cacheManager.evict(CacheNames.ROOMS, roomsKey(userId));
-        } catch (CreateCacheException ignored) {
-        }
-    }
-
-    private String roomsKey(UUID userId) {
-        return "rooms:user:" + userId;
+                roomCacheInvalidationPolicy.evictRoomsForUser(userId);
     }
 }
 

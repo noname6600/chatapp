@@ -33,7 +33,7 @@ public class GlobalExceptionHandler {
         );
 
         return ResponseEntity
-                .status(ex.getErrorCode().getStatus())
+                .status(ex.getErrorCode().httpStatus())
                 .body(ApiResponse.failure(error));
     }
 
@@ -55,7 +55,7 @@ public class GlobalExceptionHandler {
         );
 
         return ResponseEntity
-                .status(CommonErrorCode.VALIDATION_ERROR.getStatus())
+                .status(CommonErrorCode.VALIDATION_ERROR.httpStatus())
                 .body(ApiResponse.failure(error));
     }
 
@@ -70,7 +70,7 @@ public class GlobalExceptionHandler {
         );
 
         return ResponseEntity
-                .status(CommonErrorCode.INTERNAL_ERROR.getStatus())
+                .status(CommonErrorCode.INTERNAL_ERROR.httpStatus())
                 .body(ApiResponse.failure(error));
     }
 
@@ -90,7 +90,7 @@ public class GlobalExceptionHandler {
         );
 
         return ResponseEntity
-                .status(CommonErrorCode.VALIDATION_ERROR.getStatus())
+                .status(CommonErrorCode.VALIDATION_ERROR.httpStatus())
                 .body(ApiResponse.failure(error));
     }
 
@@ -103,7 +103,7 @@ public class GlobalExceptionHandler {
         );
 
         return ResponseEntity
-                .status(CommonErrorCode.BAD_REQUEST.getStatus())
+                .status(CommonErrorCode.BAD_REQUEST.httpStatus())
                 .body(ApiResponse.failure(error));
     }
 
@@ -116,7 +116,7 @@ public class GlobalExceptionHandler {
         );
 
         return ResponseEntity
-                .status(CommonErrorCode.FORBIDDEN.getStatus())
+                .status(CommonErrorCode.FORBIDDEN.httpStatus())
                 .body(ApiResponse.failure(error));
     }
 
@@ -129,7 +129,7 @@ public class GlobalExceptionHandler {
         );
 
         return ResponseEntity
-                .status(CommonErrorCode.UNAUTHORIZED.getStatus())
+                .status(CommonErrorCode.UNAUTHORIZED.httpStatus())
                 .body(ApiResponse.failure(error));
     }
 
@@ -142,7 +142,7 @@ public class GlobalExceptionHandler {
         );
 
         return ResponseEntity
-                .status(CommonErrorCode.BAD_REQUEST.getStatus())
+                .status(CommonErrorCode.BAD_REQUEST.httpStatus())
                 .body(ApiResponse.failure(error));
     }
 }

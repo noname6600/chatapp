@@ -12,16 +12,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class GlobalExceptionHandlerTest {
 
     private enum TestDomainErrorCode implements IErrorCode {
-        SAMPLE(HttpStatus.CONFLICT);
+        SAMPLE(409);
 
-        private final HttpStatus status;
+        private final int status;
 
-        TestDomainErrorCode(HttpStatus status) {
+        TestDomainErrorCode(int status) {
             this.status = status;
         }
 
         @Override
-        public HttpStatus getStatus() {
+        public int httpStatus() {
             return status;
         }
     }

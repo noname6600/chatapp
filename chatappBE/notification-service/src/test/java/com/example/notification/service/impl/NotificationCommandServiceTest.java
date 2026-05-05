@@ -99,11 +99,11 @@ class NotificationCommandServiceTest {
     void clearRoom_callsRepositoryAndPushesUnreadCount() {
         UUID userId = UUID.randomUUID();
         UUID roomId = UUID.randomUUID();
-        when(repository.clearRoomByUserId(userId, roomId)).thenReturn(2);
+        when(repository.markReadByUserIdAndRoomId(userId, roomId)).thenReturn(2);
 
         service.clearRoom(userId, roomId);
 
-        verify(repository).clearRoomByUserId(userId, roomId);
+        verify(repository).markReadByUserIdAndRoomId(userId, roomId);
         verify(pushService).pushUnreadCount(userId);
     }
 }

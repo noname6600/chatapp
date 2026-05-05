@@ -4,6 +4,8 @@ import com.example.chat.modules.message.application.command.IReactionCommandServ
 import com.example.common.web.controller.BaseController;
 import com.example.common.web.response.ApiResponse;
 import com.example.common.security.jwt.JwtHelper;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -28,7 +30,7 @@ public class MessageReactionController extends BaseController {
 
         reactionService.toggleReaction(
                 messageId,
-            JwtHelper.extractUserId(jwt),
+            JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")),
                 emoji
         );
 

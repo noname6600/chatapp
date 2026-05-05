@@ -7,17 +7,18 @@ import com.example.chat.modules.message.domain.entity.ChatAttachment;
 import com.example.chat.modules.message.domain.entity.ChatMessage;
 import com.example.chat.modules.message.domain.entity.RoomPinnedMessage;
 import com.example.chat.modules.message.domain.enums.SystemEventType;
-import com.example.chat.modules.message.infrastructure.redis.ChatRedisPublisher;
 import com.example.chat.modules.message.domain.repository.ChatAttachmentRepository;
 import com.example.chat.modules.message.domain.repository.ChatMessageRepository;
 import com.example.chat.modules.message.domain.repository.RoomPinnedMessageRepository;
 import com.example.chat.modules.message.domain.service.IMessagePreviewService;
 import com.example.chat.modules.room.dto.RoomMessagePinEventPayload;
 import com.example.chat.modules.room.repository.RoomMemberRepository;
+import com.example.chat.realtime.port.ChatRealtimePort;
 import com.example.chat.modules.room.service.IRoomPinService;
 import com.example.common.integration.chat.ChatEventType;
 import com.example.common.core.exception.BusinessException;
 import com.example.common.core.exception.CommonErrorCode;
+import com.example.common.realtime.policy.RealtimeFlowId;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,7 +41,7 @@ public class RoomPinService implements IRoomPinService {
     private final RoomPinnedMessageRepository roomPinnedMessageRepository;
         private final ISystemMessageService systemMessageService;
     private final MessageMapper messageMapper;
-        private final ChatRedisPublisher chatRedisPublisher;
+        private final ChatRealtimePort chatRealtimePort;
         private final IMessagePreviewService previewService;
 
     @Override
@@ -211,14 +212,14 @@ public class RoomPinService implements IRoomPinService {
                 .occurredAt(java.time.Instant.now())
                 .build();
 
-                if (eventType == ChatEventType.MESSAGE_PINNED) {
-                        chatRedisPublisher.publishMessagePinned(payload);
-                        return;
-                }
-
-                if (eventType == ChatEventType.MESSAGE_UNPINNED) {
-                        chatRedisPublisher.publishMessageUnpinned(payload);
-                }
+                chatRealtimePort.publishRoomEvent(
+                        roomId,
+                        eventType.value(),
+                        payload,
+                        eventType == ChatEventType.MESSAGE_PINNED
+                                ? RealtimeFlowId.CHAT_MESSAGE_PIN
+                                : RealtimeFlowId.CHAT_MESSAGE_UNPIN
+                );
     }
 
         private void publishPinRealtimeEventAfterCommit(

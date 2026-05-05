@@ -1,8 +1,7 @@
 package com.example.notification.kafka;
 
 import com.example.common.integration.notification.NotificationRequestedPayload;
-import com.example.common.integration.kafka.KafkaTopics;
-import com.example.common.kafka.api.KafkaEventPublisher;
+import com.example.common.kafka.topic.KafkaTopics;
 import com.example.common.integration.kafka.event.NotificationRequestedEvent;
 import com.example.notification.entity.Notification;
 import lombok.RequiredArgsConstructor;
@@ -13,7 +12,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class NotificationEventProducer {
 
-    private final KafkaEventPublisher kafkaEventPublisher;
+        private final KafkaEventProducer kafkaEventProducer;
 
     @Value("${spring.application.name}")
     private String sourceService;
@@ -28,7 +27,7 @@ public class NotificationEventProducer {
                         noti.getType() == null ? null : noti.getType().name()
                 );
 
-        kafkaEventPublisher.publish(
+        kafkaEventProducer.publish(
                 KafkaTopics.NOTIFICATION_REQUESTED,
                 noti.getUserId().toString(),
                 NotificationRequestedEvent.from(sourceService, payload)

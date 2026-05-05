@@ -2,9 +2,9 @@ package com.example.common.integration.account;
 
 public enum AccountEventType {
 
-    ACCOUNT_CREATED("account.account.created"),
-    ACCOUNT_DELETED("account.account.deleted"),
-    ACCOUNT_DISABLED("account.account.disabled");
+    ACCOUNT_CREATED("account.created"),
+    ACCOUNT_DELETED("account.deleted"),
+    ACCOUNT_DISABLED("account.disabled");
 
     private final String value;
 

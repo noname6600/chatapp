@@ -2,11 +2,11 @@ import { useFriendStore } from "../store/friend.store";
 import { getWsEndpoint } from "../config/ws.config";
 
 export enum FriendshipEventType {
-  FRIEND_REQUEST_RECEIVED = "FRIEND_REQUEST_RECEIVED",
-  FRIEND_REQUEST_ACCEPTED = "FRIEND_REQUEST_ACCEPTED",
-  FRIEND_REQUEST_DECLINED = "FRIEND_REQUEST_DECLINED",
-  FRIEND_REQUEST_CANCELLED = "FRIEND_REQUEST_CANCELLED",
-  FRIEND_STATUS_CHANGED = "FRIEND_STATUS_CHANGED",
+  FRIEND_REQUEST_RECEIVED = "friendship.request.received",
+  FRIEND_REQUEST_ACCEPTED = "friendship.request.accepted",
+  FRIEND_REQUEST_DECLINED = "friendship.request.declined",
+  FRIEND_REQUEST_CANCELLED = "friendship.request.cancelled",
+  FRIEND_STATUS_CHANGED = "friendship.status.changed",
 }
 
 export interface FriendshipWsEvent {
@@ -41,12 +41,19 @@ const getCounterpartyId = (event: FriendshipWsEvent) => {
 let socket: WebSocket | null = null;
 let reconnectTimeout: number | null = null;
 let manualClose = false;
+let reconnectFailureCount = 0;
 
 const eventHandlers = new Set<(event: FriendshipWsEvent) => void>();
 const openHandlers = new Set<() => void>();
 
 const WS_URL = getWsEndpoint("FRIEND");
-const RECONNECT_DELAY = 3000;
+const BACKOFF_BASE = 1000;
+const BACKOFF_MAX = 30000;
+
+const calculateBackoffDelay = (failureCount: number): number => {
+  const exponentialDelay = BACKOFF_BASE * Math.pow(2, Math.max(0, failureCount - 1));
+  return Math.min(exponentialDelay, BACKOFF_MAX);
+};
 
 /**
  * Connect to friendship WebSocket endpoint
@@ -78,6 +85,7 @@ export const connectFriendshipSocket = () => {
   socket = new WebSocket(wsUrl);
 
   socket.onopen = () => {
+    reconnectFailureCount = 0;
     console.log("[friendship-socket] Connected");
     openHandlers.forEach((handler) => handler());
   };
@@ -103,10 +111,12 @@ export const connectFriendshipSocket = () => {
     socket = null;
 
     if (!manualClose && localStorage.getItem("access_token")) {
-      console.log("[friendship-socket] Reconnecting in 3s...");
+      reconnectFailureCount += 1;
+      const reconnectDelay = calculateBackoffDelay(reconnectFailureCount);
+      console.log("[friendship-socket] Reconnecting with backoff...", { reconnectDelay, reconnectFailureCount });
       reconnectTimeout = window.setTimeout(
         connectFriendshipSocket,
-        RECONNECT_DELAY
+        reconnectDelay
       );
     } else {
       console.log("[friendship-socket] Reconnect suppressed (manual close or no token)");
@@ -132,6 +142,8 @@ export const disconnectFriendshipSocket = () => {
     clearTimeout(reconnectTimeout);
     reconnectTimeout = null;
   }
+
+  reconnectFailureCount = 0;
 
   socket?.close();
   socket = null;
@@ -163,9 +175,12 @@ export const onFriendshipSocketOpen = (handler: () => void) => {
 export function handleFriendshipEvent(msg: any) {
   if (!msg || !msg.type) return;
 
+  const normalizedType = normalizeFriendshipEventType(msg.type);
+  if (!normalizedType) return;
+
   const event: FriendshipWsEvent = {
-    type: msg.type as FriendshipEventType,
-    data: msg.data || {},
+    type: normalizedType,
+    data: msg.payload ?? {},
   };
 
   // Dispatch to all registered handlers
@@ -227,16 +242,16 @@ export function processFriendshipEvent(event: FriendshipWsEvent) {
       // Handle friendship status changes (unfriend, block, unblock)
       if (counterpartyId) {
         const eventType = event.data.eventType as string;
-        if (eventType === "FRIEND_UNFRIENDED") {
+        if (eventType === "friend.unfriended") {
           state.setStatus(counterpartyId, "NONE");
-        } else if (eventType === "FRIEND_BLOCKED") {
+        } else if (eventType === "friend.blocked") {
           const myId = getCurrentUserId();
           if (event.data.actionUserId === myId) {
             state.setStatus(counterpartyId, "BLOCKED_BY_ME");
           } else {
             state.setStatus(counterpartyId, "BLOCKED_ME");
           }
-        } else if (eventType === "FRIEND_UNBLOCKED") {
+        } else if (eventType === "friend.unblocked") {
           state.setStatus(counterpartyId, "NONE");
         }
       }
@@ -252,5 +267,24 @@ export function processFriendshipEvent(event: FriendshipWsEvent) {
 
     default:
       console.warn("[friendship] Unknown event type:", event.type);
+      break;
+  }
+}
+
+function normalizeFriendshipEventType(rawType: string): FriendshipEventType | null {
+  switch (rawType) {
+    case FriendshipEventType.FRIEND_REQUEST_RECEIVED:
+      return FriendshipEventType.FRIEND_REQUEST_RECEIVED;
+    case FriendshipEventType.FRIEND_REQUEST_ACCEPTED:
+      return FriendshipEventType.FRIEND_REQUEST_ACCEPTED;
+    case FriendshipEventType.FRIEND_REQUEST_DECLINED:
+      return FriendshipEventType.FRIEND_REQUEST_DECLINED;
+    case FriendshipEventType.FRIEND_REQUEST_CANCELLED:
+      return FriendshipEventType.FRIEND_REQUEST_CANCELLED;
+    case FriendshipEventType.FRIEND_STATUS_CHANGED:
+      return FriendshipEventType.FRIEND_STATUS_CHANGED;
+    default:
+      console.warn("[friendship-socket] Unknown event type", { rawType });
+      return null;
   }
 }

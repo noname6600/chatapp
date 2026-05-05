@@ -3,7 +3,11 @@ package com.example.friendship.websocket;
 import com.example.common.integration.friendship.FriendRequestEvent;
 import com.example.common.integration.friendship.FriendshipEventType;
 import com.example.common.integration.friendship.FriendshipPayload;
-import com.example.common.websocket.dto.WsOutgoingMessage;
+import com.example.common.realtime.policy.RealtimeFlowClassificationPolicy;
+import com.example.common.realtime.policy.RealtimeFlowId;
+import com.example.common.realtime.policy.RealtimeFlowType;
+import com.example.common.websocket.protocol.RealtimeWsEvent;
+import com.example.friendship.realtime.port.FriendshipRealtimePort;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -15,15 +19,160 @@ import java.util.UUID;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class FriendshipWebSocketPublisher {
+public class FriendshipWebSocketPublisher implements FriendshipRealtimePort {
 
-    private static final String WS_FRIEND_REQUEST_RECEIVED = "FRIEND_REQUEST_RECEIVED";
-    private static final String WS_FRIEND_REQUEST_ACCEPTED = "FRIEND_REQUEST_ACCEPTED";
-    private static final String WS_FRIEND_REQUEST_DECLINED = "FRIEND_REQUEST_DECLINED";
-    private static final String WS_FRIEND_REQUEST_CANCELLED = "FRIEND_REQUEST_CANCELLED";
-    private static final String WS_FRIEND_STATUS_CHANGED = "FRIEND_STATUS_CHANGED";
+    private static final String WS_FRIEND_REQUEST_RECEIVED = "friendship.request.received";
+    private static final String WS_FRIEND_REQUEST_ACCEPTED = "friendship.request.accepted";
+    private static final String WS_FRIEND_REQUEST_DECLINED = "friendship.request.declined";
+    private static final String WS_FRIEND_REQUEST_CANCELLED = "friendship.request.cancelled";
+    private static final String WS_FRIEND_STATUS_CHANGED = "friendship.status.changed";
 
     private final WebSocketFriendshipBroadcaster broadcaster;
+
+    @Override
+    public void publishUserEvent(UUID userId, String eventType, Object payload) {
+        broadcaster.sendToUser(
+                userId,
+                RealtimeWsEvent.builder()
+                    .type(eventType)
+                        .payload(payload)
+                        .build()
+        );
+    }
+
+    @Override
+    public void publishRelationshipEvent(UUID userA, UUID userB, String eventType, Object payload) {
+        if (payload instanceof FriendRequestEvent friendRequestEvent) {
+            publishFriendRequestEvent(friendRequestEvent);
+            return;
+        }
+
+        if (payload instanceof FriendshipPayload friendshipPayload) {
+            FriendshipEventType normalized = java.util.Arrays.stream(FriendshipEventType.values())
+                    .filter(type -> type.value().equals(eventType))
+                    .findFirst()
+                    .orElse(null);
+            if (normalized == null) {
+                log.warn("[FRIEND] Unknown friendship event type: {}", eventType);
+                return;
+            }
+            publishFriendshipStatusChange(normalized, friendshipPayload);
+            return;
+        }
+
+        // Fallback behavior for simple relationship fanout payloads.
+        RealtimeWsEvent wsMessage = RealtimeWsEvent.builder()
+            .type(eventType)
+            .payload(payload)
+            .build();
+        broadcaster.sendToUser(userA, wsMessage);
+        broadcaster.sendToUser(userB, wsMessage);
+    }
+
+    @Override
+    public void publishUserEvent(UUID userId, String eventType, Object payload, RealtimeFlowId flowId) {
+        RealtimeFlowType flowType = RealtimeFlowClassificationPolicy.getFlowType(flowId);
+        
+        log.debug("Publishing user event for flow {}: eventType={}, flowType={}", 
+                flowId, eventType, flowType);
+
+        // Enforce delivery semantics based on flow classification
+        if (flowType == RealtimeFlowType.DURABLE_FIRST) {
+            // DURABLE-FIRST: publish to Kafka first, then fanout
+            // TODO: Implement Kafka publish in task 6.2/7.3
+            publishDurableFirstFlow(userId, eventType, payload);
+        } else if (flowType == RealtimeFlowType.EPHEMERAL_ONLY) {
+            // EPHEMERAL-ONLY: direct Redis/WebSocket fanout
+            publishEphemeralOnlyFlow(userId, eventType, payload);
+        } else if (flowType == RealtimeFlowType.MIXED_WITH_CONVERGENCE) {
+            // MIXED-WITH-CONVERGENCE: publish to both Kafka and fanout
+            // TODO: Implement Kafka publish in task 6.2/7.3
+            publishMixedConvergenceFlow(userId, eventType, payload);
+        }
+    }
+
+    @Override
+    public void publishRelationshipEvent(UUID userA, UUID userB, String eventType, Object payload, RealtimeFlowId flowId) {
+        RealtimeFlowType flowType = RealtimeFlowClassificationPolicy.getFlowType(flowId);
+        
+        log.debug("Publishing relationship event for flow {}: eventType={}, flowType={}", 
+                flowId, eventType, flowType);
+
+        // Enforce delivery semantics based on flow classification
+        if (flowType == RealtimeFlowType.DURABLE_FIRST) {
+            // DURABLE-FIRST: publish to Kafka first, then fanout
+            // TODO: Implement Kafka publish in task 6.2/7.3
+            publishDurableFirstRelationshipFlow(userA, userB, eventType, payload);
+        } else if (flowType == RealtimeFlowType.EPHEMERAL_ONLY) {
+            // EPHEMERAL-ONLY: direct Redis/WebSocket fanout
+            publishEphemeralOnlyRelationshipFlow(userA, userB, eventType, payload);
+        } else if (flowType == RealtimeFlowType.MIXED_WITH_CONVERGENCE) {
+            // MIXED-WITH-CONVERGENCE: publish to both Kafka and fanout
+            // TODO: Implement Kafka publish in task 6.2/7.3
+            publishMixedConvergenceRelationshipFlow(userA, userB, eventType, payload);
+        }
+    }
+
+    private void publishDurableFirstFlow(UUID userId, String eventType, Object payload) {
+        directFanoutUser(userId, eventType, payload);
+    }
+
+    private void publishEphemeralOnlyFlow(UUID userId, String eventType, Object payload) {
+        directFanoutUser(userId, eventType, payload);
+    }
+
+    private void publishMixedConvergenceFlow(UUID userId, String eventType, Object payload) {
+        directFanoutUser(userId, eventType, payload);
+    }
+
+    private void publishDurableFirstRelationshipFlow(UUID userA, UUID userB, String eventType, Object payload) {
+        directFanoutRelationship(userA, userB, eventType, payload);
+    }
+
+    private void publishEphemeralOnlyRelationshipFlow(UUID userA, UUID userB, String eventType, Object payload) {
+        directFanoutRelationship(userA, userB, eventType, payload);
+    }
+
+    private void publishMixedConvergenceRelationshipFlow(UUID userA, UUID userB, String eventType, Object payload) {
+        directFanoutRelationship(userA, userB, eventType, payload);
+    }
+
+    private void directFanoutUser(UUID userId, String eventType, Object payload) {
+        broadcaster.sendToUser(
+                userId,
+                RealtimeWsEvent.builder()
+                    .type(eventType)
+                        .payload(payload)
+                        .build()
+        );
+    }
+
+    private void directFanoutRelationship(UUID userA, UUID userB, String eventType, Object payload) {
+        if (payload instanceof FriendRequestEvent friendRequestEvent) {
+            publishFriendRequestEvent(friendRequestEvent);
+            return;
+        }
+
+        if (payload instanceof FriendshipPayload friendshipPayload) {
+            FriendshipEventType normalized = java.util.Arrays.stream(FriendshipEventType.values())
+                    .filter(type -> type.value().equals(eventType))
+                    .findFirst()
+                    .orElse(null);
+            if (normalized == null) {
+                log.warn("[FRIEND] Unknown friendship event type: {}", eventType);
+                return;
+            }
+            publishFriendshipStatusChange(normalized, friendshipPayload);
+            return;
+        }
+
+        RealtimeWsEvent wsMessage = RealtimeWsEvent.builder()
+            .type(eventType)
+            .payload(payload)
+            .build();
+        broadcaster.sendToUser(userA, wsMessage);
+        broadcaster.sendToUser(userB, wsMessage);
+    }
 
     /**
      * Publishes friend request events (SENT, ACCEPTED) to affected users via WebSocket
@@ -38,7 +187,10 @@ public class FriendshipWebSocketPublisher {
         }
 
         Map<String, Object> payload = buildFriendRequestPayload(event);
-        WsOutgoingMessage wsMessage = new WsOutgoingMessage(messageType, payload);
+        RealtimeWsEvent wsMessage = RealtimeWsEvent.builder()
+            .type(messageType)
+            .payload(payload)
+            .build();
 
         if (event.getType() == FriendRequestEvent.Type.SENT) {
             // For outgoing requests: only notify recipient, not sender
@@ -66,7 +218,10 @@ public class FriendshipWebSocketPublisher {
         }
 
         Map<String, Object> wsPayload = buildFriendshipStatusPayload(eventType, payload);
-        WsOutgoingMessage wsMessage = new WsOutgoingMessage(messageType, wsPayload);
+        RealtimeWsEvent wsMessage = RealtimeWsEvent.builder()
+            .type(messageType)
+            .payload(wsPayload)
+            .build();
 
         // Send to both users
         broadcaster.sendToUser(payload.getUserLow(), wsMessage);
@@ -123,7 +278,8 @@ public class FriendshipWebSocketPublisher {
         wsPayload.put("userHigh", payload.getUserHigh());
         wsPayload.put("actionUserId", payload.getActionUserId());
         wsPayload.put("newStatus", payload.getStatus());
-        wsPayload.put("eventType", eventType.name());
+        wsPayload.put("eventType", eventType.value());
         return wsPayload;
     }
+
 }

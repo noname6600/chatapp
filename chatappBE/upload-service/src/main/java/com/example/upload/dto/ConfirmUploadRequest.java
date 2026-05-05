@@ -1,6 +1,7 @@
 package com.example.upload.dto;
 
 import com.example.upload.domain.UploadPurpose;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -12,6 +13,7 @@ import lombok.Setter;
 public class ConfirmUploadRequest {
 
     @NotNull(message = "purpose is required")
+    @JsonDeserialize(using = UploadPurposeDeserializer.class)
     private UploadPurpose purpose;
 
     @NotBlank(message = "publicId is required")

@@ -15,6 +15,12 @@ This guide is the source of truth for deployment flow and links to related env c
 - Backend production env contract: `chatappBE/.env.production.example`
 - Frontend env contracts: `chatappFE/.env.local`, `chatappFE/.env.production`, `chatappFE/.env.example`
 
+## Realtime Contract Mode
+
+- Realtime channels and websocket envelopes now use normalized contracts only.
+- Legacy compatibility toggles were removed after the migration stability window.
+- Rollback for realtime regressions uses standard service release rollback, not runtime legacy-format flags.
+
 ---
 
 ## 1. Local Mode Quickstart

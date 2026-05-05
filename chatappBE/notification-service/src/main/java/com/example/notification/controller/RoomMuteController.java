@@ -3,6 +3,8 @@ package com.example.notification.controller;
 import com.example.common.web.controller.BaseController;
 import com.example.common.web.response.ApiResponse;
 import com.example.common.security.jwt.JwtHelper;
+import com.example.common.core.exception.BusinessException;
+import com.example.common.core.exception.CommonErrorCode;
 import com.example.notification.dto.RoomSettingsResponse;
 import com.example.notification.dto.RoomSettingsUpdateRequest;
 import com.example.notification.entity.RoomNotificationMode;
@@ -34,7 +36,7 @@ public class RoomMuteController extends BaseController {
             @PathVariable UUID roomId,
             @AuthenticationPrincipal Jwt jwt
     ) {
-                roomMuteSettingService.mute(JwtHelper.extractUserId(jwt), roomId);
+                roomMuteSettingService.mute(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), roomId);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
@@ -43,7 +45,7 @@ public class RoomMuteController extends BaseController {
             @PathVariable UUID roomId,
             @AuthenticationPrincipal Jwt jwt
     ) {
-                roomMuteSettingService.unmute(JwtHelper.extractUserId(jwt), roomId);
+                roomMuteSettingService.unmute(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), roomId);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
@@ -52,7 +54,7 @@ public class RoomMuteController extends BaseController {
             @PathVariable UUID roomId,
             @AuthenticationPrincipal Jwt jwt
     ) {
-        RoomNotificationMode mode = roomMuteSettingService.getMode(JwtHelper.extractUserId(jwt), roomId);
+        RoomNotificationMode mode = roomMuteSettingService.getMode(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), roomId);
         return ResponseEntity.ok(
                 ApiResponse.success(
                         RoomSettingsResponse.builder()
@@ -70,7 +72,7 @@ public class RoomMuteController extends BaseController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         RoomNotificationMode mode = parseMode(request == null ? null : request.getMode());
-        RoomNotificationMode updatedMode = roomMuteSettingService.setMode(JwtHelper.extractUserId(jwt), roomId, mode);
+        RoomNotificationMode updatedMode = roomMuteSettingService.setMode(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), roomId, mode);
 
         return ResponseEntity.ok(
                 ApiResponse.success(

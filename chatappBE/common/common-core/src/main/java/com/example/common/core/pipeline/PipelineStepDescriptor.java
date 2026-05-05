@@ -26,7 +26,7 @@ public class PipelineStepDescriptor<C> {
 
         this.stepClass =
                 (Class<? extends PipelineStep<?>>)
-                        step.getClass();
+                resolveStepClass(step);
 
         this.runAfter = new HashSet<>(
                 Arrays.asList(step.runAfter())
@@ -39,6 +39,17 @@ public class PipelineStepDescriptor<C> {
         this.condition = step.condition();
 
         this.timeoutMs = step.timeoutMs();
+    }
+
+    @SuppressWarnings("unchecked")
+    private Class<? extends PipelineStep<?>> resolveStepClass(PipelineStep<C> step) {
+        Class<?> candidate = step.getClass();
+
+        if (candidate.getName().contains("$$") && candidate.getSuperclass() != null) {
+            candidate = candidate.getSuperclass();
+        }
+
+        return (Class<? extends PipelineStep<?>>) candidate;
     }
 
     public PipelineStep<C> getStep() {

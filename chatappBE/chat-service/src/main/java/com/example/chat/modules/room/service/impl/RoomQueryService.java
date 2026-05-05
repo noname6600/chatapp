@@ -1,6 +1,7 @@
 package com.example.chat.modules.room.service.impl;
 
 import com.example.chat.modules.message.infrastructure.cache.CacheNames;
+import com.example.chat.modules.room.cache.port.RoomListCachePort;
 import com.example.chat.modules.room.dto.PagedBannedMembersResponse;
 import com.example.chat.modules.room.dto.LastMessagePreview;
 import com.example.chat.modules.room.dto.PagedRoomMembersResponse;
@@ -15,8 +16,6 @@ import com.example.chat.modules.room.repository.RoomBanRepository;
 import com.example.chat.modules.room.repository.RoomRepository;
 import com.example.chat.modules.room.repository.projection.RoomRow;
 import com.example.chat.modules.room.service.IRoomQueryService;
-import com.example.common.redis.api.ITimeRedisCacheManager;
-import com.example.common.redis.exception.CreateCacheException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -44,25 +43,13 @@ public class RoomQueryService implements IRoomQueryService {
     private final RoomRepository roomRepo;
     private final RoomMemberRepository memberRepo;
     private final RoomBanRepository roomBanRepository;
-    private final ITimeRedisCacheManager cacheManager;
+    private final RoomListCachePort roomListCachePort;
 
     @Override
     public List<RoomResponse> roomsOfUser(UUID userId) {
-
-        String cacheName = CacheNames.ROOMS;
-        String key = roomsKey(userId);
-
-        try {
-            List<?> cached = cacheManager.get(cacheName, key, List.class);
-            if (cached != null) {
-                return cached.stream()
-                        .map(RoomResponse.class::cast)
-                        .collect(Collectors.toList());
-            }
-        } catch (Exception ignored) {
-            try {
-                cacheManager.evict(cacheName, key);
-            } catch (Exception ignore) {}
+        List<RoomResponse> cached = roomListCachePort.getRooms(userId);
+        if (cached != null) {
+            return cached;
         }
 
         List<RoomRow> rows = roomRepo.findRoomsOfUserAdvanced(userId);
@@ -92,9 +79,7 @@ public class RoomQueryService implements IRoomQueryService {
                 .stream()
                 .collect(Collectors.toList());
 
-        try {
-            cacheManager.put(cacheName, key, result, TTL);
-        } catch (CreateCacheException ignored) {}
+        roomListCachePort.putRooms(userId, result, TTL);
 
         return result;
     }
@@ -227,10 +212,6 @@ public class RoomQueryService implements IRoomQueryService {
                 .content(room.getLastMessagePreview())
                 .createdAt(room.getLastMessageAt())
                 .build();
-    }
-
-    private String roomsKey(UUID userId) {
-        return "rooms:user:" + userId;
     }
 
     private RoomMemberResponse toRoomMemberResponse(RoomMember member) {

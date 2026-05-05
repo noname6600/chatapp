@@ -2,18 +2,17 @@ package com.example.upload.service;
 
 import com.cloudinary.Cloudinary;
 import com.example.common.core.exception.BusinessException;
+import com.example.upload.application.ConfirmUploadCommand;
+import com.example.upload.application.ConfirmUploadResult;
+import com.example.upload.application.PrepareUploadCommand;
+import com.example.upload.application.PrepareUploadResult;
 import com.example.upload.config.UploadPolicyProperties;
 import com.example.upload.domain.UploadPurpose;
-import com.example.upload.dto.ConfirmUploadRequest;
-import com.example.upload.dto.PrepareUploadRequest;
-import com.example.upload.dto.PrepareUploadResponse;
-import com.example.upload.dto.UploadAssetResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -58,58 +57,69 @@ class UploadSigningServiceTest {
 
     @Test
     void prepare_returnsSignedPayloadWithPolicyConstraints() {
-        PrepareUploadRequest request = new PrepareUploadRequest();
-        request.setPurpose(UploadPurpose.CHAT_ATTACHMENT);
-        request.setFileName("a.png");
+        PrepareUploadCommand command = new PrepareUploadCommand(
+                "user-1",
+                UploadPurpose.CHAT_ATTACHMENT,
+                "a.png",
+                1024L
+        );
 
-        PrepareUploadResponse response = service.prepare(request);
+        PrepareUploadResult response = service.prepare(command);
 
-        assertThat(response.getPurpose()).isEqualTo("chat-attachment");
-        assertThat(response.getSignature()).isEqualTo("sig-123");
-        assertThat(response.getFolder()).isEqualTo("chat/attachments");
-        assertThat(response.getMaxBytes()).isEqualTo(10L * 1024 * 1024);
-        assertThat(response.getAllowedFormats()).contains("jpg", "png", "pdf");
-        assertThat(response.getPublicId()).startsWith("chat/attachments/");
-        assertThat(response.getUploadUrl()).isEqualTo("https://api.cloudinary.com/v1_1/demo-cloud/auto/upload");
+        assertThat(response.purpose()).isEqualTo("chat-attachment");
+        assertThat(response.signature()).isEqualTo("sig-123");
+        assertThat(response.folder()).isEqualTo("chat/attachments");
+        assertThat(response.maxBytes()).isEqualTo(10L * 1024 * 1024);
+        assertThat(response.allowedFormats()).contains("jpg", "png", "pdf");
+        assertThat(response.assetKey()).startsWith("chat/attachments/");
+        assertThat(response.uploadUrl()).isEqualTo("https://api.cloudinary.com/v1_1/demo-cloud/auto/upload");
     }
 
     @Test
     void confirm_rejectsPolicyViolationForFormat() {
-        ConfirmUploadRequest request = new ConfirmUploadRequest();
-        request.setPurpose(UploadPurpose.USER_AVATAR);
-        request.setPublicId("user/avatar/abc");
-        request.setSecureUrl("https://res.cloudinary.com/demo-cloud/image/upload/v1/user/avatar/abc.png");
-        request.setResourceType("image");
-        request.setFormat("gif");
-        request.setBytes(100L);
-        request.setWidth(100);
-        request.setHeight(100);
+        ConfirmUploadCommand command = new ConfirmUploadCommand(
+            "user-1",
+            "user/avatar/abc",
+            "https://res.cloudinary.com/demo-cloud/image/upload/v1/user/avatar/abc.png",
+            UploadPurpose.USER_AVATAR,
+            "image",
+            "gif",
+            100L,
+            100,
+            100,
+            null,
+            null
+        );
 
-        assertThatThrownBy(() -> service.confirm(request))
+        assertThatThrownBy(() -> service.confirm(command))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("format is not allowed");
     }
 
     @Test
     void confirm_acceptsValidPayloadAndNormalizesContract() {
-        ConfirmUploadRequest request = new ConfirmUploadRequest();
-        request.setPurpose(UploadPurpose.CHAT_ATTACHMENT);
-        request.setPublicId("chat/attachments/xyz");
-        request.setSecureUrl("https://res.cloudinary.com/demo-cloud/image/upload/v1/chat/attachments/xyz.jpg");
-        request.setResourceType("IMAGE");
-        request.setFormat("JPG");
-        request.setBytes(1024L);
-        request.setWidth(640);
-        request.setHeight(480);
+        ConfirmUploadCommand command = new ConfirmUploadCommand(
+                "user-1",
+                "chat/attachments/xyz",
+                "https://res.cloudinary.com/demo-cloud/image/upload/v1/chat/attachments/xyz.jpg",
+                UploadPurpose.CHAT_ATTACHMENT,
+                "IMAGE",
+                "JPG",
+                1024L,
+                640,
+                480,
+                null,
+                null
+        );
 
-        UploadAssetResponse response = service.confirm(request);
+        ConfirmUploadResult response = service.confirm(command);
 
-        assertThat(response.getPublicId()).isEqualTo("chat/attachments/xyz");
-        assertThat(response.getResourceType()).isEqualTo("image");
-        assertThat(response.getFormat()).isEqualTo("jpg");
-        assertThat(response.getBytes()).isEqualTo(1024L);
-        assertThat(response.getWidth()).isEqualTo(640);
-        assertThat(response.getHeight()).isEqualTo(480);
+        assertThat(response.metadata().getPublicId()).isEqualTo("chat/attachments/xyz");
+        assertThat(response.metadata().getResourceType()).isEqualTo("image");
+        assertThat(response.metadata().getFormat()).isEqualTo("jpg");
+        assertThat(response.metadata().getBytes()).isEqualTo(1024L);
+        assertThat(response.metadata().getWidth()).isEqualTo(640);
+        assertThat(response.metadata().getHeight()).isEqualTo(480);
     }
 }
 

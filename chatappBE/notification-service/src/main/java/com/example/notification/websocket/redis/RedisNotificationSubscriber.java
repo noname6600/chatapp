@@ -1,6 +1,6 @@
 package com.example.notification.websocket.redis;
 
-import com.example.common.websocket.dto.WsOutgoingMessage;
+import com.example.common.websocket.protocol.RealtimeWsEvent;
 import com.example.notification.constants.NotificationRedisChannels;
 import com.example.notification.websocket.WebSocketUserBroadcaster;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -28,7 +28,7 @@ public class RedisNotificationSubscriber implements MessageListener {
 
         try {
             UUID userId = extractUserId(channel);
-            WsOutgoingMessage outgoingMessage = objectMapper.readValue(payload, WsOutgoingMessage.class);
+            RealtimeWsEvent outgoingMessage = objectMapper.readValue(payload, RealtimeWsEvent.class);
             broadcaster.sendToUser(userId, outgoingMessage);
             log.debug("[NOTI-REDIS] consume channel={} userId={} eventType={}", channel, userId, outgoingMessage.getType());
         } catch (Exception ex) {
@@ -37,11 +37,10 @@ public class RedisNotificationSubscriber implements MessageListener {
     }
 
     private UUID extractUserId(String channel) {
-        if (!channel.startsWith(NotificationRedisChannels.NOTIFICATION_USER_PREFIX)) {
-            throw new IllegalArgumentException("Unexpected notification channel: " + channel);
+        if (channel.startsWith(NotificationRedisChannels.NOTIFICATION_USER_PREFIX)) {
+            String userId = channel.substring(NotificationRedisChannels.NOTIFICATION_USER_PREFIX.length());
+            return UUID.fromString(userId);
         }
-
-        String userId = channel.substring(NotificationRedisChannels.NOTIFICATION_USER_PREFIX.length());
-        return UUID.fromString(userId);
+        throw new IllegalArgumentException("Unexpected notification channel: " + channel);
     }
 }

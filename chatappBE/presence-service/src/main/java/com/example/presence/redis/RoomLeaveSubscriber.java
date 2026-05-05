@@ -2,8 +2,7 @@ package com.example.presence.redis;
 
 import com.example.common.integration.presence.PresenceEventType;
 import com.example.common.integration.presence.PresenceRoomLeavePayload;
-import com.example.common.integration.websocket.WsEvent;
-import com.example.common.redis.api.IRedisSubscriber;
+import com.example.common.websocket.protocol.RealtimeWsEvent;
 import com.example.common.redis.message.RedisMessage;
 import com.example.common.websocket.session.IRoomBroadcaster;
 import lombok.RequiredArgsConstructor;
@@ -12,7 +11,7 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class RoomLeaveSubscriber
-        implements IRedisSubscriber<RedisMessage<PresenceRoomLeavePayload>> {
+        implements RedisEventSubscriber<RedisMessage<PresenceRoomLeavePayload>> {
 
     private final IRoomBroadcaster roomBroadcaster;
 
@@ -26,7 +25,7 @@ public class RoomLeaveSubscriber
 
         PresenceRoomLeavePayload payload = message.getPayload();
 
-        WsEvent wsEvent = WsEvent.builder()
+        RealtimeWsEvent wsEvent = RealtimeWsEvent.builder()
                 .type(message.getEventType())
                 .payload(payload)
                 .build();
@@ -34,3 +33,4 @@ public class RoomLeaveSubscriber
         roomBroadcaster.sendToRoom(payload.getRoomId(), wsEvent);
     }
 }
+

@@ -2,64 +2,43 @@ package com.example.presence.service;
 
 import com.example.common.integration.presence.PresenceMode;
 import com.example.common.integration.presence.PresenceStatus;
+import com.example.common.integration.presence.PresenceEventType;
+import com.example.common.integration.presence.PresenceRoomJoinPayload;
+import com.example.common.integration.presence.PresenceRoomLeavePayload;
+import com.example.common.integration.presence.PresenceUserOfflinePayload;
+import com.example.common.integration.presence.PresenceUserOnlinePayload;
 import com.example.common.integration.presence.PresenceUserStatePayload;
-import com.example.common.redis.api.ITimeRedisCacheManager;
-import com.example.common.redis.exception.CreateCacheException;
+import com.example.common.integration.presence.RoomOnlineUsersPayload;
+import com.example.common.realtime.policy.RealtimeFlowId;
 import com.example.presence.dto.PresenceSelfResponse;
-import com.example.presence.redis.PresenceRedisPublisher;
+import com.example.presence.realtime.port.PresenceRealtimePort;
 import com.example.presence.service.model.StoredPresenceState;
+import com.example.presence.state.port.PresenceEphemeralStatePort;
+import com.example.presence.state.port.PresenceTtlCachePort;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
-import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class PresenceService implements IPresenceService {
 
-    private static final String CACHE = "presence";
-    private static final Duration USER_TTL = Duration.ofSeconds(30);
     private static final PresenceMode DEFAULT_MODE = PresenceMode.AUTO;
 
-    private static final String USER_PREFIX = "presence::user:";
-    private static final String USERS_ONLINE_KEY = "presence::users:online";
-    private static final String ROOM_PREFIX = "presence::room:";
-    private static final String USER_ROOMS_PREFIX = "presence::user:rooms:";
-
-    private final ITimeRedisCacheManager cacheManager;
-    private final PresenceRedisPublisher redisPublisher;
-    private final StringRedisTemplate redis;
-
-    private String userKey(UUID userId) {
-        return USER_PREFIX + userId;
-    }
-
-    private String roomKey(UUID roomId) {
-        return ROOM_PREFIX + roomId;
-    }
-
-    private String userRoomsKey(UUID userId) {
-        return USER_ROOMS_PREFIX + userId;
-    }
+    private final PresenceTtlCachePort presenceTtlCachePort;
+    private final PresenceEphemeralStatePort presenceEphemeralStatePort;
+    private final PresenceRealtimePort presenceRealtimePort;
 
     private StoredPresenceState getStoredPresenceState(UUID userId) {
-        try {
-            return cacheManager.get(CACHE, userKey(userId), StoredPresenceState.class);
-        } catch (CreateCacheException e) {
-            return null;
-        }
+        return presenceTtlCachePort.get(userId);
     }
 
     private void saveStoredPresenceState(UUID userId, StoredPresenceState state) {
-        try {
-            cacheManager.put(CACHE, userKey(userId), state, USER_TTL);
-        } catch (CreateCacheException ignored) {}
+        presenceTtlCachePort.put(userId, state);
     }
 
     private StoredPresenceState defaultState() {
@@ -102,10 +81,17 @@ public class PresenceService implements IPresenceService {
 
         saveStoredPresenceState(userId, nextState);
 
-        redis.opsForSet().add(USERS_ONLINE_KEY, userId.toString());
+        presenceEphemeralStatePort.addOnlineUser(userId);
 
         if (!wasConnected) {
-            redisPublisher.online(userId, effectiveStatusOf(nextState));
+            presenceRealtimePort.publishUserEvent(
+                    PresenceEventType.USER_ONLINE.value(),
+                    PresenceUserOnlinePayload.builder()
+                            .userId(userId)
+                            .roomId(null)
+                            .status(effectiveStatusOf(nextState))
+                            .build()
+            );
         }
     }
 
@@ -118,30 +104,47 @@ public class PresenceService implements IPresenceService {
                 .build();
 
         saveStoredPresenceState(userId, nextState);
-        redis.opsForSet().add(USERS_ONLINE_KEY, userId.toString());
+    presenceEphemeralStatePort.addOnlineUser(userId);
 
         PresenceStatus nextStatus = effectiveStatusOf(nextState);
         if (nextStatus != previousStatus) {
-            redisPublisher.statusChanged(userId, nextStatus);
+            presenceRealtimePort.publishUserEvent(
+                    PresenceEventType.USER_STATUS_CHANGED.value(),
+                    PresenceUserStatePayload.builder()
+                            .userId(userId)
+                            .status(nextStatus)
+                            .build()
+            );
         }
     }
 
     public void offline(UUID userId) {
-
-        try {
-            cacheManager.evict(CACHE, userKey(userId));
-        } catch (Exception ignored) {}
+        presenceTtlCachePort.evict(userId);
 
         cleanupUserEverywhere(userId);
 
-        redisPublisher.offline(userId);
+        presenceRealtimePort.publishUserEvent(
+            PresenceEventType.USER_OFFLINE.value(),
+            PresenceUserOfflinePayload.builder()
+                .userId(userId)
+                .roomId(null)
+                .status(PresenceStatus.OFFLINE)
+                .build()
+        );
     }
 
     public void handleUserOfflineByTTL(UUID userId) {
 
         cleanupUserEverywhere(userId);
 
-        redisPublisher.offline(userId);
+        presenceRealtimePort.publishUserEvent(
+            PresenceEventType.USER_OFFLINE.value(),
+            PresenceUserOfflinePayload.builder()
+                .userId(userId)
+                .roomId(null)
+                .status(PresenceStatus.OFFLINE)
+                .build()
+        );
     }
 
     // ================= ROOM MEMBERSHIP =================
@@ -150,54 +153,44 @@ public class PresenceService implements IPresenceService {
 
         if (getStoredPresenceState(userId) == null) return;
 
-        String userIdStr = userId.toString();
+        presenceEphemeralStatePort.addUserToRoom(roomId, userId);
 
-        redis.opsForSet().add(roomKey(roomId), userIdStr);
-        redis.opsForSet().add(userRoomsKey(userId), roomId.toString());
-
-        redisPublisher.roomJoin(userId, roomId);
+        presenceRealtimePort.publishRoomEvent(
+            roomId,
+            PresenceEventType.ROOM_JOIN.value(),
+            PresenceRoomJoinPayload.builder()
+                .userId(userId)
+                .roomId(roomId)
+                .build()
+            ,
+            RealtimeFlowId.PRESENCE_ROOM_ACTIVITY
+        );
     }
 
     public void leaveRoom(UUID roomId, UUID userId) {
+        presenceEphemeralStatePort.removeUserFromRoom(roomId, userId);
 
-        String userIdStr = userId.toString();
-
-        redis.opsForSet().remove(roomKey(roomId), userIdStr);
-        redis.opsForSet().remove(userRoomsKey(userId), roomId.toString());
-
-        redisPublisher.roomLeave(userId, roomId);
+        presenceRealtimePort.publishRoomEvent(
+            roomId,
+            PresenceEventType.ROOM_LEAVE.value(),
+            PresenceRoomLeavePayload.builder()
+                .userId(userId)
+                .roomId(roomId)
+                .build()
+            ,
+            RealtimeFlowId.PRESENCE_ROOM_ACTIVITY
+        );
     }
 
     private void cleanupUserEverywhere(UUID userId) {
+        presenceEphemeralStatePort.removeOnlineUser(userId);
 
-        String userIdStr = userId.toString();
-
-        redis.opsForSet().remove(USERS_ONLINE_KEY, userIdStr);
-
-        Set<String> rooms = redis.opsForSet().members(userRoomsKey(userId));
-
-        if (rooms != null) {
-            for (String roomId : rooms) {
-                redis.opsForSet().remove(roomKey(UUID.fromString(roomId)), userIdStr);
-            }
+        Set<UUID> rooms = presenceEphemeralStatePort.getUserRooms(userId);
+        for (UUID roomId : rooms) {
+            presenceEphemeralStatePort.removeUserFromRoom(roomId, userId);
         }
 
-        redis.delete(userRoomsKey(userId));
-    }
-
-    // ================= QUERY =================
-
-    private Set<UUID> getUsersFromSet(String key) {
-
-        Set<String> values = redis.opsForSet().members(key);
-
-        if (values == null || values.isEmpty()) {
-            return Set.of();
-        }
-
-        return values.stream()
-                .map(UUID::fromString)
-                .collect(Collectors.toSet());
+        presenceEphemeralStatePort.clearUserRooms(userId);
     }
 
     public void updatePresence(UUID userId, PresenceMode mode, PresenceStatus status) {
@@ -211,11 +204,19 @@ public class PresenceService implements IPresenceService {
                 .build();
 
         saveStoredPresenceState(userId, nextState);
-        redis.opsForSet().add(USERS_ONLINE_KEY, userId.toString());
+    presenceEphemeralStatePort.addOnlineUser(userId);
 
         PresenceStatus nextStatus = effectiveStatusOf(nextState);
         if (nextStatus != previousStatus) {
-            redisPublisher.statusChanged(userId, nextStatus);
+            presenceRealtimePort.publishUserEvent(
+                    PresenceEventType.USER_STATUS_CHANGED.value(),
+                    PresenceUserStatePayload.builder()
+                            .userId(userId)
+                            .status(nextStatus)
+                            .build()
+                    ,
+                    RealtimeFlowId.PRESENCE_USER_STATUS_CHANGED
+            );
         }
     }
 
@@ -231,14 +232,14 @@ public class PresenceService implements IPresenceService {
     }
 
     public List<PresenceUserStatePayload> getAllPresenceUsers() {
-        return getUsersFromSet(USERS_ONLINE_KEY).stream()
+        return presenceEphemeralStatePort.getOnlineUsers().stream()
                 .map(this::toUserState)
                 .sorted(Comparator.comparing(payload -> payload.getUserId().toString()))
                 .toList();
     }
 
     public List<PresenceUserStatePayload> getRoomPresence(UUID roomId) {
-        return getUsersFromSet(roomKey(roomId)).stream()
+        return presenceEphemeralStatePort.getRoomUsers(roomId).stream()
                 .map(this::toUserState)
                 .sorted(Comparator.comparing(payload -> payload.getUserId().toString()))
                 .toList();
@@ -247,7 +248,15 @@ public class PresenceService implements IPresenceService {
     // ================= NOTIFY =================
 
     public void notifyRoomOnlineUsers(UUID roomId) {
-
-        redisPublisher.roomOnlineUsers(roomId, getRoomPresence(roomId));
+        presenceRealtimePort.publishRoomEvent(
+                roomId,
+                PresenceEventType.ROOM_ONLINE_USERS.value(),
+                RoomOnlineUsersPayload.builder()
+                        .roomId(roomId)
+                        .users(getRoomPresence(roomId))
+                        .build()
+            ,
+            RealtimeFlowId.PRESENCE_ROOM_ACTIVITY
+        );
     }
 }

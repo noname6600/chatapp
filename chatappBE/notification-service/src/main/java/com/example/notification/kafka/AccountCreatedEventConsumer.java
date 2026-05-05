@@ -1,6 +1,6 @@
 package com.example.notification.kafka;
 
-import com.example.common.integration.kafka.KafkaTopics;
+import com.example.common.kafka.topic.KafkaTopics;
 import com.example.common.integration.kafka.event.AccountCreatedEvent;
 import com.example.notification.service.impl.NotificationDomainService;
 import lombok.RequiredArgsConstructor;

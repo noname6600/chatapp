@@ -1,6 +1,6 @@
 package com.example.user.kafka;
 
-import com.example.common.integration.kafka.KafkaTopics;
+import com.example.common.kafka.topic.KafkaTopics;
 import com.example.common.integration.kafka.event.AccountCreatedEvent;
 import com.example.user.entity.UserProfile;
 import com.example.user.repository.UserProfileRepository;

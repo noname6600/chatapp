@@ -258,6 +258,17 @@ Rollout steps
 Rollback steps
 1) Revert frontend first if users report unexpected login bootstrap errors.
 2) Revert auth-service/common-web together if backend clients are not yet compatible with `INCOMPLETE_ACCOUNT` code.
+
+Realtime Eventing Contract Notes (Kafka + Redis)
+- Kafka and Redis pub/sub routes are both treated as explicit shared contracts.
+- Shared route constants:
+  - Kafka topics: common-kafka `KafkaTopics`
+  - Redis channels: common-events `RealtimeRedisChannels`
+- Shared version metadata: common-events `RealtimeContractVersions`.
+- Transport policy:
+  - Use Kafka for durable/replay-sensitive cross-service propagation.
+  - Use Redis pub/sub for ephemeral low-latency fan-out (websocket/presence style updates).
+- During migration, service-local channel constants may remain as compatibility wrappers, but they MUST delegate to shared constants.
 3) After rollback, confirm:
   - auth login/register endpoints return previous behavior
   - frontend login remains functional with generic auth error messages

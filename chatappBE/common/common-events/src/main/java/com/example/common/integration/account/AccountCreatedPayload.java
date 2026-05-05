@@ -1,12 +1,14 @@
 package com.example.common.integration.account;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
 
 import java.util.UUID;
 
 @Getter
+@JsonIgnoreProperties(ignoreUnknown = true)
 public final class AccountCreatedPayload {
 
     private final UUID accountId;

@@ -1,12 +1,16 @@
 package com.example.presence.websocket.handler;
 
 
-import com.example.common.integration.websocket.WsEvent;
+import com.example.common.websocket.protocol.RealtimeWsEvent;
 import com.example.common.websocket.session.IUserBroadcaster;
 import com.example.common.integration.presence.GlobalOnlineUsersPayload;
+import com.example.common.integration.presence.PresenceEventType;
+import com.example.common.integration.presence.PresenceStopTypingPayload;
+import com.example.common.integration.presence.PresenceTypingPayload;
 import com.example.common.integration.presence.RoomOnlineUsersPayload;
+import com.example.common.realtime.policy.RealtimeFlowId;
 import com.example.presence.dto.PresenceWsCommand;
-import com.example.presence.redis.PresenceRedisPublisher;
+import com.example.presence.realtime.port.PresenceRealtimePort;
 import com.example.presence.service.PresenceService;
 import com.example.presence.websocket.session.PresenceSessionRegistry;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -29,7 +33,7 @@ public class PresenceWebSocketHandler extends TextWebSocketHandler {
 
     private final PresenceSessionRegistry sessionRegistry;
     private final PresenceService presenceService;
-    private final PresenceRedisPublisher redisPublisher;
+    private final PresenceRealtimePort presenceRealtimePort;
     private final IUserBroadcaster userBroadcaster;
     private final ObjectMapper objectMapper;
 
@@ -45,7 +49,7 @@ public class PresenceWebSocketHandler extends TextWebSocketHandler {
 
         userBroadcaster.sendToUser(
                 userId,
-                WsEvent.builder()
+                RealtimeWsEvent.builder()
                         .type("presence.global.snapshot")
                 .payload(
                     GlobalOnlineUsersPayload.builder()
@@ -81,7 +85,16 @@ public class PresenceWebSocketHandler extends TextWebSocketHandler {
                     UUID roomId = cmd.getRoomId();
 
                     if (sessionRegistry.isUserInRoom(userId, roomId)) {
-                        redisPublisher.typing(userId, roomId);
+                        presenceRealtimePort.publishRoomEvent(
+                                roomId,
+                                PresenceEventType.ROOM_TYPING.value(),
+                                PresenceTypingPayload.builder()
+                                        .userId(userId)
+                                        .roomId(roomId)
+                                        .build()
+                            ,
+                            RealtimeFlowId.PRESENCE_USER_TYPING
+                        );
                     }
                 }
 
@@ -90,7 +103,16 @@ public class PresenceWebSocketHandler extends TextWebSocketHandler {
                     UUID roomId = cmd.getRoomId();
 
                     if (sessionRegistry.isUserInRoom(userId, roomId)) {
-                        redisPublisher.stopTyping(userId, roomId);
+                        presenceRealtimePort.publishRoomEvent(
+                                roomId,
+                                PresenceEventType.ROOM_STOP_TYPING.value(),
+                                PresenceStopTypingPayload.builder()
+                                        .userId(userId)
+                                        .roomId(roomId)
+                                        .build()
+                            ,
+                            RealtimeFlowId.PRESENCE_USER_STOP_TYPING
+                        );
                     }
                 }
             }
@@ -114,7 +136,7 @@ public class PresenceWebSocketHandler extends TextWebSocketHandler {
 
         userBroadcaster.sendToUser(
                 userId,
-                WsEvent.builder()
+                RealtimeWsEvent.builder()
                         .type("presence.room.snapshot")
                 .payload(
                     RoomOnlineUsersPayload.builder()

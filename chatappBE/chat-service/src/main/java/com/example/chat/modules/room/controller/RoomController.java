@@ -39,7 +39,7 @@ public class RoomController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody CreateRoomRequest request
     ) {
-        UUID userId = JwtHelper.extractUserId(jwt);
+        UUID userId = JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized"));
         return ResponseEntity.ok(ApiResponse.success(
                 roomService.createRoom(userId, request.getName())
         ));
@@ -50,7 +50,7 @@ public class RoomController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @RequestParam UUID userId
     ) {
-        UUID me = JwtHelper.extractUserId(jwt);
+        UUID me = JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized"));
         return ResponseEntity.ok(ApiResponse.success(
                 privateRoomService.getOrCreatePrivateRoom(me, userId)
         ));
@@ -61,7 +61,7 @@ public class RoomController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @RequestParam String code
     ) {
-                roomService.joinByCode(JwtHelper.extractUserId(jwt), code);
+                roomService.joinByCode(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), code);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
@@ -70,7 +70,7 @@ public class RoomController extends BaseController {
                         @AuthenticationPrincipal Jwt jwt,
                         @PathVariable UUID roomId
         ) {
-                roomService.joinByInviteRoomId(JwtHelper.extractUserId(jwt), roomId);
+                roomService.joinByInviteRoomId(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), roomId);
                 return ResponseEntity.ok(ApiResponse.success(null));
         }
 
@@ -80,7 +80,7 @@ public class RoomController extends BaseController {
                         @PathVariable UUID roomId,
                         @RequestParam(required = false) UUID userId
         ) {
-                roomService.joinByInviteRoomId(JwtHelper.extractUserId(jwt), roomId);
+                roomService.joinByInviteRoomId(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), roomId);
                 return ResponseEntity.ok(ApiResponse.success(null));
         }
 
@@ -99,7 +99,7 @@ public class RoomController extends BaseController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         return ResponseEntity.ok(ApiResponse.success(
-                roomQueryService.roomsOfUser(JwtHelper.extractUserId(jwt))
+                roomQueryService.roomsOfUser(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")))
         ));
     }
 
@@ -110,7 +110,7 @@ public class RoomController extends BaseController {
             @Valid @RequestBody UpdateRoomRequest request
     ) {
         return ResponseEntity.ok(ApiResponse.success(
-                roomService.renameRoom(roomId, JwtHelper.extractUserId(jwt), request.getName())
+                roomService.renameRoom(roomId, JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), request.getName())
         ));
     }
 
@@ -158,7 +158,7 @@ public class RoomController extends BaseController {
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID roomId
     ) {
-                roomService.leaveRoom(roomId, JwtHelper.extractUserId(jwt));
+                roomService.leaveRoom(roomId, JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")));
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
@@ -168,7 +168,7 @@ public class RoomController extends BaseController {
             @PathVariable UUID roomId,
             @PathVariable UUID userId
     ) {
-                roomService.removeMember(roomId, JwtHelper.extractUserId(jwt), userId);
+                roomService.removeMember(roomId, JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), userId);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
@@ -178,7 +178,7 @@ public class RoomController extends BaseController {
                         @PathVariable UUID roomId,
                         @PathVariable UUID userId
         ) {
-                roomService.removeMember(roomId, JwtHelper.extractUserId(jwt), userId);
+                roomService.removeMember(roomId, JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), userId);
                 return ResponseEntity.ok(ApiResponse.success(null));
         }
 
@@ -188,7 +188,7 @@ public class RoomController extends BaseController {
                         @PathVariable UUID roomId,
                         @PathVariable UUID userId
         ) {
-                roomService.banMember(roomId, JwtHelper.extractUserId(jwt), userId);
+                roomService.banMember(roomId, JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), userId);
                 return ResponseEntity.ok(ApiResponse.success(null));
         }
 
@@ -198,7 +198,7 @@ public class RoomController extends BaseController {
                         @PathVariable UUID roomId,
                         @PathVariable UUID userId
         ) {
-                roomService.unbanMember(roomId, JwtHelper.extractUserId(jwt), userId);
+                roomService.unbanMember(roomId, JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), userId);
                 return ResponseEntity.ok(ApiResponse.success(null));
         }
 
@@ -208,7 +208,7 @@ public class RoomController extends BaseController {
                         @PathVariable UUID roomId,
                         @Valid @RequestBody BulkMemberModerationRequest request
         ) {
-                roomService.bulkBanMembers(roomId, JwtHelper.extractUserId(jwt), request.getUserIds());
+                roomService.bulkBanMembers(roomId, JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), request.getUserIds());
                 return ResponseEntity.ok(ApiResponse.success(null));
         }
 
@@ -218,7 +218,7 @@ public class RoomController extends BaseController {
                         @PathVariable UUID roomId,
                         @PathVariable UUID userId
         ) {
-                roomService.transferOwnership(roomId, JwtHelper.extractUserId(jwt), userId);
+                roomService.transferOwnership(roomId, JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), userId);
                 return ResponseEntity.ok(ApiResponse.success(null));
         }
 
@@ -238,7 +238,7 @@ public class RoomController extends BaseController {
                         @AuthenticationPrincipal Jwt jwt,
                         @PathVariable UUID roomId
         ) {
-                roomService.markRoomRead(roomId, JwtHelper.extractUserId(jwt));
+                roomService.markRoomRead(roomId, JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")));
                 return ResponseEntity.ok(ApiResponse.success(null));
         }
 
@@ -248,7 +248,7 @@ public class RoomController extends BaseController {
                         @PathVariable UUID roomId,
                         @RequestParam UUID messageId
         ) {
-                roomPinService.pinMessage(roomId, JwtHelper.extractUserId(jwt), messageId);
+                roomPinService.pinMessage(roomId, JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), messageId);
                 return ResponseEntity.ok(ApiResponse.success(null));
         }
 
@@ -258,7 +258,7 @@ public class RoomController extends BaseController {
                         @PathVariable UUID roomId,
                         @PathVariable UUID messageId
         ) {
-                roomPinService.unpinMessage(roomId, JwtHelper.extractUserId(jwt), messageId);
+                roomPinService.unpinMessage(roomId, JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), messageId);
                 return ResponseEntity.ok(ApiResponse.success(null));
         }
 
@@ -267,7 +267,7 @@ public class RoomController extends BaseController {
                         @AuthenticationPrincipal Jwt jwt,
                         @PathVariable UUID roomId
         ) {
-                List<MessageResponse> pinnedMessages = roomPinService.getPinnedMessages(roomId, JwtHelper.extractUserId(jwt));
+                List<MessageResponse> pinnedMessages = roomPinService.getPinnedMessages(roomId, JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")));
                 return ResponseEntity.ok(ApiResponse.success(pinnedMessages));
         }
 
@@ -282,7 +282,7 @@ public class RoomController extends BaseController {
     ) {
         validate(file);
         return ResponseEntity.ok(ApiResponse.success(
-                roomService.uploadAvatar(roomId, JwtHelper.extractUserId(jwt), file)
+                roomService.uploadAvatar(roomId, JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")), file)
         ));
     }
 

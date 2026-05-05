@@ -1,6 +1,6 @@
 package com.example.notification.websocket;
 
-import com.example.common.websocket.dto.WsOutgoingMessage;
+import com.example.common.websocket.protocol.RealtimeWsEvent;
 import com.example.notification.dto.NotificationResponse;
 import com.example.notification.websocket.redis.RedisNotificationPublisher;
 import org.junit.jupiter.api.Test;
@@ -35,11 +35,11 @@ class NotificationWebSocketPublisherTest {
 
         publisher.publishNotificationNew(userId, payload);
 
-        ArgumentCaptor<WsOutgoingMessage> messageCaptor = ArgumentCaptor.forClass(WsOutgoingMessage.class);
+        ArgumentCaptor<RealtimeWsEvent> messageCaptor = ArgumentCaptor.forClass(RealtimeWsEvent.class);
         verify(redisNotificationPublisher).publish(eq(userId), messageCaptor.capture());
 
-        WsOutgoingMessage sent = messageCaptor.getValue();
-        assertThat(sent.getType()).isEqualTo("NOTIFICATION_NEW");
+        RealtimeWsEvent sent = messageCaptor.getValue();
+        assertThat(sent.getType()).isEqualTo("notification.new");
         assertThat(sent.getPayload()).isEqualTo(payload);
     }
 }

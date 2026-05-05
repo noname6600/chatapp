@@ -1,8 +1,7 @@
 package com.example.auth.kafka;
 
 import com.example.common.integration.account.AccountCreatedPayload;
-import com.example.common.integration.kafka.KafkaTopics;
-import com.example.common.kafka.api.KafkaEventPublisher;
+import com.example.common.kafka.topic.KafkaTopics;
 import com.example.common.integration.kafka.event.AccountCreatedEvent;
 import com.example.auth.entity.Account;
 import lombok.RequiredArgsConstructor;
@@ -15,14 +14,14 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class AccountCreatedEventProducer {
 
-    private final KafkaEventPublisher kafkaEventPublisher;
+    private final KafkaEventProducer kafkaEventProducer;
 
     @Value("${spring.application.name}")
     private String sourceService;
 
     public boolean publish(Account account) {
         try {
-            kafkaEventPublisher.publish(
+            kafkaEventProducer.publish(
                 KafkaTopics.ACCOUNT_CREATED,
                 account.getId().toString(),
                 AccountCreatedEvent.from(

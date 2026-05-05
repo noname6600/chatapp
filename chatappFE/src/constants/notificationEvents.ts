@@ -1,6 +1,6 @@
 export const NotificationEventType = {
-  NOTIFICATION_NEW: "NOTIFICATION_NEW",
-  UNREAD_COUNT_UPDATE: "UNREAD_COUNT_UPDATE",
+  NOTIFICATION_NEW: "notification.new",
+  UNREAD_COUNT_UPDATE: "notification.unread.count.updated",
 } as const
 
 export type NotificationEventTypeValue =

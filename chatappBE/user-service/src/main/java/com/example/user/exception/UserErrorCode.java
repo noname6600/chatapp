@@ -1,19 +1,18 @@
 package com.example.user.exception;
 
 import com.example.common.core.exception.IErrorCode;
-import org.springframework.http.HttpStatus;
 
 public enum UserErrorCode implements IErrorCode {
-    ATTACHMENT_TOO_LARGE(HttpStatus.BAD_REQUEST);
+    ATTACHMENT_TOO_LARGE(400);
 
-    private final HttpStatus status;
+    private final int status;
 
-    UserErrorCode(HttpStatus status) {
+    UserErrorCode(int status) {
         this.status = status;
     }
 
     @Override
-    public HttpStatus getStatus() {
+    public int httpStatus() {
         return status;
     }
 }

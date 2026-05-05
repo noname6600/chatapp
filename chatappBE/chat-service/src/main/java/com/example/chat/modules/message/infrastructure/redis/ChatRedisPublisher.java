@@ -4,7 +4,7 @@ package com.example.chat.modules.message.infrastructure.redis;
 import com.example.chat.constants.ChatRedisChannels;
 import com.example.chat.modules.room.dto.RoomMessagePinEventPayload;
 import com.example.common.integration.chat.*;
-import com.example.common.redis.api.IRedisPublisher;
+import com.example.common.redis.publisher.RedisEventPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -17,7 +17,7 @@ import java.util.UUID;
 @Slf4j
 public class ChatRedisPublisher {
 
-    private final IRedisPublisher redisPublisher;
+    private final RedisEventPublisher redisPublisher;
     private final RedisMessageFactory redisMessageFactory;
 
     public void publishMessageSent(ChatMessagePayload payload) {
@@ -29,6 +29,17 @@ public class ChatRedisPublisher {
         );
     }
 
+        public void publishMessageSent(ChatMessagePayload payload, String eventId, String correlationId) {
+
+                publish(
+                                payload.getRoomId(),
+                                ChatEventType.MESSAGE_SENT.value(),
+                                payload,
+                                eventId,
+                                correlationId
+                );
+        }
+
     public void publishMessageEdited(MessageUpdatedPayload payload) {
 
         publish(
@@ -38,6 +49,17 @@ public class ChatRedisPublisher {
         );
     }
 
+        public void publishMessageEdited(MessageUpdatedPayload payload, String eventId, String correlationId) {
+
+                publish(
+                                payload.getRoomId(),
+                                ChatEventType.MESSAGE_EDITED.value(),
+                                payload,
+                                eventId,
+                                correlationId
+                );
+        }
+
     public void publishMessageDeleted(MessageDeletedPayload payload) {
 
         publish(
@@ -46,6 +68,17 @@ public class ChatRedisPublisher {
                 payload
         );
     }
+
+        public void publishMessageDeleted(MessageDeletedPayload payload, String eventId, String correlationId) {
+
+                publish(
+                                payload.getRoomId(),
+                                ChatEventType.MESSAGE_DELETED.value(),
+                                payload,
+                                eventId,
+                                correlationId
+                );
+        }
 
     public void publishReactionUpdated(
             ReactionPayload payload
@@ -57,6 +90,17 @@ public class ChatRedisPublisher {
                 payload
         );
     }
+
+        public void publishReactionUpdated(ReactionPayload payload, String eventId, String correlationId) {
+
+                publish(
+                                payload.getRoomId(),
+                                ChatEventType.REACTION_UPDATED.value(),
+                                payload,
+                                eventId,
+                                correlationId
+                );
+        }
 
     public void publishMessagePinned(
             RoomMessagePinEventPayload payload
@@ -99,15 +143,26 @@ public class ChatRedisPublisher {
             String eventType,
             Object payload
     ) {
+        publish(roomId, eventType, payload, null, null);
+    }
 
-        String channel =
-                ChatRedisChannels.CHAT_ROOM + roomId;
+    private void publish(
+            UUID roomId,
+            String eventType,
+            Object payload,
+            String eventId,
+            String correlationId
+    ) {
+
+        String channel = ChatRedisChannels.roomChannel(roomId);
 
         redisPublisher.publish(
                 channel,
                 redisMessageFactory.create(
                         eventType,
-                        payload
+                        payload,
+                        eventId,
+                        correlationId
                 )
         );
     }

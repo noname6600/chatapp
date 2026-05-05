@@ -52,6 +52,9 @@ class MessageCreatedEventConsumerTest {
     @Mock
     private NotificationCommandService notificationCommandService;
 
+        @Mock
+        private NotificationEventDedupeGuard dedupeGuard;
+
     @InjectMocks
     private MessageCreatedEventConsumer consumer;
 
@@ -70,10 +73,11 @@ class MessageCreatedEventConsumerTest {
         recipientId1 = UUID.randomUUID();
         recipientId2 = UUID.randomUUID();
         createdAt = Instant.parse("2026-04-17T10:15:30Z");
+                when(dedupeGuard.isDuplicate(any())).thenReturn(false);
     }
 
     @Test
-        void createsMentionInGroupRoomAlsoCreatesGenericMessageForOtherRecipients() {
+        void createsMentionInGroupRoomOnlyForMentionedRecipient_whenMessageSuppressionEnabled() {
         ChatMessagePayload payload = ChatMessagePayload.builder()
                 .messageId(messageId)
                 .roomId(roomId)
@@ -100,13 +104,12 @@ class MessageCreatedEventConsumerTest {
         verify(notificationCommandService).createNotification(
                 eq(recipientId1), eq(NotificationType.MENTION), eq(messageId), eq(roomId),
                 eq(senderId), eq(null), eq(null), eq("Hello @one"), eq(createdAt));
-        verify(notificationCommandService).createNotification(
-                eq(recipientId2), eq(NotificationType.MESSAGE), eq(messageId), eq(roomId),
-                eq(senderId), eq(null), eq(null), eq("Hello @one"), eq(createdAt));
+        verify(notificationCommandService, never()).createNotification(
+                eq(recipientId2), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
-        void createsMentionNotificationForMentionedRecipientInDirectRoomAndMessageForOther() {
+    void createsMentionNotificationForMentionedRecipientInDirectRoom_only() {
         ChatMessagePayload payload = ChatMessagePayload.builder()
                 .messageId(messageId)
                 .roomId(roomId)
@@ -133,13 +136,12 @@ class MessageCreatedEventConsumerTest {
         verify(notificationCommandService).createNotification(
                 eq(recipientId1), eq(NotificationType.MENTION), eq(messageId), eq(roomId),
                 eq(senderId), eq(null), eq(null), eq("Hello @one"), eq(createdAt));
-        verify(notificationCommandService).createNotification(
-                eq(recipientId2), eq(NotificationType.MESSAGE), eq(messageId), eq(roomId),
-                eq(senderId), eq(null), eq(null), eq("Hello @one"), eq(createdAt));
+        verify(notificationCommandService, never()).createNotification(
+                eq(recipientId2), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
-        void createsGenericMessageForAllGroupRoomRecipients() {
+    void suppressesGenericMessageForAllGroupRoomRecipients() {
         ChatMessagePayload payload = ChatMessagePayload.builder()
                 .messageId(messageId)
                 .roomId(roomId)
@@ -159,16 +161,12 @@ class MessageCreatedEventConsumerTest {
 
         consumer.listen(ChatMessageSentEvent.from("chat-service", payload));
 
-        verify(notificationCommandService).createNotification(
-                eq(recipientId1), eq(NotificationType.MESSAGE), eq(messageId), eq(roomId),
-                eq(senderId), eq(null), eq(null), eq("General group update"), eq(createdAt));
-        verify(notificationCommandService).createNotification(
-                eq(recipientId2), eq(NotificationType.MESSAGE), eq(messageId), eq(roomId),
-                eq(senderId), eq(null), eq(null), eq("General group update"), eq(createdAt));
+        verify(notificationCommandService, never()).createNotification(
+                any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
-        void createsGenericMessageNotificationInDirectRoom() {
+    void suppressesGenericMessageNotificationInDirectRoom() {
         ChatMessagePayload payload = ChatMessagePayload.builder()
                 .messageId(messageId)
                 .roomId(roomId)
@@ -188,9 +186,8 @@ class MessageCreatedEventConsumerTest {
 
         consumer.listen(ChatMessageSentEvent.from("chat-service", payload));
 
-        verify(notificationCommandService).createNotification(
-                eq(recipientId1), eq(NotificationType.MESSAGE), eq(messageId), eq(roomId),
-                eq(senderId), eq(null), eq(null), eq("Hey there"), eq(createdAt));
+        verify(notificationCommandService, never()).createNotification(
+                any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -319,10 +316,8 @@ class MessageCreatedEventConsumerTest {
         verify(notificationCommandService).createNotification(
                 eq(recipientId1), eq(NotificationType.REPLY), eq(messageId), eq(roomId),
                 eq(senderId), eq("Bob"), eq("Bob"), eq("Replying"), eq(createdAt));
-
-        verify(notificationCommandService).createNotification(
-                eq(recipientId2), eq(NotificationType.MESSAGE), eq(messageId), eq(roomId),
-                eq(senderId), eq("Bob"), eq("Bob"), eq("Replying"), eq(createdAt));
+        verify(notificationCommandService, never()).createNotification(
+                eq(recipientId2), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
