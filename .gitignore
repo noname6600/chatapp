@@ -14,7 +14,7 @@ build/
 *.iml
 *.ipr
 *.iws
-out/
+/out/
 .apt_generated
 .classpath
 .factorypath
