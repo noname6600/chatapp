@@ -3,7 +3,8 @@
 .gradle
 **/.gradle
 **/build
-**/out
+**/out/
+!**/adapter/out/
 **/.idea
 **/*.iml
 node_modules
