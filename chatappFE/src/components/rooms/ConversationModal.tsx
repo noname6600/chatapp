@@ -121,7 +121,7 @@ export default function ConversationModal({
                 }}
                 className="flex-1 px-4 py-2 bg-green-500 text-white rounded font-medium hover:bg-green-600 transition text-sm"
               >
-                Join Room
+                Join Group
               </button>
             </div>
 

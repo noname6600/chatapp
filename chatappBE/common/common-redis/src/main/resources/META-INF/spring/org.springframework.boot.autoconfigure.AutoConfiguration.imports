@@ -1,1 +1,1 @@
-com.example.common.redis.config.RedisAutoConfiguration
+com.chatweb.common.redis.config.RedisAutoConfiguration

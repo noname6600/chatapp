@@ -2,8 +2,16 @@ import type { ChatMessage } from "../types/message";
 
 const TEMP_MESSAGE_PREFIX = "temp-";
 
-const parseTimestampMs = (value: string | null | undefined): number => {
-  if (!value) return Number.MIN_SAFE_INTEGER;
+const parseTimestampMs = (value: number | string | null | undefined): number => {
+  if (value == null) return Number.MIN_SAFE_INTEGER;
+  if (typeof value === "number") {
+    const ms = value < 1_000_000_000_000 ? value * 1000 : value;
+    return Number.isFinite(ms) ? ms : Number.MIN_SAFE_INTEGER;
+  }
+  const asNumber = Number(value);
+  if (!Number.isNaN(asNumber) && Number.isFinite(asNumber)) {
+    return asNumber < 1_000_000_000_000 ? asNumber * 1000 : asNumber;
+  }
   const ts = new Date(value).getTime();
   return Number.isFinite(ts) ? ts : Number.MIN_SAFE_INTEGER;
 };

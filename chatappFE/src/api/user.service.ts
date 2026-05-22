@@ -115,6 +115,7 @@ export const uploadAvatarApi = async (file: File): Promise<string> => {
     const uploaded = await uploadToCloudinarySigned(file, prepared)
     const confirmed = await confirmUploadApi({
       purpose: "user-avatar",
+      prepareToken: prepared.prepareToken,
       publicId: uploaded.public_id,
       secureUrl: uploaded.secure_url,
       resourceType: uploaded.resource_type,

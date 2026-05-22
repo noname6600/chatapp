@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { connectPresenceSocket, disconnectPresenceSocket } from "../websocket/presence.socket";
+import { connectRealtimeSocket } from "../websocket/realtime.socket";
 import { usePresenceStore } from "../store/presence.store";
 
 export const usePresenceSocket = () => {
@@ -9,10 +9,9 @@ export const usePresenceSocket = () => {
     const token = localStorage.getItem("access_token");
     if (!token) return;
 
-    connectPresenceSocket();
+    connectRealtimeSocket();
 
     return () => {
-      disconnectPresenceSocket();
       clearAllOnline();
     };
   }, [clearAllOnline]);

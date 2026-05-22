@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest"
 import { uploadAvatarApi } from "./user.service"
+import { uploadRoomAvatarApi } from "./room.service"
 
 vi.mock("./upload.service", () => ({
   prepareUploadApi: vi.fn(async () => ({
@@ -48,6 +49,19 @@ vi.mock("./user.api", () => ({
   },
 }))
 
+vi.mock("./chat.api", () => ({
+  chatApi: {
+    post: vi.fn(async () => ({
+      data: {
+        success: true,
+        data: {
+          url: "https://res.cloudinary.com/demo/image/upload/v1/room_avatars/id-1.png",
+        },
+      },
+    })),
+  },
+}))
+
 describe("uploadAvatarApi", () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -59,5 +73,13 @@ describe("uploadAvatarApi", () => {
     const avatarUrl = await uploadAvatarApi(file)
 
     expect(avatarUrl).toBe("https://res.cloudinary.com/demo/image/upload/v1/user/avatar/id-1.png")
+  })
+
+  it("uses confirmed room-avatar metadata before posting to room-service", async () => {
+    const file = new File(["avatar"], "room-avatar.png", { type: "image/png" })
+
+    const avatarUrl = await uploadRoomAvatarApi("room-1", file)
+
+    expect(avatarUrl).toBe("https://res.cloudinary.com/demo/image/upload/v1/room_avatars/id-1.png")
   })
 })

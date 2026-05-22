@@ -1,5 +1,5 @@
-import { useFriendStore } from "../store/friend.store";
-import { getWsEndpoint } from "../config/ws.config";
+import { useFriendStore } from "../store/friend.store"
+import { onRealtimeEvent, onRealtimeOpen } from "./realtime.socket"
 
 export enum FriendshipEventType {
   FRIEND_REQUEST_RECEIVED = "friendship.request.received",
@@ -14,16 +14,16 @@ export interface FriendshipWsEvent {
   data: Record<string, any>;
 }
 
-const getCurrentUserId = () => localStorage.getItem("my_user_id");
+const getCurrentUserId = () => localStorage.getItem("my_user_id")
 
 const getCounterpartyId = (event: FriendshipWsEvent) => {
-  const currentUserId = getCurrentUserId();
-  if (!currentUserId) return null;
+  const currentUserId = getCurrentUserId()
+  if (!currentUserId) return null
 
   if (event.data.senderId && event.data.recipientId) {
     return event.data.senderId === currentUserId
       ? event.data.recipientId
-      : event.data.senderId;
+      : event.data.senderId
   }
 
   if (event.data.userLow && event.data.userHigh) {
@@ -31,260 +31,122 @@ const getCounterpartyId = (event: FriendshipWsEvent) => {
       ? event.data.userHigh
       : event.data.userHigh === currentUserId
         ? event.data.userLow
-        : null;
+        : null
   }
 
-  return null;
-};
+  return null
+}
 
-// WebSocket connection
-let socket: WebSocket | null = null;
-let reconnectTimeout: number | null = null;
-let manualClose = false;
-let reconnectFailureCount = 0;
+const eventHandlers = new Set<(event: FriendshipWsEvent) => void>()
+const openHandlers = new Set<() => void>()
 
-const eventHandlers = new Set<(event: FriendshipWsEvent) => void>();
-const openHandlers = new Set<() => void>();
+// Route incoming friendship messages from the unified socket
+onRealtimeEvent((msg) => {
+  if (!msg.type.startsWith("friendship.")) return
+  handleFriendshipEvent({ type: msg.type, payload: msg.payload })
+})
 
-const WS_URL = getWsEndpoint("FRIEND");
-const BACKOFF_BASE = 1000;
-const BACKOFF_MAX = 30000;
+onRealtimeOpen(() => {
+  openHandlers.forEach((h) => h())
+})
 
-const calculateBackoffDelay = (failureCount: number): number => {
-  const exponentialDelay = BACKOFF_BASE * Math.pow(2, Math.max(0, failureCount - 1));
-  return Math.min(exponentialDelay, BACKOFF_MAX);
-};
+export const onFriendshipEvent = (handler: (event: FriendshipWsEvent) => void) => {
+  eventHandlers.add(handler)
+  return () => eventHandlers.delete(handler)
+}
 
-/**
- * Connect to friendship WebSocket endpoint
- */
-export const connectFriendshipSocket = () => {
-  if (
-    socket &&
-    (socket.readyState === WebSocket.OPEN ||
-      socket.readyState === WebSocket.CONNECTING)
-  ) {
-    console.log("[friendship-socket] Already connected or connecting");
-    return;
-  }
-
-  const token = localStorage.getItem("access_token");
-  if (!token) {
-    console.error("[friendship-socket] No access token found");
-    return;
-  }
-
-  if (reconnectTimeout != null) {
-    clearTimeout(reconnectTimeout);
-    reconnectTimeout = null;
-  }
-
-  manualClose = false;
-  const wsUrl = `${WS_URL}?token=${token}`;
-  console.log("[friendship-socket] Attempting connection to:", WS_URL, "with token:", token.substring(0, 30) + "...");
-  socket = new WebSocket(wsUrl);
-
-  socket.onopen = () => {
-    reconnectFailureCount = 0;
-    console.log("[friendship-socket] Connected");
-    openHandlers.forEach((handler) => handler());
-  };
-
-  socket.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      console.log("[friendship-socket] Received:", data);
-      handleFriendshipEvent(data);
-    } catch (err) {
-      console.error("[friendship-socket] Parse error:", err);
-    }
-  };
-
-  socket.onclose = () => {
-    if (manualClose) {
-      console.log("[friendship-socket] Disconnected after manual cleanup")
-    } else {
-      console.warn("[friendship-socket] Disconnected unexpectedly", {
-        readyState: socket?.readyState,
-      })
-    }
-    socket = null;
-
-    if (!manualClose && localStorage.getItem("access_token")) {
-      reconnectFailureCount += 1;
-      const reconnectDelay = calculateBackoffDelay(reconnectFailureCount);
-      console.log("[friendship-socket] Reconnecting with backoff...", { reconnectDelay, reconnectFailureCount });
-      reconnectTimeout = window.setTimeout(
-        connectFriendshipSocket,
-        reconnectDelay
-      );
-    } else {
-      console.log("[friendship-socket] Reconnect suppressed (manual close or no token)");
-    }
-  };
-
-  socket.onerror = (err) => {
-    console.error("[friendship-socket] Error:", err);
-    console.error("[friendship-socket] WebSocket state:", socket?.readyState, "(0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED)");
-    console.error("[friendship-socket] Endpoint:", WS_URL);
-    socket?.close();
-  };
-};
-
-/**
- * Disconnect from friendship WebSocket
- */
-export const disconnectFriendshipSocket = () => {
-  manualClose = true;
-  console.log("[friendship-socket] Manual disconnect requested (expected during cleanup)");
-
-  if (reconnectTimeout) {
-    clearTimeout(reconnectTimeout);
-    reconnectTimeout = null;
-  }
-
-  reconnectFailureCount = 0;
-
-  socket?.close();
-  socket = null;
-};
-
-/**
- * Register a handler for friendship WebSocket events
- * Returns unsubscribe function
- */
-export const onFriendshipEvent = (
-  handler: (event: FriendshipWsEvent) => void
-) => {
-  eventHandlers.add(handler);
-  return () => eventHandlers.delete(handler);
-};
-
-/**
- * Register a handler for when friendship socket opens
- * Returns unsubscribe function
- */
 export const onFriendshipSocketOpen = (handler: () => void) => {
-  openHandlers.add(handler);
-  return () => openHandlers.delete(handler);
-};
+  openHandlers.add(handler)
+  return () => openHandlers.delete(handler)
+}
 
-/**
- * Handle incoming friendship WebSocket event
- */
 export function handleFriendshipEvent(msg: any) {
-  if (!msg || !msg.type) return;
+  if (!msg || !msg.type) return
 
-  const normalizedType = normalizeFriendshipEventType(msg.type);
-  if (!normalizedType) return;
+  const normalizedType = normalizeFriendshipEventType(msg.type)
+  if (!normalizedType) return
 
   const event: FriendshipWsEvent = {
     type: normalizedType,
     data: msg.payload ?? {},
-  };
+  }
 
-  // Dispatch to all registered handlers
   eventHandlers.forEach((handler) => {
     try {
-      handler(event);
+      handler(event)
     } catch (err) {
-      console.error("[friendship-socket] Handler error:", err);
+      console.error("[friendship-socket] Handler error:", err)
     }
-  });
+  })
 }
 
-/**
- * Process friendship events and update store state
- */
 export function processFriendshipEvent(event: FriendshipWsEvent) {
-  const state = useFriendStore.getState();
-  const counterpartyId = getCounterpartyId(event);
+  const state = useFriendStore.getState()
+  const counterpartyId = getCounterpartyId(event)
 
   switch (event.type) {
     case FriendshipEventType.FRIEND_REQUEST_RECEIVED: {
-      // Increment unread count when new request received
-      state.incrementUnreadFriendRequestCount();
+      state.incrementUnreadFriendRequestCount()
       if (counterpartyId) {
-        state.setStatus(counterpartyId, "REQUEST_RECEIVED");
+        state.setStatus(counterpartyId, "REQUEST_RECEIVED")
       }
-      console.log(
-        "[friendship] Friend request received from:",
-        event.data.senderId
-      );
-      break;
+      break
     }
 
     case FriendshipEventType.FRIEND_REQUEST_ACCEPTED: {
-      // Decrement unread count when request accepted
-      state.decrementUnreadFriendRequestCount();
+      state.decrementUnreadFriendRequestCount()
       if (counterpartyId) {
-        state.setStatus(counterpartyId, "FRIENDS");
+        state.setStatus(counterpartyId, "FRIENDS")
       }
-      console.log(
-        "[friendship] Friend request accepted from:",
-        event.data.senderId
-      );
-      break;
+      break
     }
 
     case FriendshipEventType.FRIEND_REQUEST_DECLINED:
     case FriendshipEventType.FRIEND_REQUEST_CANCELLED: {
-      // Decrement unread count when request declined/cancelled
-      state.decrementUnreadFriendRequestCount();
+      state.decrementUnreadFriendRequestCount()
       if (counterpartyId) {
-        state.setStatus(counterpartyId, "NONE");
+        state.setStatus(counterpartyId, "NONE")
       }
-      console.log("[friendship] Friend request declined/cancelled");
-      break;
+      break
     }
 
     case FriendshipEventType.FRIEND_STATUS_CHANGED: {
-      // Handle friendship status changes (unfriend, block, unblock)
       if (counterpartyId) {
-        const eventType = event.data.eventType as string;
+        const eventType = event.data.eventType as string
         if (eventType === "friend.unfriended") {
-          state.setStatus(counterpartyId, "NONE");
+          state.setStatus(counterpartyId, "NONE")
         } else if (eventType === "friend.blocked") {
-          const myId = getCurrentUserId();
+          const myId = getCurrentUserId()
           if (event.data.actionUserId === myId) {
-            state.setStatus(counterpartyId, "BLOCKED_BY_ME");
+            state.setStatus(counterpartyId, "BLOCKED_BY_ME")
           } else {
-            state.setStatus(counterpartyId, "BLOCKED_ME");
+            state.setStatus(counterpartyId, "BLOCKED_ME")
           }
         } else if (eventType === "friend.unblocked") {
-          state.setStatus(counterpartyId, "NONE");
+          state.setStatus(counterpartyId, "NONE")
         }
       }
-      console.log(
-        "[friendship] Status changed:",
-        event.data.newStatus,
-        "users:",
-        event.data.userLow,
-        event.data.userHigh
-      );
-      break;
+      break
     }
 
     default:
-      console.warn("[friendship] Unknown event type:", event.type);
-      break;
+      break
   }
 }
 
 function normalizeFriendshipEventType(rawType: string): FriendshipEventType | null {
   switch (rawType) {
     case FriendshipEventType.FRIEND_REQUEST_RECEIVED:
-      return FriendshipEventType.FRIEND_REQUEST_RECEIVED;
+      return FriendshipEventType.FRIEND_REQUEST_RECEIVED
     case FriendshipEventType.FRIEND_REQUEST_ACCEPTED:
-      return FriendshipEventType.FRIEND_REQUEST_ACCEPTED;
+      return FriendshipEventType.FRIEND_REQUEST_ACCEPTED
     case FriendshipEventType.FRIEND_REQUEST_DECLINED:
-      return FriendshipEventType.FRIEND_REQUEST_DECLINED;
+      return FriendshipEventType.FRIEND_REQUEST_DECLINED
     case FriendshipEventType.FRIEND_REQUEST_CANCELLED:
-      return FriendshipEventType.FRIEND_REQUEST_CANCELLED;
+      return FriendshipEventType.FRIEND_REQUEST_CANCELLED
     case FriendshipEventType.FRIEND_STATUS_CHANGED:
-      return FriendshipEventType.FRIEND_STATUS_CHANGED;
+      return FriendshipEventType.FRIEND_STATUS_CHANGED
     default:
-      console.warn("[friendship-socket] Unknown event type", { rawType });
-      return null;
+      return null
   }
 }

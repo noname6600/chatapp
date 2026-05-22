@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react"
-import { connectChatSocket, disconnectChatSocket } from "../websocket/chat.socket"
-import { connectPresenceSocket, disconnectPresenceSocket } from "../websocket/presence.socket"
+import { connectRealtimeSocket, disconnectRealtimeSocket } from "../websocket/realtime.socket"
+import { resetChatState } from "../websocket/chat.socket"
+import { resetPresenceState } from "../websocket/presence.socket"
 import { getMyProfileApi } from "../api/user.service"
 import { getGlobalPresenceApi, getMyPresenceApi } from "../api/presence.service"
 import { getMyRooms } from "../api/room.service"
@@ -113,8 +114,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     ;(async () => {
       try {
         await loadSessionContextWithRetry()
-        connectChatSocket()
-        connectPresenceSocket()
+        connectRealtimeSocket()
       } catch {
         handleLogout(false)
       } finally {
@@ -126,8 +126,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     if (!accessToken) {
-      disconnectChatSocket()
-      disconnectPresenceSocket()
+      disconnectRealtimeSocket()
+      resetChatState()
+      resetPresenceState()
     }
   }, [accessToken])
 
@@ -162,8 +163,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       await loadSessionContextWithRetry()
-      connectChatSocket()
-      connectPresenceSocket()
+      connectRealtimeSocket()
     } catch (error) {
       handleLogout(false)
 
@@ -178,8 +178,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }
 
   const handleLogout = (redirect = true) => {
-    disconnectChatSocket()
-    disconnectPresenceSocket()
+    disconnectRealtimeSocket()
+    resetChatState()
+    resetPresenceState()
 
     localStorage.removeItem("access_token")
     localStorage.removeItem("refresh_token")

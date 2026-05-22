@@ -77,7 +77,7 @@ export default function ProfileIdentityCard({
           <div className="text-lg font-semibold text-gray-900">{presentation.displayName}</div>
           <div className="text-sm text-gray-500">@{presentation.username}</div>
           {presentation.aboutMe ? (
-            <div data-testid={aboutTestId} className="mt-2 text-sm text-gray-600">
+            <div data-testid={aboutTestId} className="mt-2 text-sm text-gray-600 whitespace-pre-wrap break-words">
               {presentation.aboutMe}
             </div>
           ) : null}

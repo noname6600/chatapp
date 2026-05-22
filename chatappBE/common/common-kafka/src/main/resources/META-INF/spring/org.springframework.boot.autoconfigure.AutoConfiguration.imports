@@ -1,1 +1,1 @@
-com.example.common.kafka.config.KafkaAutoConfiguration
+com.chatweb.common.kafka.config.KafkaAutoConfiguration

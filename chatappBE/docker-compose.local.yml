@@ -1,106 +1,27 @@
 services:
   # Infrastructure
-  auth-db:
-    image: postgres:17-alpine
-    container_name: chatapp-auth-db
+  postgres:
+    image: postgres:16-alpine
+    container_name: chatapp-postgres
     environment:
-      POSTGRES_DB: ${AUTH_DATABASE_NAME:-auth_service}
-      AUTH_DATABASE_USER: ${AUTH_DATABASE_USER:-auth_user}
-      AUTH_DATABASE_PASSWORD: ${AUTH_DATABASE_PASSWORD:-auth_password}
-      POSTGRES_USER: ${AUTH_DATABASE_USER:-auth_user}
-      POSTGRES_PASSWORD: ${AUTH_DATABASE_PASSWORD:-auth_password}
+      POSTGRES_DB: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      AUTH_DATABASE_NAME: ${AUTH_DATABASE_NAME:-auth_service}
+      USER_DATABASE_NAME: ${USER_DATABASE_NAME:-user_service}
+      CHAT_DATABASE_NAME: ${CHAT_DATABASE_NAME:-chat_service}
+      FRIENDSHIP_DATABASE_NAME: ${FRIENDSHIP_DATABASE_NAME:-friendship_service}
+      NOTIFICATION_DATABASE_NAME: ${NOTIFICATION_DATABASE_NAME:-notification_service}
+      PRESENCE_DATABASE_NAME: ${PRESENCE_DATABASE_NAME:-presence_service}
     volumes:
-      - auth-postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init/01-create-databases.sh:/docker-entrypoint-initdb.d/01-create-databases.sh:ro
     ports:
       - "5432:5432"
     networks:
       - chatapp-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${AUTH_DATABASE_USER:-auth_user}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  user-db:
-    image: postgres:17-alpine
-    container_name: chatapp-user-db
-    environment:
-      POSTGRES_DB: ${USER_DATABASE_NAME:-user_service}
-      USER_DATABASE_USER: ${USER_DATABASE_USER:-user_user}
-      USER_DATABASE_PASSWORD: ${USER_DATABASE_PASSWORD:-user_password}
-      POSTGRES_USER: ${USER_DATABASE_USER:-user_user}
-      POSTGRES_PASSWORD: ${USER_DATABASE_PASSWORD:-user_password}
-    volumes:
-      - user-postgres-data:/var/lib/postgresql/data
-    ports:
-      - "5433:5432"
-    networks:
-      - chatapp-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${USER_DATABASE_USER:-user_user}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  chat-db:
-    image: postgres:17-alpine
-    container_name: chatapp-chat-db
-    environment:
-      POSTGRES_DB: ${CHAT_DATABASE_NAME:-chat_service}
-      CHAT_DATABASE_USER: ${CHAT_DATABASE_USER:-chat_user}
-      CHAT_DATABASE_PASSWORD: ${CHAT_DATABASE_PASSWORD:-chat_password}
-      POSTGRES_USER: ${CHAT_DATABASE_USER:-chat_user}
-      POSTGRES_PASSWORD: ${CHAT_DATABASE_PASSWORD:-chat_password}
-    volumes:
-      - chat-postgres-data:/var/lib/postgresql/data
-    ports:
-      - "5434:5432"
-    networks:
-      - chatapp-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${CHAT_DATABASE_USER:-chat_user}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  friendship-db:
-    image: postgres:17-alpine
-    container_name: chatapp-friendship-db
-    environment:
-      POSTGRES_DB: ${FRIENDSHIP_DATABASE_NAME:-friendship_service}
-      FRIENDSHIP_DATABASE_USER: ${FRIENDSHIP_DATABASE_USER:-friendship_user}
-      FRIENDSHIP_DATABASE_PASSWORD: ${FRIENDSHIP_DATABASE_PASSWORD:-friendship_password}
-      POSTGRES_USER: ${FRIENDSHIP_DATABASE_USER:-friendship_user}
-      POSTGRES_PASSWORD: ${FRIENDSHIP_DATABASE_PASSWORD:-friendship_password}
-    volumes:
-      - friendship-postgres-data:/var/lib/postgresql/data
-    ports:
-      - "5435:5432"
-    networks:
-      - chatapp-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${FRIENDSHIP_DATABASE_USER:-friendship_user}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  notification-db:
-    image: postgres:17-alpine
-    container_name: chatapp-notification-db
-    environment:
-      POSTGRES_DB: ${NOTIFICATION_DATABASE_NAME:-notification_service}
-      NOTIFICATION_DATABASE_USER: ${NOTIFICATION_DATABASE_USER:-notification_user}
-      NOTIFICATION_DATABASE_PASSWORD: ${NOTIFICATION_DATABASE_PASSWORD:-notification_password}
-      POSTGRES_USER: ${NOTIFICATION_DATABASE_USER:-notification_user}
-      POSTGRES_PASSWORD: ${NOTIFICATION_DATABASE_PASSWORD:-notification_password}
-    volumes:
-      - notification-postgres-data:/var/lib/postgresql/data
-    ports:
-      - "5436:5432"
-    networks:
-      - chatapp-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${NOTIFICATION_DATABASE_USER:-notification_user}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -108,6 +29,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: chatapp-redis
+    command: redis-server --notify-keyspace-events Kx --appendonly yes
     ports:
       - "6379:6379"
     networks:
@@ -154,16 +76,16 @@ services:
       dockerfile: auth-service/Dockerfile
     container_name: chatapp-auth
     depends_on:
-      auth-db:
+      postgres:
         condition: service_healthy
       kafka:
         condition: service_started
     environment:
       PORT: 8081
       SPRING_PROFILES_ACTIVE: local
-      AUTH_DATABASE_URL: jdbc:postgresql://auth-db:5432/${AUTH_DATABASE_NAME:-auth_service}
-      AUTH_DATABASE_USER: ${AUTH_DATABASE_USER:-auth_user}
-      AUTH_DATABASE_PASSWORD: ${AUTH_DATABASE_PASSWORD:-auth_password}
+      AUTH_DATABASE_URL: jdbc:postgresql://postgres:5432/${AUTH_DATABASE_NAME:-auth_service}
+      AUTH_DATABASE_USER: ${POSTGRES_USER:-postgres}
+      AUTH_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       KAFKA_SERVERS: kafka:9092
       USER_SERVICE_BASE_URL: http://user-service:8082/api/v1/users
       RESEND_API_KEY: ${RESEND_API_KEY}
@@ -182,7 +104,7 @@ services:
     depends_on:
       auth-service:
         condition: service_started
-      user-db:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -191,9 +113,9 @@ services:
     environment:
       PORT: 8082
       SPRING_PROFILES_ACTIVE: local
-      USER_DATABASE_URL: jdbc:postgresql://user-db:5432/${USER_DATABASE_NAME:-user_service}
-      USER_DATABASE_USER: ${USER_DATABASE_USER:-user_user}
-      USER_DATABASE_PASSWORD: ${USER_DATABASE_PASSWORD:-user_password}
+      USER_DATABASE_URL: jdbc:postgresql://postgres:5432/${USER_DATABASE_NAME:-user_service}
+      USER_DATABASE_USER: ${POSTGRES_USER:-postgres}
+      USER_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
@@ -209,7 +131,7 @@ services:
     depends_on:
       auth-service:
         condition: service_started
-      chat-db:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -218,9 +140,9 @@ services:
     environment:
       PORT: 8083
       SPRING_PROFILES_ACTIVE: local
-      CHAT_DATABASE_URL: jdbc:postgresql://chat-db:5432/${CHAT_DATABASE_NAME:-chat_service}
-      CHAT_DATABASE_USER: ${CHAT_DATABASE_USER:-chat_user}
-      CHAT_DATABASE_PASSWORD: ${CHAT_DATABASE_PASSWORD:-chat_password}
+      CHAT_DATABASE_URL: jdbc:postgresql://postgres:5432/${CHAT_DATABASE_NAME:-chat_service}
+      CHAT_DATABASE_USER: ${POSTGRES_USER:-postgres}
+      CHAT_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
@@ -270,16 +192,16 @@ services:
     depends_on:
       auth-service:
         condition: service_started
-      friendship-db:
+      postgres:
         condition: service_healthy
       kafka:
         condition: service_started
     environment:
       PORT: 8085
       SPRING_PROFILES_ACTIVE: local
-      FRIENDSHIP_DATABASE_URL: jdbc:postgresql://friendship-db:5432/${FRIENDSHIP_DATABASE_NAME:-friendship_service}
-      FRIENDSHIP_DATABASE_USER: ${FRIENDSHIP_DATABASE_USER:-friendship_user}
-      FRIENDSHIP_DATABASE_PASSWORD: ${FRIENDSHIP_DATABASE_PASSWORD:-friendship_password}
+      FRIENDSHIP_DATABASE_URL: jdbc:postgresql://postgres:5432/${FRIENDSHIP_DATABASE_NAME:-friendship_service}
+      FRIENDSHIP_DATABASE_USER: ${POSTGRES_USER:-postgres}
+      FRIENDSHIP_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
       USER_SERVICE_URL: http://user-service:8082
@@ -294,19 +216,21 @@ services:
     depends_on:
       auth-service:
         condition: service_started
-      notification-db:
+      postgres:
         condition: service_healthy
       kafka:
         condition: service_started
+      redis:
+        condition: service_healthy
     environment:
       PORT: 8086
       SPRING_PROFILES_ACTIVE: local
-      NOTIFICATION_DATABASE_URL: jdbc:postgresql://notification-db:5432/${NOTIFICATION_DATABASE_NAME:-notification_service}
-      NOTIFICATION_DATABASE_USER: ${NOTIFICATION_DATABASE_USER:-notification_user}
-      NOTIFICATION_DATABASE_PASSWORD: ${NOTIFICATION_DATABASE_PASSWORD:-notification_password}
+      NOTIFICATION_DATABASE_URL: jdbc:postgresql://postgres:5432/${NOTIFICATION_DATABASE_NAME:-notification_service}
+      NOTIFICATION_DATABASE_USER: ${POSTGRES_USER:-postgres}
+      NOTIFICATION_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
     networks:
       - chatapp-net
@@ -377,8 +301,4 @@ networks:
     driver: bridge
 
 volumes:
-  auth-postgres-data:
-  user-postgres-data:
-  chat-postgres-data:
-  friendship-postgres-data:
-  notification-postgres-data:
+  postgres-data:

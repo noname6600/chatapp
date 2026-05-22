@@ -1,0 +1,39 @@
+package com.chatweb.chat.modules.message.controller;
+
+import com.chatweb.chat.modules.message.application.command.IReactionCommandService;
+import com.chatweb.common.web.controller.BaseController;
+import com.chatweb.common.web.response.ApiResponse;
+import com.chatweb.common.security.jwt.JwtHelper;
+import com.chatweb.common.core.exception.BusinessException;
+import com.chatweb.common.core.exception.CommonErrorCode;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.UUID;
+
+@RestController
+@RequestMapping("/api/v1/messages/{messageId}/reactions")
+@RequiredArgsConstructor
+public class MessageReactionController extends BaseController {
+
+    private final IReactionCommandService reactionService;
+
+    @PostMapping("/{emoji}")
+    public ResponseEntity<ApiResponse<Void>> toggleReaction(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID messageId,
+            @PathVariable String emoji
+    ) {
+
+        reactionService.toggleReaction(
+                messageId,
+            JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")),
+                emoji
+        );
+
+        return ResponseEntity.ok(ApiResponse.success());
+    }
+}

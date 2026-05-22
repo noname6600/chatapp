@@ -24,6 +24,7 @@ import { useUserStore } from "../../store/user.store";
 import {
   formatMessageTimeShort,
   formatMessageTimestamp,
+  getSafeDate,
 } from "../../utils/messageTimestamp";
 import { buildReplyPreviewModel } from "../../utils/replyPreview";
 
@@ -530,7 +531,7 @@ function MessageHeader({
   show: boolean;
   userId: string;
   displayName: string;
-  createdAt: string;
+  createdAt: number | string;
   deliveryStatus?: string;
   onRetry?: () => void;
   onDelete?: () => void;
@@ -577,7 +578,7 @@ function MessageHeader({
               ? "text-red-400"
               : "text-gray-400"
         }`}
-        title={new Date(createdAt).toLocaleString()}
+        title={getSafeDate(createdAt)?.toLocaleString() ?? ""}
       >
         {formatMessageTimestamp(createdAt)}
       </span>
@@ -772,7 +773,7 @@ function MessageContent({
   onJumpToMessage,
 }: {
   content: string;
-  editedAt: string | null;
+  editedAt: number | string | null;
   replyPreview: {
     senderId: string;
     senderAvatar: string | null;

@@ -9,21 +9,31 @@ spring:
   # DATABASE (PostgreSQL)
   # ======================
   datasource:
-    url: ${USER_DATABASE_URL:jdbc:postgresql://localhost:5433/user_service}
+    url: ${USER_DATABASE_URL:jdbc:postgresql://localhost:5432/user_service}
     username: ${USER_DATABASE_USER:user_user}
     password: ${USER_DATABASE_PASSWORD:user_password}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 5000
+      idle-timeout: 300000
 
   jpa:
     hibernate:
       ddl-auto: update
     open-in-view: false
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
         format_sql: true
         jdbc:
           time_zone: UTC
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
   security:
     oauth2:
       resourceserver:
@@ -37,9 +47,9 @@ spring:
       group-id: user-service
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
       properties:
-        spring.json.trusted.packages: "*"
+        spring.deserializer.value.delegate.class: com.chatweb.common.kafka.serialization.EventEnvelopeKafkaDeserializer
 
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
@@ -56,8 +66,6 @@ spring:
 
 cloudinary:
   cloud-name: ${CLOUDINARY_CLOUD_NAME:dblxoplvg}
-  api-key: ${CLOUDINARY_API_KEY:877947325938691}
-  api-secret: ${CLOUDINARY_API_SECRET:KfHivMv0wUQ9D-89rVx8Wu5U12w}
 
 
 
@@ -81,3 +89,11 @@ common:
 logging:
   pattern:
     level: "%5p [${spring.application.name:},%X{traceId}]"
+
+internal:
+  auth:
+    header: ${INTERNAL_AUTH_HEADER:X-Internal-Service-Token}
+    token: ${INTERNAL_AUTH_TOKEN:dev-internal-token}
+
+user:
+  profile-cache-ttl-minutes: ${USER_PROFILE_CACHE_TTL_MINUTES:5}

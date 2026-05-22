@@ -21,8 +21,6 @@ import { useAuth } from "./auth.store"
 import { isFeatureEnabled } from "../config/featureFlags"
 import { NotificationEventType } from "../constants/notificationEvents"
 import {
-  connectNotificationSocket,
-  disconnectNotificationSocket,
   onNotificationEvent,
   onNotificationSocketOpen,
 } from "../websocket/notification.socket"
@@ -712,11 +710,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       loadingMoreRef.current = false
       setHasMoreNotifications(false)
       setIsLoadingMoreNotifications(false)
-      disconnectNotificationSocket()
       return
     }
-
-    connectNotificationSocket()
 
     const unsubscribeOpen = onNotificationSocketOpen(() => {
       void syncNotifications("reconcile", "socket_reconnect").catch(() => {})
@@ -765,7 +760,6 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     return () => {
       unsubscribeOpen()
       unsubscribeEvent()
-      disconnectNotificationSocket()
     }
   }, [accessToken, applyRealtimeNotification, syncNotifications, userId])
 

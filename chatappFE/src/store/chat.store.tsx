@@ -26,6 +26,7 @@ import { ChatEventType } from "../constants/chatEvents";
 
 import { useAuth } from "./auth.store";
 import { isFeatureEnabled } from "../config/featureFlags";
+import { setTrackedActiveRoom } from "../utils/activeRoomTracker";
 import { isAtBottom, batchScrollToBottom } from "../utils/scrollUtils";
 import { mergeTimelineMessages } from "./chatTimeline";
 
@@ -295,6 +296,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const setActiveRoom = useCallback(async (roomId: string, unreadCount = 0) => {
     if (!roomId) {
       setActiveRoomId(null);
+      setTrackedActiveRoom(null);
       setReplyingTo(null);
       return;
     }
@@ -305,6 +307,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     try {
       setActiveRoomId(roomId);
+      setTrackedActiveRoom(roomId);
 
       if (!subscribedRooms.current.has(roomId)) {
         subscribeRoom(roomId);

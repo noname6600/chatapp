@@ -1,24 +1,24 @@
 # Gradle
-.gradle/
 build/
+.gradle/
 **/build/
-
-# IntelliJ
-.idea/
-*.iml
-out/
-
-# VSCode
-.vscode/
+**/.gradle/
 
 # Logs
 *.log
+
+# IDE
+.idea/
+*.iml
+.vscode/
+out/
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Env / secrets
+# Env files — only the example template is safe to commit
 .env
-application-local.yaml
-application-prod.yaml
+.env.local
+.env.production
+*.local.properties

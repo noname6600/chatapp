@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { changePasswordApi, getEmailVerificationStatusApi, sendVerificationEmailApi } from "../api/auth.service";
+import { changePasswordApi, getEmailVerificationStatusApi, sendVerificationEmailApi, setPasswordApi } from "../api/auth.service";
 import { useAuth } from "../store/auth.store";
 import ProfileEditor from "../components/profile/ProfileEditor";
 import ProfileIdentityCard from "../components/profile/ProfileIdentityCard";
@@ -37,9 +37,11 @@ export default function ProfileSettingsPage() {
   const [verificationStatus, setVerificationStatus] = useState<{
     email: string;
     verified: boolean;
+    hasPassword: boolean;
   }>({
     email: currentUser?.username ?? "",
     verified: false,
+    hasPassword: true,
   });
   const [verificationLoading, setVerificationLoading] = useState(true);
   const [verificationSending, setVerificationSending] = useState(false);
@@ -55,7 +57,7 @@ export default function ProfileSettingsPage() {
       confirmPassword?: string;
     } = {};
 
-    if (!passwordForm.currentPassword.trim()) {
+    if (verificationStatus.hasPassword && !passwordForm.currentPassword.trim()) {
       errors.currentPassword = "Current password is required.";
     }
 
@@ -90,18 +92,24 @@ export default function ProfileSettingsPage() {
 
     try {
       setPasswordSaving(true);
-      await changePasswordApi({
-        currentPassword: passwordForm.currentPassword,
-        newPassword: passwordForm.newPassword,
-      });
+      if (verificationStatus.hasPassword) {
+        await changePasswordApi({
+          currentPassword: passwordForm.currentPassword,
+          newPassword: passwordForm.newPassword,
+        });
+        setPasswordStatus({ type: "success", message: "Password changed successfully." });
+      } else {
+        await setPasswordApi({ newPassword: passwordForm.newPassword });
+        setVerificationStatus((prev) => ({ ...prev, hasPassword: true }));
+        setPasswordStatus({ type: "success", message: "Password set successfully. You can now log in with your email and password." });
+      }
       setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
       setPasswordErrors({});
-      setPasswordStatus({ type: "success", message: "Password changed successfully." });
       refreshCurrentUser();
     } catch (error) {
       setPasswordStatus({
         type: "error",
-        message: (error as Error).message || "Could not change password.",
+        message: (error as Error).message || "Could not save password.",
       });
     } finally {
       setPasswordSaving(false);
@@ -123,12 +131,14 @@ export default function ProfileSettingsPage() {
         setVerificationStatus({
           email: status.email || currentUser.username || "",
           verified: status.verified,
+          hasPassword: status.hasPassword,
         });
       } catch {
         if (!active) return;
         setVerificationStatus({
           email: currentUser.username || "",
           verified: false,
+          hasPassword: true,
         });
       } finally {
         if (active) {
@@ -142,7 +152,8 @@ export default function ProfileSettingsPage() {
     return () => {
       active = false;
     };
-  }, [currentUser?.username]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.username, activeSection === "security"]);
 
   const handleSendVerification = async () => {
     try {
@@ -156,7 +167,7 @@ export default function ProfileSettingsPage() {
       // Refresh status — verification state may have changed on re-send
       try {
         const status = await getEmailVerificationStatusApi();
-        setVerificationStatus({ email: status.email || currentUser.username || "", verified: status.verified });
+        setVerificationStatus({ email: status.email || currentUser.username || "", verified: status.verified, hasPassword: status.hasPassword });
       } catch { /* ignore refresh errors */ }
     } catch (error) {
       setVerificationMessage({
@@ -183,8 +194,8 @@ export default function ProfileSettingsPage() {
 
   return (
     <div className="h-full w-full">
-      <div className="max-w-6xl mx-auto h-full overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <div className="border-b bg-white p-4">
+      <div className="max-w-6xl mx-auto h-full overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm flex flex-col">
+        <div className="border-b bg-white px-4 py-3 flex-shrink-0">
           <div className="flex flex-col lg:flex-row items-start lg:items-center gap-3">
             <h1 className="text-2xl font-semibold text-gray-900">Profile Settings</h1>
             <div className="flex gap-2">
@@ -212,8 +223,9 @@ export default function ProfileSettingsPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 p-6 gap-6">
-          <aside className="space-y-4">
+        <div className="flex-1 overflow-y-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-3 p-4 gap-4">
+          <aside className="space-y-3">
             <ProfileIdentityCard
               presentation={{ ...presentation, backgroundColor: resolvedBackground }}
               aboutTestId="settings-about-text"
@@ -236,7 +248,7 @@ export default function ProfileSettingsPage() {
               <div className="space-y-6">
                 <h2 className="text-xl font-semibold">Profile Settings</h2>
                 <>
-                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-6">
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                     <ProfileEditor draft={draft} setDraft={setDraft} />
                   </div>
                 </>
@@ -246,11 +258,19 @@ export default function ProfileSettingsPage() {
             {activeSection === "security" && (
               <div className="rounded-xl border border-gray-200 bg-white p-6">
                 <h2 className="text-xl font-semibold mb-3">Security</h2>
+                {!verificationLoading && !verificationStatus.hasPassword && (
+                  <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    Your account was created via Google and doesn't have a password yet. Set one below to also enable email/password login.
+                  </div>
+                )}
                 <p className="text-sm text-gray-600 mb-5">
-                  Change your password by entering your current password and confirming the new one.
+                  {verificationStatus.hasPassword
+                    ? "Change your password by entering your current password and confirming the new one."
+                    : "Set a password to enable email/password login for your account."}
                 </p>
 
                 <form className="space-y-4" onSubmit={handlePasswordSubmit}>
+                  {verificationStatus.hasPassword && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Current password</label>
                     <input
@@ -268,6 +288,7 @@ export default function ProfileSettingsPage() {
                       <p className="mt-1 text-xs text-red-600">{passwordErrors.currentPassword}</p>
                     )}
                   </div>
+                  )}
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">New password</label>
@@ -313,10 +334,12 @@ export default function ProfileSettingsPage() {
 
                   <button
                     type="submit"
-                    disabled={passwordSaving}
+                    disabled={passwordSaving || verificationLoading}
                     className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
                   >
-                    {passwordSaving ? "Changing password..." : "Change password"}
+                    {passwordSaving
+                      ? verificationStatus.hasPassword ? "Changing password..." : "Setting password..."
+                      : verificationStatus.hasPassword ? "Change password" : "Set password"}
                   </button>
                 </form>
 
@@ -359,6 +382,7 @@ export default function ProfileSettingsPage() {
               </div>
             )}
           </main>
+        </div>
         </div>
       </div>
     </div>

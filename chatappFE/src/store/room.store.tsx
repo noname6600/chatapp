@@ -28,17 +28,22 @@ import {
   normalizeRoomNotificationMode,
   shouldDeliverRoomEventByMode,
 } from "../utils/notificationModePolicy"
+import { getTrackedActiveRoom } from "../utils/activeRoomTracker"
+import { playMessageSound, playMentionSound } from "../utils/notificationSound"
 
 const ROOM_NOTIFICATION_MODE_STORAGE_KEY = "notification_modes_by_room"
 const LEGACY_ROOM_MUTE_STORAGE_KEY = "notification_mutes_by_room"
 const RECONNECT_RECONCILE_COOLDOWN_MS = 2000
 
-const toTimestamp = (value: string | null | undefined): number => {
-  if (!value) return 0
-
+const toTimestamp = (value: string | number | null | undefined): number => {
+  if (!value && value !== 0) return 0
+  if (typeof value === "number") return value
   const parsed = Date.parse(value)
   return Number.isNaN(parsed) ? 0 : parsed
 }
+
+const toDateString = (value: string | number): string =>
+  typeof value === "number" ? new Date(value).toISOString() : value
 
 const getRoomLatestTimestamp = (room: Room): number => {
   return toTimestamp(room.latestMessageAt ?? room.lastMessage?.createdAt ?? null)
@@ -349,7 +354,8 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
       const isSender = userId != null && msg.senderId === userId
       const mode = getRoomNotificationMode(msg.roomId)
       const isMentioned = Boolean(userId && msg.mentionedUserIds?.includes(userId))
-      const suppressUnreadByMode = !shouldDeliverRoomEventByMode(mode, isMentioned)
+      const isReplyToMe = Boolean(userId && msg.replyToAuthorId === userId && msg.senderId !== userId)
+      const suppressUnreadByMode = !shouldDeliverRoomEventByMode(mode, isMentioned || isReplyToMe)
 
       const senderName = resolveLastMessageSenderName({
         room,
@@ -374,13 +380,13 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (shouldPromoteAsLatest) {
-        nextRoom.latestMessageAt = msg.createdAt
+        nextRoom.latestMessageAt = toDateString(msg.createdAt)
         nextRoom.lastMessage = {
           id: msg.messageId,
           senderId: msg.senderId,
           senderName,
           content: buildPreview(msg),
-          createdAt: msg.createdAt,
+          createdAt: toDateString(msg.createdAt),
         }
       }
 
@@ -511,7 +517,7 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
             name: "New message",
             avatarUrl: null,
             createdBy: msg.senderId,
-            createdAt: msg.createdAt,
+            createdAt: toDateString(msg.createdAt),
             myRole: "MEMBER",
             unreadCount: 0,
             latestMessageAt: null,
@@ -548,6 +554,22 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
 
       // Mark this message as processed for future events.
       processedSet.add(msg.messageId)
+
+      // Play notification sound when badge would increment.
+      const isSender = userId != null && msg.senderId === userId
+      const soundMode = getRoomNotificationMode(msg.roomId)
+      const isMentionedForSound = Boolean(userId && msg.mentionedUserIds?.includes(userId))
+      const isReplyToMeForSound = Boolean(userId && msg.replyToAuthorId === userId && msg.senderId !== userId)
+      const suppressSound = !shouldDeliverRoomEventByMode(soundMode, isMentionedForSound || isReplyToMeForSound)
+      const isActiveRoom = getTrackedActiveRoom() === msg.roomId && document.hasFocus()
+
+      if (!isSender && !suppressSound && !isActiveRoom) {
+        if (isMentionedForSound || isReplyToMeForSound) {
+          playMentionSound()
+        } else {
+          playMessageSound()
+        }
+      }
 
       setRoomsById(prev => {
         const room = prev[msg.roomId]

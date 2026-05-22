@@ -1,0 +1,284 @@
+version: '3.8'
+
+# Docker-compose wrapper for realtime-edge migration local validation
+# Scope: Single-instance validation of notification, presence, chat, friendship
+# Includes: realtime-edge, all 4 domains, Redis, Kafka
+# Purpose: Validate inbound command routing and outbound event delivery end-to-end
+
+services:
+  # Core Infrastructure
+  redis:
+    image: redis:7-alpine
+    container_name: validation-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - validation-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+  kafka:
+    image: confluentinc/cp-kafka:7.8.0
+    container_name: validation-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG4J_LOGGERS: "org.apache.kafka.clients.consumer.internals.AbstractCoordinator=WARN"
+    networks:
+      - validation-net
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.8.0
+    container_name: validation-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    ports:
+      - "2181:2181"
+    networks:
+      - validation-net
+
+  # Shared Postgres Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: chatapp-postgres
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      AUTH_DATABASE_NAME: ${AUTH_DATABASE_NAME:-auth_service}
+      USER_DATABASE_NAME: ${USER_DATABASE_NAME:-user_service}
+      CHAT_DATABASE_NAME: ${CHAT_DATABASE_NAME:-chat_service}
+      FRIENDSHIP_DATABASE_NAME: ${FRIENDSHIP_DATABASE_NAME:-friendship_service}
+      NOTIFICATION_DATABASE_NAME: ${NOTIFICATION_DATABASE_NAME:-notification_service}
+      PRESENCE_DATABASE_NAME: ${PRESENCE_DATABASE_NAME:-presence_service}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init/01-create-databases.sh:/docker-entrypoint-initdb.d/01-create-databases.sh:ro
+    networks:
+      - validation-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Domain Services (Built locally)
+  auth-service:
+    build:
+      context: .
+      dockerfile: auth-service/Dockerfile
+    container_name: validation-auth-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8081:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: validation
+      AUTH_DATABASE_URL: jdbc:postgresql://postgres:5432/auth_service
+      AUTH_DATABASE_USER: ${POSTGRES_USER:-postgres}
+      AUTH_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      JWT_SECRET: ${JWT_SECRET:-validation-secret-key-please-change}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    networks:
+      - validation-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  user-service:
+    build:
+      context: .
+      dockerfile: user-service/Dockerfile
+    container_name: validation-user-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    ports:
+      - "8082:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: validation
+      USER_DATABASE_URL: jdbc:postgresql://postgres:5432/user_service
+      USER_DATABASE_USER: ${POSTGRES_USER:-postgres}
+      USER_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      AUTH_SERVICE_URL: http://auth-service:8080
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    networks:
+      - validation-net
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: notification-service/Dockerfile
+    container_name: validation-notification-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    ports:
+      - "8083:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: validation
+      NOTIFICATION_DATABASE_URL: jdbc:postgresql://postgres:5432/notification_service
+      NOTIFICATION_DATABASE_USER: ${POSTGRES_USER:-postgres}
+      NOTIFICATION_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      AUTH_SERVICE_URL: http://auth-service:8080
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    networks:
+      - validation-net
+
+  presence-service:
+    build:
+      context: .
+      dockerfile: presence-service/Dockerfile
+    container_name: validation-presence-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    ports:
+      - "8084:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: validation
+      PRESENCE_DATABASE_USER: ${POSTGRES_USER:-postgres}
+      PRESENCE_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      AUTH_SERVICE_URL: http://auth-service:8080
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    networks:
+      - validation-net
+
+  chat-service:
+    build:
+      context: .
+      dockerfile: chat-service/Dockerfile
+    container_name: validation-chat-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    ports:
+      - "8085:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: validation
+      CHAT_DATABASE_URL: jdbc:postgresql://postgres:5432/chat_service
+      CHAT_DATABASE_USER: ${POSTGRES_USER:-postgres}
+      CHAT_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      AUTH_SERVICE_URL: http://auth-service:8080
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    networks:
+      - validation-net
+
+  friendship-service:
+    build:
+      context: .
+      dockerfile: friendship-service/Dockerfile
+    container_name: validation-friendship-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    ports:
+      - "8086:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: validation
+      FRIENDSHIP_DATABASE_URL: jdbc:postgresql://postgres:5432/friendship_service
+      FRIENDSHIP_DATABASE_USER: ${POSTGRES_USER:-postgres}
+      FRIENDSHIP_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      AUTH_SERVICE_URL: http://auth-service:8080
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    networks:
+      - validation-net
+
+  realtime-edge-service:
+    build:
+      context: .
+      dockerfile: realtime-edge-service/Dockerfile
+    container_name: validation-realtime-edge
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+      notification-service:
+        condition: service_started
+      presence-service:
+        condition: service_started
+      chat-service:
+        condition: service_started
+      friendship-service:
+        condition: service_started
+    ports:
+      - "8087:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: validation
+      AUTH_SERVICE_URL: http://auth-service:8080
+      NOTIFICATION_SERVICE_URL: http://notification-service:8080
+      PRESENCE_SERVICE_URL: http://presence-service:8080
+      CHAT_SERVICE_URL: http://chat-service:8080
+      FRIENDSHIP_SERVICE_URL: http://friendship-service:8080
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      EDGE_INSTANCE_ID: edge-1
+    networks:
+      - validation-net
+
+networks:
+  validation-net:
+    driver: bridge
+
+volumes:
+  postgres-data:

@@ -21,12 +21,26 @@ function getLanguage(locale?: string) {
   return getLocale(locale).split("-")[0].toLowerCase()
 }
 
-function getSafeDate(dateString: string) {
-  const date = new Date(dateString)
+// Converts a raw timestamp (ISO string or Unix seconds as number/string) to ms.
+// Threshold 1e12: values below it are seconds (current epoch ~1.78e9 s), above are already ms.
+function toMs(dateInput: number | string): number {
+  if (typeof dateInput === "number") {
+    return dateInput < 1_000_000_000_000 ? dateInput * 1000 : dateInput
+  }
+  const asNumber = Number(dateInput)
+  if (!Number.isNaN(asNumber) && Number.isFinite(asNumber)) {
+    return asNumber < 1_000_000_000_000 ? asNumber * 1000 : asNumber
+  }
+  return new Date(dateInput).getTime()
+}
+
+export function getSafeDate(dateInput: number | string | null | undefined): Date | null {
+  if (dateInput == null) return null
+  const ms = toMs(dateInput)
+  const date = new Date(ms)
   if (Number.isNaN(date.getTime()) || date.getFullYear() < 2000) {
     return null
   }
-
   return date
 }
 
@@ -38,8 +52,8 @@ function isSameCalendarDay(left: Date, right: Date) {
   )
 }
 
-export function isYesterday(dateString: string, now = new Date()) {
-  const date = getSafeDate(dateString)
+export function isYesterday(dateInput: number | string, now = new Date()) {
+  const date = getSafeDate(dateInput)
   if (!date) {
     return false
   }
@@ -61,13 +75,10 @@ export function getAtLabel(locale?: string) {
   return copy.at
 }
 
-export function formatMessageTimeShort(dateString: string, locale?: string) {
-  const date = getSafeDate(dateString)
+export function formatMessageTimeShort(dateInput: number | string, locale?: string) {
+  const date = getSafeDate(dateInput)
   if (!date) {
-    return new Date().toLocaleTimeString(getLocale(locale), {
-      hour: "2-digit",
-      minute: "2-digit",
-    })
+    return "--:--"
   }
 
   return date.toLocaleTimeString(getLocale(locale), {
@@ -77,23 +88,23 @@ export function formatMessageTimeShort(dateString: string, locale?: string) {
 }
 
 export function formatMessageTimestamp(
-  dateString: string,
+  dateInput: number | string,
   now = new Date(),
   locale?: string
 ) {
-  const date = getSafeDate(dateString)
+  const date = getSafeDate(dateInput)
   if (!date) {
-    return formatMessageTimeShort(new Date().toISOString(), locale)
+    return "--:--"
   }
 
   const resolvedLocale = getLocale(locale)
-  const time = formatMessageTimeShort(dateString, resolvedLocale)
+  const time = formatMessageTimeShort(dateInput, resolvedLocale)
 
   if (isSameCalendarDay(date, now)) {
     return time
   }
 
-  if (isYesterday(dateString, now)) {
+  if (isYesterday(dateInput, now)) {
     return `${getYesterdayLabel(resolvedLocale)} ${getAtLabel(resolvedLocale)} ${time}`
   }
 

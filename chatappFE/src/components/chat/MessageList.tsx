@@ -182,13 +182,15 @@ export default function MessageList({ roomId, pinnedMessageIds }: Props) {
     }
   }, [pinnedMessageIds, roomId, setUnpinning]);
 
-  const handleForwardConfirm = useCallback(async (targetRoomId: string) => {
+  const handleForwardConfirm = useCallback(async (targetRoomIds: string[]) => {
     if (!forwardSourceMessage) return;
 
-    try {
-      await forwardMessage(forwardSourceMessage.messageId, targetRoomId);
-    } catch (error) {
-      console.error("Forward failed:", error);
+    for (const roomId of targetRoomIds) {
+      try {
+        await forwardMessage(forwardSourceMessage.messageId, roomId);
+      } catch (error) {
+        console.error("Forward failed:", error);
+      }
     }
   }, [forwardSourceMessage]);
 

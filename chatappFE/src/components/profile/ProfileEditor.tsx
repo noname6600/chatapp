@@ -92,7 +92,7 @@ export default function ProfileEditor({ draft, setDraft }: Props) {
 
       setDraft((d) => ({ ...d, avatarUrl }));
       if (currentUser) {
-        updateLocal({ ...currentUser, ...draft, avatarUrl });
+        updateLocal({ ...currentUser, avatarUrl });
       }
 
       setStatus({
@@ -183,7 +183,7 @@ export default function ProfileEditor({ draft, setDraft }: Props) {
     "hover:border-gray-400 transition shadow-sm";
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
 
       {/* USERNAME */}
       <Field label="Username">
@@ -216,8 +216,11 @@ export default function ProfileEditor({ draft, setDraft }: Props) {
         <textarea
           value={draft.aboutMe}
           onChange={(e) => update("aboutMe", e.target.value)}
-          className={`${inputStyle} resize-none h-24`}
-          placeholder="Write something about yourself..."
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) e.preventDefault();
+          }}
+          className={`${inputStyle} resize-none h-16`}
+          placeholder="Write something about yourself… (Shift+Enter for new line)"
           maxLength={160}
         />
         <div className="text-xs text-gray-400 mt-1 text-right">
@@ -276,18 +279,10 @@ export default function ProfileEditor({ draft, setDraft }: Props) {
         </div>
       </Field>
 
-      {/* STATUS MESSAGE */}
-      {status && (
-        <div
-          className={`text-sm font-medium ${
-            status.type === "success"
-              ? "text-green-600"
-              : "text-red-500"
-          }`}
-        >
-          {status.message}
-        </div>
-      )}
+      {/* STATUS MESSAGE — always rendered to hold space; invisible when empty */}
+      <div className={`min-h-[20px] text-sm font-medium ${status?.type === "success" ? "text-green-600" : "text-red-500"}`}>
+        {status?.message ?? ""}
+      </div>
 
       {/* SAVE BUTTON (only when dirty) */}
       {isDirty && (

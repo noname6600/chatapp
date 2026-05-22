@@ -1,4 +1,9 @@
 import { chatApi } from "./chat.api"
+import {
+  confirmUploadApi,
+  prepareUploadApi,
+  uploadToCloudinarySigned,
+} from "./upload.service"
 import { unwrap } from "../utils/unwrap"
 import { extractErrorMessage } from "../utils/error"
 
@@ -100,16 +105,35 @@ export const uploadRoomAvatarApi = async (
   file: File
 ): Promise<string> => {
   try {
-    const formData = new FormData()
-    formData.append("file", file)
+    const prepared = await prepareUploadApi("room-avatar", file.name)
+    const uploaded = await uploadToCloudinarySigned(file, prepared)
+    const confirmed = await confirmUploadApi({
+      purpose: "room-avatar",
+      prepareToken: prepared.prepareToken,
+      publicId: uploaded.public_id,
+      secureUrl: uploaded.secure_url,
+      resourceType: uploaded.resource_type,
+      format: uploaded.format,
+      bytes: uploaded.bytes,
+      width: uploaded.width,
+      height: uploaded.height,
+      duration:
+        typeof uploaded.duration === "number"
+          ? Math.round(uploaded.duration)
+          : undefined,
+      originalFilename: uploaded.original_filename ?? file.name,
+    })
 
     const res = await chatApi.post<ApiResponse<{ url: string }>>(
       `/rooms/${roomId}/avatar`,
-      formData,
       {
-        headers: {
-          "Content-Type": "multipart/form-data"
-        }
+        publicId: confirmed.publicId,
+        secureUrl: confirmed.secureUrl,
+        resourceType: confirmed.resourceType,
+        format: confirmed.format,
+        bytes: confirmed.bytes,
+        width: confirmed.width,
+        height: confirmed.height,
       }
     )
 

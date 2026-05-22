@@ -1,0 +1,85 @@
+plugins {
+    id 'java-library'
+    id 'org.springframework.boot' version '3.5.6'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.chatweb'
+version = '0.0.1'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencyManagement {
+    imports {
+        mavenBom 'org.springframework.cloud:spring-cloud-dependencies:2025.0.1'
+    }
+}
+
+dependencies {
+    // Spring Boot Web & Websocket
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-websocket'
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'
+    
+    // Spring Boot Data & Cache
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+    
+    // Spring Boot Kafka
+    implementation 'org.springframework.kafka:spring-kafka'
+    
+    // Spring Security & Auth
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
+    implementation 'org.springframework.security:spring-security-oauth2-jose'
+    
+    // Internal Common
+    implementation project(':common:common-core')
+    implementation project(':common:common-security')
+    implementation project(':common:common-events')
+    implementation project(':common:common-redis')
+    implementation project(':common:common-kafka')
+    implementation project(':common:common-web')
+    
+    // Utilities
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+    implementation 'io.micrometer:micrometer-core'
+    
+    // Lombok
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    
+    // Testing
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'org.assertj:assertj-core'
+    testImplementation 'org.mockito:mockito-core'
+    testImplementation 'io.projectreactor:reactor-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+springBoot {
+    mainClass = 'com.chatweb.realtime.RealtimeEdgeApplication'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+tasks.register('phaseBLocalValidation', JavaExec) {
+    group = 'verification'
+    description = 'Runs local Phase B notification migration validation scenarios against a running local stack.'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.chatweb.realtime.local.PhaseBLocalValidationRunner'
+    dependsOn tasks.named('testClasses')
+}

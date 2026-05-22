@@ -3,7 +3,7 @@ import { formatMessageTimeShort } from "../../utils/messageTimestamp"
 import { getRenderableBlocks } from "./MessageBlocks"
 
 interface EditedIndicatorProps {
-  editedAt: string | null
+  editedAt: number | string | null
   blocks?: MessageBlock[]
 }
 

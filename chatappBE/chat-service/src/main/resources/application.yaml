@@ -12,9 +12,9 @@ spring:
       group-id: chat-service
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
       properties:
-        spring.json.trusted.packages: "*"
+        spring.deserializer.value.delegate.class: com.chatweb.common.kafka.serialization.EventEnvelopeKafkaDeserializer
 
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
@@ -35,21 +35,31 @@ spring:
   # DATABASE (PostgreSQL)
   # ======================
   datasource:
-    url: ${CHAT_DATABASE_URL:jdbc:postgresql://localhost:5434/chat_service}
+    url: ${CHAT_DATABASE_URL:jdbc:postgresql://localhost:5432/chat_service}
     username: ${CHAT_DATABASE_USER:chat_user}
     password: ${CHAT_DATABASE_PASSWORD:chat_password}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 5000
+      idle-timeout: 300000
 
   jpa:
     hibernate:
       ddl-auto: update
     open-in-view: false
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
         format_sql: true
         jdbc:
           time_zone: UTC
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
   security:
     oauth2:
       resourceserver:
@@ -78,9 +88,14 @@ common:
 
 
 cloudinary:
-  cloud-name: ${CLOUDINARY_CLOUD_NAME:dblxoplvg}
-  api-key: ${CLOUDINARY_API_KEY:877947325938691}
-  api-secret: ${CLOUDINARY_API_SECRET:KfHivMv0wUQ9D-89rVx8Wu5U12w}
+  cloud-name: ${CLOUDINARY_CLOUD_NAME}
+  api-key: ${CLOUDINARY_API_KEY}
+  api-secret: ${CLOUDINARY_API_SECRET}
+
+chat:
+  avatar:
+    legacy-upload:
+      enabled: ${CHAT_AVATAR_LEGACY_UPLOAD_ENABLED:true}
 
 services:
   user:

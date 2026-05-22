@@ -151,7 +151,9 @@ export default function ChatPageLayout() {
       if (currentRoomId) joinPresenceRoom(currentRoomId);
     });
 
-    return unsub;
+    return () => {
+      unsub();
+    };
   }, [currentRoomId]);
 
   useEffect(() => {
