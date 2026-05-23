@@ -303,8 +303,8 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      JWT_ISSUER_URI: http://auth-service:8081
-      JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
       CHAT_SERVICE_URL: http://chat-service:8083
       PRESENCE_SERVICE_URL: http://presence-service:8084
       NOTIFICATION_SERVICE_URL: http://notification-service:8086
@@ -334,6 +334,7 @@ services:
       CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
       CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
       CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+      UPLOAD_CONFIRM_PREPARE_TOKEN_SECRET: ${UPLOAD_CONFIRM_PREPARE_TOKEN_SECRET}
     networks:
       - chatapp-net
     restart: unless-stopped
