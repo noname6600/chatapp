@@ -171,6 +171,7 @@ services:
       SERVICES_USER_URL: http://user-service:8082
       SERVICES_FRIENDSHIP_URL: http://friendship-service:8085
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
     networks:
       - chatapp-net
     restart: unless-stopped
