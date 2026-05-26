@@ -530,12 +530,6 @@ services:
       retries: 3
       start_period: 30s
 
-  frontend-2:
-    <<: *frontend-base
-
-  frontend-3:
-    <<: *frontend-base
-
   # ─────────────────────────────────────────────────────────
   # EDGE PROXY
   # ─────────────────────────────────────────────────────────
@@ -544,10 +538,6 @@ services:
     container_name: chatapp-nginx
     depends_on:
       frontend:
-        condition: service_healthy
-      frontend-2:
-        condition: service_healthy
-      frontend-3:
         condition: service_healthy
       gateway-service:
         condition: service_healthy
