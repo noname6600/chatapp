@@ -17,6 +17,9 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class EdgeDeliveryHandoffEvent {
+    public static final String REDIS_EVENT_TYPE = "realtime.edge.handoff";
+    public static final String REDIS_CHANNEL_PREFIX = "realtime.edge.handoff";
+
     private String handoffEventId;
     private Instant createdAt;
     private String sourceInstanceId;

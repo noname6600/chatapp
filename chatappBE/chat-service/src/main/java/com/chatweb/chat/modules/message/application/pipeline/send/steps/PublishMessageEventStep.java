@@ -10,8 +10,7 @@ import com.chatweb.common.core.pipeline.PipelineStep;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
+import com.chatweb.chat.support.TransactionPublisher;
 
 import java.util.List;
 
@@ -55,42 +54,16 @@ public class PublishMessageEventStep
         // Sender should never see their own sent message as unread after refresh.
         roomService.markRoomRead(savedMessage.getRoomId(), savedMessage.getSenderId());
 
-        publishMessageCreatedAfterCommit(
-                savedMessage,
-                persistedAttachments,
-                context.getMentionedUsers()
-        );
-    }
-
-    private void publishMessageCreatedAfterCommit(
-            ChatMessage message,
-            List<ChatAttachment> attachments,
-            List<java.util.UUID> mentions
-    ) {
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    publishMessageCreatedSafely(message, attachments, mentions);
-                }
-            });
-            return;
-        }
-
-        publishMessageCreatedSafely(message, attachments, mentions);
-    }
-
-    private void publishMessageCreatedSafely(
-            ChatMessage message,
-            List<ChatAttachment> attachments,
-            List<java.util.UUID> mentions
-    ) {
-        try {
-            eventPublisher.publishMessageCreated(message, attachments, mentions);
-        } catch (Exception e) {
-            log.warn("Failed to publish message event for messageId={}: {}",
-                    message.getId(), e.getMessage());
-        }
+        final var finalAttachments = persistedAttachments;
+        final var mentions = context.getMentionedUsers();
+        TransactionPublisher.publishAfterCommit(() -> {
+            try {
+                eventPublisher.publishMessageCreated(savedMessage, finalAttachments, mentions);
+            } catch (Exception e) {
+                log.warn("Failed to publish message event for messageId={}: {}",
+                        savedMessage.getId(), e.getMessage());
+            }
+        });
     }
 
     @Override

@@ -9,12 +9,9 @@ import com.chatweb.chat.modules.message.infrastructure.client.UserClient;
 import com.chatweb.chat.modules.room.dto.LastMessagePreview;
 import com.chatweb.chat.modules.room.dto.RoomAvatarMetadataRequest;
 import com.chatweb.chat.modules.room.dto.RoomAvatarUploadResponse;
-import com.chatweb.chat.modules.room.dto.RoomMemberJoinedPayload;
-import com.chatweb.chat.modules.room.dto.RoomMemberLeftPayload;
 import com.chatweb.chat.modules.room.dto.RoomResponse;
-import com.chatweb.chat.realtime.port.ChatRealtimePort;
-import com.chatweb.common.integration.chat.ChatEventType;
-import com.chatweb.common.realtime.policy.RealtimeFlowId;
+import com.chatweb.chat.modules.room.service.IRoomMembershipEventPublisher;
+import com.chatweb.chat.support.TransactionPublisher;
 import com.chatweb.chat.modules.room.entity.Room;
 import com.chatweb.chat.modules.room.entity.RoomBan;
 import com.chatweb.chat.modules.room.entity.RoomMember;
@@ -50,7 +47,7 @@ public class RoomService implements IRoomService {
     private final InviteCodeGenerator inviteCodeGenerator;
     private final GroupAvatarGenerator avatarGenerator;
     private final RoomCacheInvalidationPolicy roomCacheInvalidationPolicy;
-    private final ChatRealtimePort chatRealtimePort;
+    private final IRoomMembershipEventPublisher membershipEventPublisher;
     private final ISystemMessageService systemMessageService;
 
     @Override
@@ -140,17 +137,8 @@ public class RoomService implements IRoomService {
 
         evictRoomsCache(userId);
 
-        chatRealtimePort.publishRoomEvent(
-            roomId,
-            ChatEventType.MEMBER_JOINED.value(),
-            RoomMemberJoinedPayload.builder()
-                .roomId(roomId)
-                .userId(userId)
-                .role(Role.MEMBER.name())
-                .joinedAt(saved.getJoinedAt())
-                .build()
-            ,
-            RealtimeFlowId.CHAT_ROOM_MEMBER_ADD
+        TransactionPublisher.publishAfterCommit(() ->
+            membershipEventPublisher.publishMemberJoined(roomId, userId, Role.MEMBER.name(), saved.getJoinedAt())
         );
 
                 systemMessageService.sendSystemMessage(
@@ -189,15 +177,8 @@ public class RoomService implements IRoomService {
         evictRoomsCache(userId);
         evictRoomMembers(roomId);
 
-        chatRealtimePort.publishRoomEvent(
-            roomId,
-            ChatEventType.MEMBER_LEFT.value(),
-            RoomMemberLeftPayload.builder()
-                .roomId(roomId)
-                .userId(userId)
-                .build()
-            ,
-            RealtimeFlowId.CHAT_ROOM_MEMBER_REMOVE
+        TransactionPublisher.publishAfterCommit(() ->
+            membershipEventPublisher.publishMemberLeft(roomId, userId)
         );
     }
 
@@ -264,15 +245,8 @@ public class RoomService implements IRoomService {
         evictRoomsCache(targetUser);
         evictRoomMembers(roomId);
 
-        chatRealtimePort.publishRoomEvent(
-            roomId,
-            ChatEventType.MEMBER_REMOVED.value(),
-            RoomMemberLeftPayload.builder()
-                .roomId(roomId)
-                .userId(targetUser)
-                .build()
-            ,
-            RealtimeFlowId.CHAT_ROOM_MEMBER_REMOVE
+        TransactionPublisher.publishAfterCommit(() ->
+            membershipEventPublisher.publishMemberRemoved(roomId, targetUser)
         );
     }
 
@@ -297,15 +271,8 @@ public class RoomService implements IRoomService {
         evictRoomsCache(targetUser);
         evictRoomMembers(roomId);
 
-        chatRealtimePort.publishRoomEvent(
-            roomId,
-            ChatEventType.MEMBER_REMOVED.value(),
-            RoomMemberLeftPayload.builder()
-                .roomId(roomId)
-                .userId(targetUser)
-                .build()
-            ,
-            RealtimeFlowId.CHAT_ROOM_MEMBER_REMOVE
+        TransactionPublisher.publishAfterCommit(() ->
+            membershipEventPublisher.publishMemberRemoved(roomId, targetUser)
         );
     }
 

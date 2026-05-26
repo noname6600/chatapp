@@ -1,7 +1,6 @@
 package com.chatweb.realtime.config;
 
-import com.chatweb.realtime.adapter.in.redis.RedisEventListener;
-import com.chatweb.realtime.dispatch.EdgeDeliveryHandoffListener;
+import com.chatweb.common.redis.listener.RedisEventListener;
 import com.chatweb.realtime.dispatch.EdgeDeliveryHandoffPublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,7 +21,6 @@ public class RedisListenerConfig {
 
     private final RedisConnectionFactory redisConnectionFactory;
     private final RedisEventListener redisEventListener;
-    private final EdgeDeliveryHandoffListener edgeDeliveryHandoffListener;
     private final EdgeDeliveryHandoffPublisher edgeDeliveryHandoffPublisher;
 
     @Value("${realtime.dispatch.handoff.enabled:false}")
@@ -37,7 +35,7 @@ public class RedisListenerConfig {
         container.addMessageListener(redisEventListener, new PatternTopic("realtime.notification.user.*"));
         container.addMessageListener(redisEventListener, new PatternTopic("realtime.presence.*"));
         if (handoffEnabled) {
-            container.addMessageListener(edgeDeliveryHandoffListener, new PatternTopic(edgeDeliveryHandoffPublisher.topicPattern()));
+            container.addMessageListener(redisEventListener, new PatternTopic(edgeDeliveryHandoffPublisher.topicPattern()));
         }
         return container;
     }

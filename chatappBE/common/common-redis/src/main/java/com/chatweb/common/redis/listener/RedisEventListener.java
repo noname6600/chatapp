@@ -35,7 +35,7 @@ public class RedisEventListener implements MessageListener {
 
         try {
             logger.logReceive(channel, envelope);
-            dispatcher.dispatch(envelope);
+            dispatcher.dispatch(channel, envelope);
         } catch (Exception ex) {
             logger.logError(channel, envelope, ex);
         }

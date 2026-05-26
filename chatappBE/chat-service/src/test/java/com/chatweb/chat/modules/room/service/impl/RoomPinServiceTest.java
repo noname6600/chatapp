@@ -1,7 +1,8 @@
 package com.chatweb.chat.modules.room.service.impl;
 
 import com.chatweb.chat.modules.message.application.mapper.MessageMapper;
-import com.chatweb.chat.modules.message.application.service.IMessageEventPublisher;
+import com.chatweb.chat.modules.message.application.service.IMessagePinEventPublisher;
+import com.chatweb.chat.modules.message.application.service.ISystemMessageService;
 import com.chatweb.chat.modules.message.domain.entity.ChatMessage;
 import com.chatweb.chat.modules.message.domain.entity.RoomPinnedMessage;
 import com.chatweb.chat.modules.message.domain.enums.MessageType;
@@ -9,7 +10,6 @@ import com.chatweb.chat.modules.message.domain.repository.ChatAttachmentReposito
 import com.chatweb.chat.modules.message.domain.repository.ChatMessageRepository;
 import com.chatweb.chat.modules.message.domain.repository.RoomPinnedMessageRepository;
 import com.chatweb.chat.modules.message.domain.service.IMessagePreviewService;
-import com.chatweb.chat.modules.message.infrastructure.redis.ChatRedisPublisher;
 import com.chatweb.chat.modules.room.repository.RoomMemberRepository;
 import com.chatweb.common.core.exception.BusinessException;
 import com.chatweb.common.core.exception.CommonErrorCode;
@@ -40,11 +40,11 @@ class RoomPinServiceTest {
     @Mock
     private RoomPinnedMessageRepository roomPinnedMessageRepository;
     @Mock
-    private IMessageEventPublisher messageEventPublisher;
+    private ISystemMessageService systemMessageService;
+    @Mock
+    private IMessagePinEventPublisher pinEventPublisher;
     @Mock
     private MessageMapper messageMapper;
-    @Mock
-    private ChatRedisPublisher chatRedisPublisher;
     @Mock
     private IMessagePreviewService previewService;
 

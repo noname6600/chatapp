@@ -1,0 +1,1027 @@
+================================================================================
+  COMMON-REDIS MODULE — DEEP REVIEW
+  Module: chatappBE/common/common-redis
+  Reviewer: Principal Backend Architect / Staff Engineer
+  Date: 2026-05-18
+  Status: READ-ONLY ANALYSIS — NO CODE CHANGES MADE
+================================================================================
+
+
+────────────────────────────────────────────────────────────────────────────────
+  TABLE OF CONTENTS
+────────────────────────────────────────────────────────────────────────────────
+  1.  What This Module Is
+  2.  File Inventory — Every Class, Every Role
+  3.  How It Boots — Auto-Configuration Flow
+  4.  Publish Flow — Step by Step
+  5.  Subscribe / Consume Flow — Step by Step
+  6.  How Each Service Wires This Module
+  7.  The Dual-Interface Problem — CRITICAL BUG
+  8.  Channel Naming — What Is Canonical, What Is Duplicated
+  9.  Serialization / Deserialization — Full Walk-Through
+  10. Observability — What Gets Logged and What Doesn't
+  11. The Registry System — How Payload Types Are Resolved
+  12. What Can Actually Run Right Now
+  13. Redundant Code — Classes That Are Dead or Duplicated
+  14. Deprecated Patterns — Things That Should Be Removed
+  15. Missing Pieces — What Is Not Here But Should Be
+  16. Build Configuration Failure — Why Tests Cannot Compile
+  17. Summary Verdict
+
+
+────────────────────────────────────────────────────────────────────────────────
+  1. WHAT THIS MODULE IS
+────────────────────────────────────────────────────────────────────────────────
+
+common-redis is a shared library that wraps Spring Data Redis Pub/Sub into a
+structured event-driven framework. Its job is to give every microservice a
+consistent way to publish EventEnvelope-wrapped events onto Redis channels and
+receive/dispatch those envelopes to typed handler beans, without each service
+having to write its own serialization, validation, or observability logic.
+
+It is NOT a runnable application. It is a java-library published as a JAR
+(common-redis-0.0.1-SNAPSHOT.jar) and consumed as a compile-time dependency by:
+
+  - chat-service
+  - presence-service
+  - notification-service
+  - realtime-edge-service
+  - user-service (build.gradle dependency only — no actual usage found)
+
+It uses Spring Boot's AutoConfiguration mechanism so that services get all Redis
+pub/sub infrastructure wired automatically the moment they put the JAR on their
+classpath and have a Redis connection configured.
+
+
+────────────────────────────────────────────────────────────────────────────────
+  2. FILE INVENTORY — EVERY CLASS, EVERY ROLE
+────────────────────────────────────────────────────────────────────────────────
+
+PACKAGE: channel
+  RedisChannels.java
+    — A utility constants class. Holds every Redis channel name and channel
+      pattern used across ALL services. Contains static factory methods
+      chatRoom(UUID), notificationUser(UUID), presenceRoom(UUID) for building
+      per-entity channel names. This is the single source of truth for channel
+      naming.
+
+PACKAGE: config
+  RedisAutoConfiguration.java
+    — @AutoConfiguration class. Loaded by Spring Boot via the file at:
+      META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports
+    — Fires only if StringRedisTemplate is on the classpath
+      (@ConditionalOnClass). That condition is always true if the service uses
+      spring-boot-starter-data-redis.
+    — Declares 6 beans: RedisPubSubObserver, RedisEventRegistry,
+      RedisEventSerializer, RedisEventPublisher, RedisEventDispatcher,
+      MessageListener (as RedisEventListener).
+    — All 6 beans are @ConditionalOnMissingBean so any service can override any
+      of them individually.
+
+PACKAGE: dispatcher
+  RedisEventDispatcher.java
+    — Takes List<RedisEventHandler<?>> at construction time and builds a
+      Map<String, RedisEventHandler<?>> keyed by eventType().
+    — On dispatch(EventEnvelope), it looks up the handler by the envelope's
+      metadata.eventType and calls handler.handle(envelope).
+    — Throws IllegalStateException at startup if two handlers share the same
+      eventType (duplicate detection).
+    — Silently drops (with log.warn) any event whose eventType has no registered
+      handler.
+
+PACKAGE: exception
+  RedisPubSubException.java
+    — RuntimeException subclass. Carries a channel field so callers can
+      identify which Redis channel a failure came from.
+    — Has two constructors: one with channel+message+cause, one without channel.
+      The "without channel" constructor sets channel=null — this is used during
+      serialization where the channel is not yet known.
+
+PACKAGE: flow
+  RedisEventRoutingContext.java
+    — A Java record. Captures (channel, eventType, correlationId, sourceService)
+      extracted from an EventEnvelope. Created once at the start of the publish
+      flow and passed to the observer for logging. Its only purpose is to avoid
+      repeatedly extracting metadata fields from the envelope in multiple log
+      calls. Pure data holder.
+
+PACKAGE: listener
+  RedisEventListener.java
+    — Implements Spring's MessageListener interface. This is the inbound
+      boundary. When Redis delivers a message on a subscribed channel, Spring
+      calls onMessage(Message, byte[]) on this class.
+    — It does: decode bytes → deserialize to EventEnvelope → logReceive →
+      dispatcher.dispatch(envelope).
+    — Error handling: deserialization failure → logDeserializeError + return
+      (message is dropped). Dispatch failure → logError (message is dropped
+      after logging).
+    — This class is created as a Spring @Bean by RedisAutoConfiguration.
+      Services can also manually instantiate it with new (chat-service and
+      presence-service do this).
+
+PACKAGE: observability
+  RedisPubSubObserver.java (interface)
+    — Defines 4 lifecycle callbacks: logPublish, logReceive, logError,
+      logDeserializeError. Also has convenience default overloads that accept
+      RedisEventRoutingContext instead of String channel.
+
+  Slf4jRedisPubSubLogger.java (implementation)
+    — Default implementation. Logs structured lines prefixed with [REDIS][SUCCESS],
+      [REDIS][DISPATCH], [REDIS][FAILURE], [REDIS][DESERIALIZE_FAIL].
+    — Deliberately does NOT log raw payload content — only metadata fields
+      (channel, eventType, correlationId, eventId, sourceService).
+
+PACKAGE: publisher
+  RedisEventPublisher.java (interface)
+    — Single method: void publish(String channel, EventEnvelope<?> eventEnvelope)
+
+  DefaultRedisEventPublisher.java (implementation)
+    — Two-stage execution: VALIDATE then PUBLISH.
+    — VALIDATE stage: calls EventContractValidator.validateEventNameOrThrow
+      and EventContractValidator.validateIdentityOrThrow. These are from
+      common-events and validate that the EventMetadata fields follow the
+      contract (non-null eventId, valid format eventType, etc.).
+    — PUBLISH stage: serializes to JSON via RedisEventSerializer, calls
+      redisTemplate.convertAndSend(channel, payload).
+    — Any failure in either stage is logged via RedisPubSubObserver and wrapped
+      in RedisPubSubException. The exception propagates to the caller.
+
+PACKAGE: registry
+  RedisEventRegistry.java (interface)
+    — Extends EventPayloadRegistry (from common-events). Adds no new methods —
+      it is purely a type-alias/marker interface so services can inject the
+      registry by the Redis-specific type via @Autowired RedisEventRegistry.
+
+  DefaultRedisEventRegistry.java (implementation)
+    — Extends DefaultEventPayloadRegistry (from common-events) and implements
+      RedisEventRegistry. Also adds no behavior. It exists so that
+      DefaultEventPayloadRegistry's concrete implementation can be injected as a
+      RedisEventRegistry without requiring a concrete class dependency in
+      auto-config.
+
+PACKAGE: serialization
+  RedisEventSerializer.java (interface)
+    — Two methods: serialize(EventEnvelope<?>) → String, and
+      deserialize(String) → EventEnvelope<?>.
+
+  JsonRedisEventSerializer.java (implementation)
+    — Full 4-phase deserialization: parse JSON, validate metadata node, resolve
+      payload class from registry, build EventMetadata.
+    — Supports payload-less event types (checked against
+      SharedEventCatalog.PAYLOAD_LESS_EVENT_TYPES). For payload-less events,
+      payload field in JSON is ignored and payload in envelope is set to null.
+    — Each failure phase produces a distinct RedisPubSubException message so
+      callers can distinguish: invalid JSON vs missing metadata vs unknown event
+      type vs invalid payload shape vs invalid timestamp format.
+
+PACKAGE: subscriber
+  RedisEventHandler.java (interface)
+    — Defines the handler contract used by RedisEventDispatcher:
+      String eventType() + void handle(EventEnvelope<T> envelope).
+    — Javadoc includes a migration note: "the previous onEvent method has been
+      removed. Service implementations must override handle instead."
+
+  RedisEventSubscriber.java (interface)
+    — ALSO defines a handler contract: String eventType() + void onEnvelope(
+      EventEnvelope<T> envelope).
+    — Javadoc claims "This is the canonical dispatch method called by
+      RedisEventDispatcher" — but this claim is WRONG (see Section 7).
+
+  RedisPubSubSubscriberAdapter.java
+    — Implements MessageListener. Does exactly the same thing as RedisEventListener:
+      decode bytes → deserialize → logReceive / logError → dispatcher.dispatch.
+    — This class and RedisEventListener are IDENTICAL in behavior.
+
+TEST PACKAGE: contract
+  RedisAutoConfigurationContractTest.java
+    — Uses ApplicationContextRunner (spring-boot-test) to verify that all 6
+      expected beans are created by RedisAutoConfiguration when a
+      StringRedisTemplate bean exists.
+
+  RedisContractTest.java
+    — Verifies serializer round-trip, eventId/correlationId preservation,
+      payload-less event handling, SharedEventCatalog bootstrap, registry
+      duplicate detection, and RedisEventRoutingContext null safety.
+    — 12 tests total, all unit-level, no Redis server needed.
+
+
+────────────────────────────────────────────────────────────────────────────────
+  3. HOW IT BOOTS — AUTO-CONFIGURATION FLOW
+────────────────────────────────────────────────────────────────────────────────
+
+When a Spring Boot service starts and has common-redis on its classpath:
+
+Step 1: Spring Boot scans the JAR's META-INF/spring/
+        org.springframework.boot.autoconfigure.AutoConfiguration.imports file.
+        It finds: com.example.common.redis.config.RedisAutoConfiguration
+
+Step 2: @ConditionalOnClass(StringRedisTemplate.class) is evaluated.
+        If spring-boot-starter-data-redis is on the classpath, this is true.
+        All services that use common-redis also use the Redis starter, so this
+        condition is always satisfied.
+
+Step 3: Bean creation order (resolving dependencies):
+        a. RedisPubSubObserver — no deps, creates Slf4jRedisPubSubLogger
+        b. RedisEventRegistry  — no deps, creates DefaultRedisEventRegistry,
+             then calls SharedEventCatalog.registerAll(registry) which pre-
+             populates it with all known shared event types and their payload
+             classes from common-events
+        c. RedisEventSerializer — needs ObjectMapper + RedisEventRegistry,
+             creates JsonRedisEventSerializer
+        d. RedisEventPublisher  — needs StringRedisTemplate + RedisEventSerializer
+             + RedisPubSubObserver, creates DefaultRedisEventPublisher
+        e. RedisEventDispatcher — needs List<RedisEventHandler<?>>
+             Spring collects all beans that implement RedisEventHandler<?>.
+             Creates RedisEventDispatcher with whatever it finds.
+        f. MessageListener      — needs RedisEventSerializer + RedisEventDispatcher
+             + RedisPubSubObserver, creates RedisEventListener
+
+Step 4: The MessageListener bean (RedisEventListener) exists in the Spring
+        context but is NOT yet subscribed to any channel. Channel subscription
+        is intentionally left to the individual service. Each service creates
+        its own RedisMessageListenerContainer and registers which channels to
+        listen on.
+
+Step 5: Service-specific config (e.g., ChatRedisEventConfig.@PostConstruct)
+        may add more event type → payload class registrations to the
+        RedisEventRegistry to supplement what SharedEventCatalog pre-loaded.
+
+
+────────────────────────────────────────────────────────────────────────────────
+  4. PUBLISH FLOW — STEP BY STEP
+────────────────────────────────────────────────────────────────────────────────
+
+The concrete publish flow, traced through chat-service as an example
+(ChatRedisPublisher.publishMessageSent → ... → Redis):
+
+  Caller: MessageCommandService or similar application code
+  ↓
+  ChatRedisPublisher.publishMessageSent(ChatMessagePayload payload)
+    — builds channel name: "realtime.chat.room." + roomId
+    — generates/resolves eventId (UUID) and correlationId
+    — builds EventMetadata(eventId, "chat.message.sent", "chat-service", Instant.now(), correlationId)
+    — wraps in EventEnvelope<ChatMessagePayload>(metadata, payload)
+    — calls redisPublisher.publish(channel, envelope)
+  ↓
+  DefaultRedisEventPublisher.publish(channel, envelope)
+    — validates channel is not null or blank → throws IllegalArgumentException if bad
+    — creates RedisEventRoutingContext.of(channel, envelope) for logging
+    — VALIDATE STAGE:
+        EventContractValidator.validateEventNameOrThrow("chat.message.sent")
+          — verifies format: must be lowercase.dot.separated
+        EventContractValidator.validateIdentityOrThrow(eventId, correlationId, sourceService, createdAt)
+          — verifies all are non-null, non-blank
+        if validation fails → logError(context, envelope, ex) + throw RedisPubSubException
+    — PUBLISH STAGE:
+        payload = serializer.serialize(envelope)
+          — Jackson ObjectMapper.writeValueAsString(envelope)
+          — Output JSON shape:
+            {
+              "metadata": {
+                "eventId": "...",
+                "eventType": "chat.message.sent",
+                "sourceService": "chat-service",
+                "createdAt": "2026-05-18T10:00:00Z",
+                "correlationId": "..."
+              },
+              "payload": { ... ChatMessagePayload fields ... }
+            }
+        redisTemplate.convertAndSend(channel, payload)
+          — StringRedisTemplate sends the JSON string to Redis via PUBLISH command
+          — Redis fans out to all subscribers of that channel
+        logPublish(context, envelope) → [REDIS][SUCCESS] log line
+        if any exception → logError + throw RedisPubSubException
+  ↓
+  Redis PUBLISH command sent on channel "realtime.chat.room.<roomId>"
+
+
+────────────────────────────────────────────────────────────────────────────────
+  5. SUBSCRIBE / CONSUME FLOW — STEP BY STEP (INTENDED DESIGN)
+────────────────────────────────────────────────────────────────────────────────
+
+The intended design of the consumption flow is:
+
+  Redis PUBLISH arrives on "realtime.chat.room.*"
+  ↓
+  Spring RedisMessageListenerContainer receives the message
+  (The container has a dedicated listener thread pool)
+  ↓
+  Container calls MessageListener.onMessage(message, pattern)
+  — The registered MessageListener is RedisEventListener
+  ↓
+  RedisEventListener.onMessage(message, pattern)
+    — channel = decode message.getChannel() from UTF-8 bytes
+    — payload = decode message.getBody() from UTF-8 bytes
+    — try:
+        envelope = serializer.deserialize(payload)
+          [If failure → logDeserializeError + return, message dropped silently]
+    — logReceive(channel, envelope) → [REDIS][DISPATCH] log line
+    — try:
+        dispatcher.dispatch(envelope)
+          [If failure → logError + exception swallowed, message dropped]
+  ↓
+  RedisEventDispatcher.dispatch(envelope)
+    — extracts eventType from envelope.metadata()
+    — looks up handler: eventHandlerMap.get(eventType)
+    — if handler == null → log.warn("No handler for eventType=...") + return
+    — if handler found → handler.handle(envelope)
+  ↓
+  Concrete handler.handle(envelope) — e.g., ChatMessageSentHandler
+    — accesses envelope.payload() as typed object
+    — performs business logic (e.g., broadcast to WebSocket sessions)
+
+
+────────────────────────────────────────────────────────────────────────────────
+  6. HOW EACH SERVICE WIRES THIS MODULE
+────────────────────────────────────────────────────────────────────────────────
+
+CHAT-SERVICE
+  Build: implementation project(':common:common-redis')
+
+  Publish side:
+    ChatRedisPublisher — wraps RedisEventPublisher, builds EventEnvelope,
+    publishes to "realtime.chat.room.<roomId>". Covers: message sent, edited,
+    deleted, reaction updated, pinned, unpinned.
+
+  Receive side:
+    ChatRedisEventConfig.@PostConstruct — registers 6 chat event types into the
+    RedisEventRegistry (MESSAGE_SENT, REACTION_UPDATED, MESSAGE_EDITED,
+    MESSAGE_DELETED, MESSAGE_PINNED, MESSAGE_UNPINNED).
+
+    ChatRedisListenerConfig — creates a RedisMessageListenerContainer with a
+    PatternTopic("realtime.chat.room.*"). Registers a manually-created
+    new RedisEventListener(serializer, dispatcher, logger) as the listener.
+
+    6 subscriber beans (@Component):
+      ChatMessageSentRedisSubscriber implements RedisEventSubscriber<ChatMessagePayload>
+      ChatMessageDeletedRedisSubscriber implements RedisEventSubscriber<MessageDeletedPayload>
+      ChatMessageEditedRedisSubscriber implements RedisEventSubscriber<MessageUpdatedPayload>
+      ChatMessagePinnedRedisSubscriber implements RedisEventSubscriber<MessagePinPayload>
+      ChatMessageUnpinnedRedisSubscriber implements RedisEventSubscriber<MessagePinPayload>
+      ChatReactionUpdatedRedisSubscriber implements RedisEventSubscriber<ReactionPayload>
+
+    Channel alias class:
+      ChatRedisChannels — thin wrapper over RedisChannels constants. Adds no
+      new channel names. All values are direct references to RedisChannels.*
+
+  IMPORTANT: See Section 7 for why the receive side does not actually work.
+
+PRESENCE-SERVICE
+  Build: implementation project(':common:common-redis')
+
+  Publish side:
+    PresenceRedisPublisher — publishes presence events (user online/offline,
+    typing, room join/leave, etc.) to channels in the "realtime.presence.*"
+    namespace.
+
+  Receive side:
+    PresenceRedisListenerConfig — creates RedisMessageListenerContainer with
+    PatternTopic("realtime.presence.*") and also a keyspace expiry listener
+    (__keyevent@*__:expired) for TTL-based offline detection.
+
+    8 subscriber beans (@Component):
+      RoomJoinSubscriber, RoomLeaveSubscriber, RoomOnlineUsersSubscriber,
+      UserOfflineSubscriber, UserOnlineSubscriber, UserStatusChangedSubscriber,
+      UserStopTypingSubscriber, UserTypingSubscriber
+    All implement RedisEventSubscriber<T>.
+
+    Channel alias class:
+      PresenceRedisChannels — thin wrapper over RedisChannels constants.
+
+  IMPORTANT: See Section 7 for why the receive side does not actually work.
+
+NOTIFICATION-SERVICE
+  Build: implementation project(':common:common-redis')
+
+  Publish side:
+    RedisNotificationPublisher — publishes RealtimeWsEvent objects (NOT
+    EventEnvelope) to "realtime.notification.user.<userId>" channels.
+    It uses Jackson ObjectMapper.writeValueAsString(event) directly — it does
+    NOT use RedisEventPublisher or EventEnvelope at all. This is a BYPASS of
+    the entire common-redis publish framework.
+
+  Receive side:
+    NotificationRedisListenerConfig — creates a RedisMessageListenerContainer
+    with PatternTopic(NOTIFICATION_USER_PATTERN). Registers
+    RedisNotificationSubscriber as the listener.
+
+    RedisNotificationSubscriber implements Spring's MessageListener directly.
+    It reads the message body as RealtimeWsEvent via ObjectMapper, extracts the
+    userId from the channel string, then calls WebSocketUserBroadcaster. This
+    also BYPASSES the common-redis framework (no EventEnvelope, no dispatcher,
+    no RedisEventHandler).
+
+  Channel alias class:
+    NotificationRedisChannels — thin wrapper over RedisChannels constants.
+
+  STATUS: Works but bypasses common-redis entirely.
+
+REALTIME-EDGE-SERVICE
+  Build: implementation project(':common:common-redis')
+
+  Has its own RedisEventListener in adapter.in.redis package (completely
+  different class from common-redis's RedisEventListener). This class:
+    — Hardcodes channel prefix strings as private static final constants
+      instead of using RedisChannels
+    — Routes by if-else on channel prefix
+    — Parses JSON manually with ObjectMapper + JsonNode path navigation
+    — Calls ChatRealtimeDeliveryService, NotificationRealtimeDeliveryService,
+      PresenceRealtimeDeliveryService based on channel prefix
+    — Does NOT use RedisEventPublisher, RedisEventRegistry, RedisEventDispatcher,
+      or EventEnvelope at all
+
+  RedisListenerConfig — the container is @ConditionalOnProperty(
+  realtime.redis.listener.enabled=true, matchIfMissing=false), meaning it is
+  DISABLED by default. Services must explicitly enable it.
+
+  STATUS: Bypasses common-redis entirely. Uses common-redis only for the
+  RedisChannels constant values... and actually doesn't even do that (has its
+  own local channel string constants).
+
+USER-SERVICE
+  Build: implementation project(':common:common-redis') — declared in build.gradle
+  No Java files found that use any common-redis class.
+  STATUS: Dead dependency. The module is declared but never used.
+
+
+────────────────────────────────────────────────────────────────────────────────
+  7. THE DUAL-INTERFACE PROBLEM — CRITICAL BUG
+────────────────────────────────────────────────────────────────────────────────
+
+This is the most important finding in this review.
+
+THE TWO INTERFACES:
+
+  RedisEventHandler<T>          (package: subscriber)
+    String eventType()
+    void handle(EventEnvelope<T> envelope)
+
+  RedisEventSubscriber<T>       (package: subscriber)
+    String eventType()
+    void onEnvelope(EventEnvelope<T> envelope)
+
+These are two completely separate interfaces. There is no extends, no implements,
+no adapter, no bridge between them.
+
+THE DISPATCHER USES RedisEventHandler:
+
+  RedisAutoConfiguration:
+    @Bean
+    public RedisEventDispatcher redisEventDispatcher(
+            List<RedisEventHandler<?>> handlers  ← collects RedisEventHandler beans
+    ) {
+
+  RedisEventDispatcher.dispatch(envelope):
+    handler.handle(envelope)  ← calls handle()
+
+THE SERVICES IMPLEMENT RedisEventSubscriber:
+
+  chat-service: 6 subscriber beans, all implement RedisEventSubscriber
+  presence-service: 8 subscriber beans, all implement RedisEventSubscriber
+
+  These beans implement onEnvelope(), not handle().
+
+WHAT HAPPENS AT RUNTIME:
+
+  When the RedisEventDispatcher bean is created by auto-configuration, Spring
+  collects all beans of type RedisEventHandler<?> from the context. In
+  chat-service and presence-service, ZERO beans implement RedisEventHandler.
+  Spring injects an empty list. The dispatcher's eventHandlerMap is empty.
+
+  When a Redis message arrives and RedisEventListener.onMessage() fires:
+    1. Message is decoded ✓
+    2. Payload is deserialized to EventEnvelope ✓
+    3. dispatcher.dispatch(envelope) is called ✓
+    4. Dispatcher does: eventHandlerMap.get("chat.message.sent") → null
+    5. log.warn("No handler for eventType=chat.message.sent")
+    6. return — message is DROPPED
+
+  The 6 ChatRedis*Subscriber beans exist in the Spring context but are never
+  called by anyone. They are dead code from a runtime perspective.
+
+  The 8 presence subscriber beans are in the same situation.
+
+EVIDENCE IN THE CODE:
+
+  RedisEventHandler.java Javadoc says:
+  "Migration note: the previous onEvent method has been removed. Service
+  implementations that previously overrode onEvent must override handle instead."
+
+  This note was written when the interface was renamed/refactored. But the
+  service implementations were never updated — they still use RedisEventSubscriber
+  with onEnvelope(), which appears to be the OLD interface that was supposed to
+  be removed or replaced with RedisEventHandler.handle().
+
+  RedisEventSubscriber.java Javadoc says:
+  "This is the canonical dispatch method called by RedisEventDispatcher."
+  This claim is INCORRECT. The dispatcher calls handle(), not onEnvelope().
+
+IMPACT:
+  - chat-service: all real-time fanout for message sent, edited, deleted,
+    reactions, pins is silently dropped. WebSocket clients in legacy chat-service
+    mode never receive real-time events published via Redis.
+  - presence-service: all presence event handling (online, offline, typing,
+    room join/leave) dispatched through common-redis is silently dropped.
+  - notification-service: NOT affected — bypasses the dispatcher entirely.
+  - realtime-edge-service: NOT affected — bypasses the dispatcher entirely.
+
+HOW TO FIX (direction only — not implementing):
+  Either:
+  a) Change all chat-service and presence-service subscriber beans from
+     RedisEventSubscriber to RedisEventHandler, renaming onEnvelope → handle.
+     Then delete the now-dead RedisEventSubscriber interface.
+  b) Change RedisAutoConfiguration to collect List<RedisEventSubscriber<?>>
+     and update RedisEventDispatcher to call onEnvelope(). Then delete
+     RedisEventHandler entirely.
+  Option (a) is simpler because the migration note in RedisEventHandler already
+  points this direction.
+
+
+────────────────────────────────────────────────────────────────────────────────
+  8. CHANNEL NAMING — WHAT IS CANONICAL, WHAT IS DUPLICATED
+────────────────────────────────────────────────────────────────────────────────
+
+CANONICAL SOURCE (common-redis):
+  RedisChannels.java
+
+    CHAT_ROOM_PREFIX           = "realtime.chat.room."
+    CHAT_ROOM_PATTERN          = "realtime.chat.room.*"
+    NOTIFICATION_USER_PREFIX   = "realtime.notification.user."
+    NOTIFICATION_USER_PATTERN  = "realtime.notification.user.*"
+    PRESENCE_USER              = "realtime.presence.user"
+    PRESENCE_ROOM_PREFIX       = "realtime.presence.room."
+    PRESENCE_GLOBAL            = "realtime.presence.global"
+    PRESENCE_PATTERN           = "realtime.presence.*"
+
+    chatRoom(UUID) → "realtime.chat.room.<uuid>"
+    notificationUser(UUID) → "realtime.notification.user.<uuid>"
+    presenceRoom(UUID) → "realtime.presence.room.<uuid>"
+
+SERVICE-LEVEL WRAPPERS (each delegates 100% to RedisChannels):
+  ChatRedisChannels.java         — wraps RedisChannels, adds roomChannel(UUID)
+  NotificationRedisChannels.java — wraps RedisChannels, adds userChannel(UUID)
+  PresenceRedisChannels.java     — wraps RedisChannels, adds roomChannel(UUID)
+
+ASSESSMENT: The service-level wrapper classes add zero value. They are
+pass-through classes that exist only because each service's developers wanted
+their own local namespace. Since all values are fully delegated to RedisChannels,
+these three wrapper classes can be removed and all call sites updated to use
+RedisChannels directly. This would eliminate one layer of indirection with no
+behavioral change.
+
+INCONSISTENCY — realtime-edge-service:
+  RedisEventListener (realtime-edge-service) hardcodes channel strings:
+    private static final String CHAT_ROOM_PREFIX = "realtime.chat.room.";
+    private static final String NOTIFICATION_USER_PREFIX = "realtime.notification.user.";
+    private static final String PRESENCE_USER_CHANNEL = "realtime.presence.user";
+    private static final String PRESENCE_GLOBAL_CHANNEL = "realtime.presence.global";
+    private static final String PRESENCE_ROOM_PREFIX = "realtime.presence.room.";
+
+  These are NOT references to RedisChannels — they are independent string
+  literals. If RedisChannels values ever change, realtime-edge-service would not
+  automatically follow. This is an inconsistency risk.
+
+
+────────────────────────────────────────────────────────────────────────────────
+  9. SERIALIZATION / DESERIALIZATION — FULL WALK-THROUGH
+────────────────────────────────────────────────────────────────────────────────
+
+SERIALIZE (publish path):
+  JsonRedisEventSerializer.serialize(EventEnvelope<?> envelope):
+    → Jackson ObjectMapper.writeValueAsString(envelope)
+    → Output is standard JSON. EventEnvelope is a record (metadata + payload).
+    → Relies on Jackson to handle EventMetadata and the generic payload type.
+    → Any Jackson exception → wrapped in RedisPubSubException("unknown", ...)
+    → The channel parameter of the exception is "unknown" because serialize does
+      not have access to the channel name. This loses routing context in the
+      exception but is acceptable since serialization failure is pre-network.
+
+DESERIALIZE (consume path) — 4 phases:
+
+  Phase 1: Parse JSON
+    mapper.readTree(payload) → JsonNode
+    If invalid JSON → RedisPubSubException("invalid JSON")
+
+  Phase 2: Validate metadata node
+    Extracts node.get("metadata"). Must be non-null.
+    Extracts eventType from metadata. Must be non-blank.
+    If missing → RedisPubSubException("missing metadata field" or
+                                       "missing eventType in metadata")
+
+  Phase 3: Resolve payload
+    If eventType is in SharedEventCatalog.PAYLOAD_LESS_EVENT_TYPES:
+      → payloadObject = null (skip registry lookup and payload field)
+    Else:
+      payloadClass = registry.resolvePayload(eventType)
+        if unknown eventType → RedisPubSubException("unknown event type")
+      payloadNode = node.get("payload")
+        if null/missing → RedisPubSubException("missing payload for payload-bearing event type")
+      payloadObject = mapper.treeToValue(payloadNode, payloadClass)
+        if deserialize fails → RedisPubSubException("invalid payload for event type")
+
+  Phase 4: Build EventMetadata
+    Extracts: eventId, sourceService, correlationId, createdAt (as Instant)
+    If createdAt is non-null but invalid format → RedisPubSubException
+      ("invalid createdAt timestamp format")
+    new EventMetadata(eventId, eventType, sourceService, createdAt, correlationId)
+      EventMetadata constructor validates all fields. If any are null/blank/invalid
+      → IllegalArgumentException → wrapped in RedisPubSubException
+        ("invalid envelope metadata")
+
+  Result: new EventEnvelope<>(metadata, payloadObject)
+
+NOTABLE DESIGN CHOICES:
+  1. Two-tree parse: payload is parsed once with readTree(), then individual
+     nodes are extracted and converted. This means Jackson parses the JSON twice
+     for the payload section (once into JsonNode, once into the target class via
+     treeToValue). For most payloads this is negligible. For very large payloads
+     it is unnecessary double work.
+
+  2. textOrNull helper: any blank string is converted to null. This means
+     metadata fields that are present but blank ("") are treated the same as
+     absent. This is intentional to prevent validation bypasses.
+
+  3. The registry is an EventPayloadRegistry, not a Redis-specific concept. The
+     same registry pattern is also used in common-kafka. This is correct
+     architectural layering.
+
+
+────────────────────────────────────────────────────────────────────────────────
+  10. OBSERVABILITY — WHAT GETS LOGGED AND WHAT DOESN'T
+────────────────────────────────────────────────────────────────────────────────
+
+WHAT IS LOGGED:
+
+  [REDIS][SUCCESS]          — every successful publish
+    channel, eventType, correlationId, eventId, sourceService
+    Level: INFO
+
+  [REDIS][DISPATCH]         — every successfully deserialized receive
+    channel, eventType, correlationId, eventId, sourceService
+    Level: INFO
+
+  [REDIS][FAILURE]          — publish failure OR dispatch/handler failure
+    channel, eventType, correlationId, eventId, exception
+    Level: ERROR
+
+  [REDIS][DESERIALIZE_FAIL] — deserialization failure on consume
+    channel, payloadLength (not content), exception
+    Level: ERROR
+
+WHAT IS NOT LOGGED:
+
+  1. No timing/latency is measured. There is no way to know how long publish
+     or dispatch takes from logs alone.
+
+  2. No counter/metric is emitted. Micrometer is not used here. The module
+     depends on jackson and spring-data-redis but not micrometer-core. If you
+     want to count events published or received, you must override
+     RedisPubSubObserver with a custom implementation.
+
+  3. Raw payload is deliberately excluded from all log lines. This is the
+     correct choice for privacy/security. The payloadLength field in
+     DESERIALIZE_FAIL gives minimal context without exposing data.
+
+  4. No log line for "handler not found" in the dispatcher itself. The
+     RedisEventDispatcher does log.warn directly, not through the observer.
+     This means the observer cannot be customized to handle this case without
+     subclassing the dispatcher.
+
+  5. No tracing integration. correlationId is included in log fields manually
+     but is NOT set on the SLF4J MDC. This means log correlation across services
+     requires post-processing log files rather than using automatic trace context.
+
+
+────────────────────────────────────────────────────────────────────────────────
+  11. THE REGISTRY SYSTEM — HOW PAYLOAD TYPES ARE RESOLVED
+────────────────────────────────────────────────────────────────────────────────
+
+The registry solves a fundamental problem in typed deserialization: when you
+receive a JSON string from Redis, you need to know which Java class to
+deserialize the payload into. The registry maps event type strings to Java Class
+objects.
+
+INITIALIZATION:
+  At auto-configuration time, SharedEventCatalog.registerAll(registry) is called.
+  SharedEventCatalog is in common-events. It pre-registers all shared/canonical
+  event types (e.g., chat.message.sent → ChatMessagePayload.class,
+  presence.user.status.changed → PresenceUserStatePayload.class, etc.).
+
+  Services can add additional registrations via @PostConstruct or @Bean.
+  ChatRedisEventConfig does this for all 6 chat event types.
+
+IMPORTANT REDUNDANCY:
+  SharedEventCatalog.registerAll() already registers ChatEventType.MESSAGE_SENT
+  → ChatMessagePayload.class. ChatRedisEventConfig also registers the same
+  event type. This causes a DUPLICATE REGISTRATION. The behavior depends on
+  DefaultEventPayloadRegistry's implementation. Looking at the test:
+
+    registry.register("account.created", String.class);
+    assertThatThrownBy(() -> reg.register("account.created", Integer.class))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("Conflicting")
+
+  The registry throws on duplicate registration. However, chat-service does not
+  crash at startup, which means either:
+  a) SharedEventCatalog does NOT register the chat event types (only presence/
+     notification types), OR
+  b) DefaultEventPayloadRegistry allows re-registration of the same type with
+     the same class (idempotent) but throws on conflicting class
+
+  Either way, the ChatRedisEventConfig @PostConstruct registrations are
+  redundant — they are either a no-op (same class, idempotent) or would crash
+  at startup if they actually conflicted.
+
+PAYLOAD-LESS EVENTS:
+  Some event types carry no data payload — the event type name itself conveys
+  all necessary information (e.g., "presence.user.heartbeat"). For these,
+  SharedEventCatalog maintains a static Set PAYLOAD_LESS_EVENT_TYPES. The
+  serializer checks this set before looking up the registry. This avoids a
+  registry entry for payload-less types and correctly deserializes them with
+  null payload.
+
+
+────────────────────────────────────────────────────────────────────────────────
+  12. WHAT CAN ACTUALLY RUN RIGHT NOW
+────────────────────────────────────────────────────────────────────────────────
+
+WHAT WORKS:
+
+  Publish path (all services):
+    DefaultRedisEventPublisher.publish() works correctly. The validation,
+    serialization, and Redis send are all wired properly. Chat events, presence
+    events published via RedisEventPublisher reach Redis correctly.
+
+  Notification-service receive path:
+    RedisNotificationSubscriber works independently. It bypasses the common
+    framework and receives RealtimeWsEvent JSON, extracts userId from channel,
+    and sends to WebSocket. This is functional.
+
+  Realtime-edge-service receive path:
+    Its own RedisEventListener works independently (when enabled via property).
+    Routes by channel prefix, delivers to delivery services. Functional when
+    enabled.
+
+  Module compilation (production code):
+    ./gradlew :common:common-redis:compileJava — PASSES
+    ./gradlew :common:common-redis:jar — PASSES (JAR built successfully)
+    The production JAR common-redis-0.0.1-SNAPSHOT.jar exists and is up-to-date.
+
+WHAT IS BROKEN:
+
+  Chat-service Redis subscriber dispatch:
+    All 6 ChatRedis*Subscriber beans are never called. Chat real-time fanout
+    via the common-redis path (for legacy per-service WebSocket) is silently
+    non-functional. Events arrive at Redis, get deserialized by RedisEventListener
+    but are dropped at the dispatcher because handler map is empty.
+
+  Presence-service Redis subscriber dispatch:
+    All 8 presence subscriber beans are never called for the same reason.
+
+  Test compilation (all tests in common-redis):
+    ./gradlew :common:common-redis:compileTestJava — FAILS
+    Missing: testImplementation 'org.springframework.boot:spring-boot-test'
+    RedisAutoConfigurationContractTest uses ApplicationContextRunner from
+    spring-boot-test which is not declared in build.gradle.
+    The production code compiles fine; only test code fails.
+
+
+────────────────────────────────────────────────────────────────────────────────
+  13. REDUNDANT CODE — CLASSES THAT ARE DEAD OR DUPLICATED
+────────────────────────────────────────────────────────────────────────────────
+
+1. RedisPubSubSubscriberAdapter.java — FULLY REDUNDANT
+   Location: common-redis/subscriber/RedisPubSubSubscriberAdapter.java
+
+   This class is byte-for-byte functionally identical to RedisEventListener:
+     - Both implement Spring's MessageListener
+     - Both decode channel and payload from UTF-8 bytes
+     - Both call serializer.deserialize(), observer.logDeserializeError on failure
+     - Both call observer.logReceive(), dispatcher.dispatch()
+     - Both swallow dispatch exceptions with observer.logError()
+
+   The only difference is the class name and its Javadoc.
+
+   RedisAutoConfiguration creates a MessageListener bean as RedisEventListener.
+   Services use new RedisEventListener(...) in their listener config. No service
+   or test instantiates RedisPubSubSubscriberAdapter. It is unreferenced dead
+   code.
+
+   Can be safely deleted.
+
+2. ChatRedisChannels.java — REDUNDANT WRAPPER
+   Location: chat-service/constants/ChatRedisChannels.java
+
+   All constants are direct references to RedisChannels:
+     CHAT_ROOM         = RedisChannels.CHAT_ROOM_PREFIX
+     CHAT_ROOM_PATTERN = RedisChannels.CHAT_ROOM_PATTERN
+     roomChannel(UUID) calls RedisChannels.chatRoom(UUID)
+
+   No service-specific channel names are added. Every call site can be
+   changed to use RedisChannels directly without any semantic change.
+
+3. NotificationRedisChannels.java — REDUNDANT WRAPPER
+   Location: notification-service/constants/NotificationRedisChannels.java
+
+   Same situation: all constants and methods delegate 100% to RedisChannels.
+
+4. PresenceRedisChannels.java — REDUNDANT WRAPPER
+   Location: presence-service/constants/PresenceRedisChannels.java
+
+   Same situation.
+
+5. RedisEventSubscriber.java — ORPHANED INTERFACE
+   Location: common-redis/subscriber/RedisEventSubscriber.java
+
+   This interface is implemented by all chat-service and presence-service
+   subscriber beans but is never consumed by any framework component.
+   The dispatcher uses RedisEventHandler, not RedisEventSubscriber.
+   Its Javadoc incorrectly claims it is the dispatch target.
+
+   It represents the OLD subscribe contract that was not properly migrated.
+   Either it should replace RedisEventHandler (update the dispatcher), or
+   all service implementations should be migrated to RedisEventHandler and
+   this interface deleted.
+
+   As it stands today, it is a misleading interface that makes 14 beans look
+   functional when they are actually unreachable.
+
+6. ChatRedisEventConfig.java @PostConstruct registrations — REDUNDANT
+   Location: chat-service/config/ChatRedisEventConfig.java
+
+   The 6 event type registrations it performs (MESSAGE_SENT, REACTION_UPDATED,
+   MESSAGE_EDITED, MESSAGE_DELETED, MESSAGE_PINNED, MESSAGE_UNPINNED) are
+   already handled by SharedEventCatalog.registerAll() during auto-config.
+   If DefaultEventPayloadRegistry is idempotent for same-type+same-class
+   re-registration, these are no-ops. If it throws on duplicates, this config
+   class would crash chat-service at startup — but it doesn't, confirming the
+   registrations are silently no-ops.
+
+
+────────────────────────────────────────────────────────────────────────────────
+  14. DEPRECATED PATTERNS — THINGS THAT SHOULD BE REMOVED
+────────────────────────────────────────────────────────────────────────────────
+
+1. INTERFACE SPLIT: RedisEventHandler vs RedisEventSubscriber
+   As described in Section 7, this dual-interface state is a half-finished
+   migration. The migration note in RedisEventHandler.java ("the previous
+   onEvent method has been removed; override handle instead") indicates the
+   intent was to move all service code to RedisEventHandler. That migration was
+   never completed. The RedisEventSubscriber interface and all its implementations
+   are in a deprecated state — they exist but are non-functional.
+
+2. MANUAL CHANNEL STRING CONSTANTS IN REALTIME-EDGE-SERVICE
+   The hardcoded private static final String channel prefixes inside
+   realtime-edge-service's RedisEventListener duplicate the values in
+   RedisChannels and bypass the canonical source. This is a deprecated pattern
+   that will cause silent channel mismatch bugs if channel names ever change.
+
+3. NOTIFICATION-SERVICE BYPASSING EventEnvelope
+   RedisNotificationPublisher publishes RealtimeWsEvent (not EventEnvelope).
+   RedisNotificationSubscriber reads RealtimeWsEvent (not EventEnvelope).
+   This is a different message format than every other service uses. It means
+   notification events cannot be routed through the standard dispatcher, have
+   no EventMetadata (no correlationId, no eventId, no sourceService), and
+   cannot benefit from any common-redis observability (no [REDIS][SUCCESS]
+   logs for notification publishes). This is effectively a deprecated ad-hoc
+   bypass of the framework.
+
+4. DUPLICATE LOGGER DECLARATIONS IN REALTIME-EDGE-SERVICE
+   The realtime-edge-service RedisEventListener has:
+     @Slf4j (annotation on class)  — creates static log from @Slf4j
+   AND:
+     private static final Logger log = LoggerFactory.getLogger(...)  — manual field
+
+   Two log fields for the same class. The @Slf4j annotation creates 'log'.
+   The manual field also creates 'log'. One of them shadows the other. This
+   is a bug in itself but also represents deprecated style (mixing Lombok
+   annotations with manual logger declarations).
+
+
+────────────────────────────────────────────────────────────────────────────────
+  15. MISSING PIECES — WHAT IS NOT HERE BUT SHOULD BE
+────────────────────────────────────────────────────────────────────────────────
+
+1. NO RETRY / ERROR QUEUE FOR FAILED DISPATCHES
+   If a handler throws an exception during dispatch, the exception is caught
+   by RedisEventListener, logged via logError, and the message is permanently
+   dropped. There is no retry, no dead-letter channel, no side-table. Redis
+   pub/sub is fire-and-forget by nature (unlike Kafka which has consumer group
+   offsets), but at minimum there should be a configurable observer hook that
+   allows services to send failed events to a dead-letter key or log to a
+   persistent store.
+
+2. NO MESSAGE ORDERING OR SEQUENCE GUARANTEES
+   Redis pub/sub delivers in arbitrary order under concurrent publishers.
+   common-redis has no ordering contract, sequence numbers, or deduplication.
+   The chat-service subscriber (ChatMessageSentRedisSubscriber) has a
+   RealtimeEventDedupeGuard for eventId-level dedup, but this is service-side
+   and not part of the common library.
+
+3. NO THREAD POOL CONFIGURATION
+   RedisMessageListenerContainer uses a default thread pool. There is no
+   documentation or configuration hook in common-redis for controlling
+   concurrency. Under high message volume, the default thread pool may saturate.
+
+4. NO BACK-PRESSURE OR CIRCUIT BREAKER
+   If Redis is unreachable during publish, DefaultRedisEventPublisher throws
+   RedisPubSubException. There is no circuit breaker, no retry with backoff,
+   no fallback. The caller (e.g., MessageCommandService) must handle this
+   exception. It is not clear that all callers do this gracefully.
+
+5. NO SCHEMA VERSIONING
+   EventEnvelope has no version field. If a payload class changes between
+   deployments (field added, removed, renamed), deserialization of in-flight
+   events from the old schema will either silently ignore new fields, fail
+   with RedisPubSubException, or produce null values for missing required fields.
+
+6. MISSING testImplementation DEPENDENCY IN BUILD.GRADLE
+   As noted in Section 16, spring-boot-test is not declared. Both test classes
+   cannot compile. This means the contract tests that verify auto-configuration
+   wiring are currently not running in any CI check.
+
+
+────────────────────────────────────────────────────────────────────────────────
+  16. BUILD CONFIGURATION FAILURE — WHY TESTS CANNOT COMPILE
+────────────────────────────────────────────────────────────────────────────────
+
+The test classes require org.springframework.boot.test.context.runner.ApplicationContextRunner.
+This class is in the spring-boot-test artifact.
+
+Current build.gradle test dependencies:
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'org.assertj:assertj-core'
+    testImplementation 'com.fasterxml.jackson.core:jackson-databind'
+    testImplementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+MISSING:
+    testImplementation 'org.springframework.boot:spring-boot-test'
+
+This is the only fix needed. The production code has no compilation issues.
+
+How to verify after fix:
+  ./gradlew :common:common-redis:test
+  Expected: 2 test classes, ~12 tests, all pass. No Redis server needed.
+
+
+────────────────────────────────────────────────────────────────────────────────
+  17. SUMMARY VERDICT
+────────────────────────────────────────────────────────────────────────────────
+
+GRADE: C+ (Good design intent, broken at the wiring layer)
+
+WHAT IS WELL-DESIGNED:
+  - AutoConfiguration with @ConditionalOnMissingBean gives full override flexibility
+  - 4-phase deserialization with distinct error messages per failure mode
+  - RedisPubSubObserver as an interface gives observability without coupling
+  - RedisChannels as single source of truth for channel naming
+  - PAYLOAD_LESS_EVENT_TYPES handling is clean
+  - RedisEventRoutingContext record is a nice zero-cost logging carrier
+  - textOrNull() treating blank as null prevents validation bypass
+  - Duplicate handler detection at startup in RedisEventDispatcher is correct
+
+WHAT IS BROKEN:
+  - RedisEventSubscriber vs RedisEventHandler mismatch renders chat-service and
+    presence-service subscriber beans completely non-functional
+  - Test compilation fails due to missing spring-boot-test dependency
+
+WHAT IS REDUNDANT / SHOULD BE REMOVED:
+  - RedisPubSubSubscriberAdapter — identical to RedisEventListener, never used
+  - RedisEventSubscriber interface — orphaned, misleading, should become
+    RedisEventHandler or be deleted
+  - ChatRedisChannels, NotificationRedisChannels, PresenceRedisChannels — all
+    are pure pass-through wrappers with no added value
+  - ChatRedisEventConfig @PostConstruct — registers event types that
+    SharedEventCatalog already registered
+
+WHAT BYPASSES THIS MODULE ENTIRELY (reducing its actual scope):
+  - notification-service uses its own raw MessageListener + RealtimeWsEvent
+  - realtime-edge-service uses its own raw if-else channel router
+  - user-service declares the dependency but uses nothing
+
+EFFECTIVE MODULE SCOPE TODAY (despite broader design):
+  - Publish: used correctly by chat-service and presence-service via
+    RedisEventPublisher ✓
+  - Receive dispatch: broken for chat-service and presence-service ✗
+  - Channels: canonical source used indirectly via wrapper classes ✓
+  - Serialization: wired and functional for the publish path ✓
+  - Observability: functional but no metrics, no MDC propagation ✓ (partial)
+  - Registry: functional on publish; on consume, present but with redundant
+    re-registrations ✓ (partial)
+
+PRIORITY FIXES (in order):
+  1. Fix build.gradle: add testImplementation 'org.springframework.boot:spring-boot-test'
+     so tests compile and the contract test suite runs
+  2. Fix the interface mismatch: migrate all chat-service and presence-service
+     subscribers from RedisEventSubscriber to RedisEventHandler
+  3. Delete RedisPubSubSubscriberAdapter — it is dead code
+  4. Delete RedisEventSubscriber — it is a misleading orphaned interface
+  5. Remove the service-level channel wrapper classes
+  6. Remove ChatRedisEventConfig @PostConstruct re-registrations
+  7. Fix realtime-edge-service to use RedisChannels constants instead of
+     local string literals
+
+================================================================================
+  END OF REVIEW
+================================================================================

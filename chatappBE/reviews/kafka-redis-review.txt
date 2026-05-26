@@ -1,0 +1,508 @@
+================================================================================
+  KAFKA / EVENT-DRIVEN + REDIS ARCHITECTURE REVIEW — CHATAPP BACKEND
+  Reviewer Role: Distributed Systems Analyst + Event Architecture Reviewer
+  Date: 2026-05-18
+  Codebase: d:/Work/PET/chatappPET/chatapp/chatappBE
+================================================================================
+
+================================================================================
+SECTION 1 — KAFKA PRODUCER REVIEW
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[STRENGTH] DefaultKafkaEventPublisher Validates Envelope Before Sending
+──────────────────────────────────────────────────────────────────────────────
+File: common/common-kafka/src/main/java/com/example/common/kafka/DefaultKafkaEventProducer.java
+
+Before sending, the producer validates:
+  - eventId is present (non-null UUID)
+  - eventType is non-empty lowercase string
+  - correlationId is present
+  - sourceService is non-empty
+  - createdAt is present
+
+Validation failures throw immediately (VALIDATE stage) before the Kafka template
+is invoked. This prevents malformed events from entering the Kafka bus.
+The observer pattern (KafkaEventObserver) allows pluggable logging and metrics
+at publish and error time.
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] Fire-and-Forget Producer Configuration in auth-service
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: auth-service/src/main/resources/application.yaml
+  spring.kafka.producer.properties.max.block.ms: 2000
+  spring.kafka.producer.properties.delivery.timeout.ms: 3000
+  spring.kafka.producer.properties.request.timeout.ms: 2000
+
+These extremely short timeouts mean:
+  1. If Kafka is unavailable or slow, the producer gives up after 2-3 seconds
+  2. KafkaTemplate.send() returns a CompletableFuture that fails silently
+     (no retry, no dead-letter, no alerting)
+  3. account.created event is dropped silently
+
+Impact chain on lost account.created event:
+  - user-service never receives it → UserProfile is never created
+  - User can log in (auth DB has their account) but user-service returns 404
+  - Any feature requiring profile data (display name, avatar) fails
+  - User appears as "Unknown User" throughout the app
+  - Notification service never sends welcome notification
+
+This is a silent, difficult-to-debug data loss scenario.
+
+All other services use default Kafka producer settings (no explicit timeout config),
+which inherit Spring Boot defaults: max.block.ms=60s, delivery.timeout.ms=120s.
+Only auth-service has this aggressive timeout configuration.
+
+Recommended fix direction:
+  Option A (best): Implement Transactional Outbox — write event to DB table in
+    same transaction as account creation. Background publisher reads outbox and
+    publishes to Kafka. Guaranteed at-least-once delivery.
+  Option B: Remove custom timeout config. Accept longer Kafka wait on register.
+    If Kafka is down, registration blocks for 60s → better UX than silent failure.
+  Option C: Add error callback on KafkaTemplate.send() to log alarm when event
+    publish fails. At minimum, alert on event loss.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] After-Commit Kafka Publish Across All Services (No Outbox)
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+Files:
+  auth-service/.../kafka/AccountCreatedAfterCommitPublisher.java
+  friendship-service/.../service/impl/FriendCommandService.java
+  chat-service/.../pipeline/send/steps/PublishMessageEventStep.java
+  notification-service/.../application/NotificationCommandService.java
+
+All services use TransactionSynchronization.afterCommit() to publish Kafka events.
+This is BETTER than publish-before-commit (prevents phantom events) but is NOT
+a durable outbox. Crash window: between DB commit and Kafka publish.
+
+For friendship events: if service crashes during a spike in friend requests,
+all un-published afterCommit events are lost. Notification-service never receives
+FRIEND_REQUEST_SENT → recipient never gets notified.
+
+The probability per event is very low. But at 10K friend requests per day:
+  - Even 0.01% failure rate = 1 lost notification per day
+  - At 1M events/day: ~100 lost events/day
+
+Assessment: Acceptable for current scale. Must address before high-traffic launch.
+
+================================================================================
+SECTION 2 — KAFKA CONSUMER REVIEW
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[STRENGTH] notification-service Has Dead-Letter Publishing on Consumer Failure
+──────────────────────────────────────────────────────────────────────────────
+File: notification-service/src/main/java/com/example/notification/kafka/KafkaConsumerConfig.java
+
+ConcurrentKafkaListenerContainerFactory uses:
+  DefaultErrorHandler(
+    new DeadLetterPublishingRecoverer(kafkaTemplate),
+    new FixedBackOff(1000L, 3)  // 1s delay, 3 retries
+  )
+
+After 3 failed processing attempts (with 1s between each), the message is
+published to a dead-letter topic ("system.dead-letter" from KafkaTopics).
+This prevents a bad message from blocking the consumer indefinitely.
+
+Same pattern in user-service/KafkaConsumerConfig.java.
+
+Limitation: "system.dead-letter" is a single topic for all services. There is
+no per-topic or per-consumer dead-letter queue. All unprocessable messages land
+in the same bucket, making root cause analysis harder.
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] realtime-edge-service Consumer Uses enable-auto-commit: true
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: realtime-edge-service/src/main/resources/application.yaml
+  spring.kafka.consumer.enable-auto-commit: true
+
+Auto-commit means: Kafka consumer commits offsets on a time interval
+(default 5 seconds) regardless of whether messages were successfully processed.
+
+Impact: If realtime-edge-service crashes after auto-commit but before processing:
+  - Kafka offsets are committed
+  - Messages are NOT reprocessed on restart (already committed)
+  - Friendship/presence events are silently lost
+  - WebSocket clients miss events that were committed but not delivered
+
+All other services (notification, user) use default Spring Kafka settings
+which use manual commit (ackMode=BATCH by default in Spring Kafka).
+realtime-edge is inconsistent and unsafe.
+
+Recommended fix direction:
+  Remove enable-auto-commit: true from realtime-edge application.yaml.
+  Spring Kafka's default manual ack mode ensures messages are committed only
+  after successful processing. Implement idempotent handlers to handle
+  at-least-once delivery.
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] No Retry/DLQ Configuration in chat-service and friendship-service Consumers
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+Files: chat-service/build.gradle — Kafka consumer (for what topics?)
+       friendship-service/application.yaml — basic consumer config
+
+chat-service's application.yaml has a basic Kafka consumer config without
+explicit error handling. If a Kafka message consumed by chat-service fails:
+  - Default Spring Kafka error handler retries indefinitely (blocking partition)
+  - OR: uses DefaultErrorHandler with default settings (no DLQ)
+
+friendship-service consumer config shows no KafkaConsumerConfig bean with
+error handling. This means consumer failures may block the partition consumer
+or silently drop messages depending on Spring Kafka defaults.
+
+Recommended fix direction:
+  Add explicit KafkaConsumerConfig in chat-service and friendship-service
+  matching the notification-service pattern (FixedBackOff + DeadLetterPublishingRecoverer).
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] Consumer Groups Are Single Instances — No Horizontal Consumer Scaling
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+Consumer groups:
+  notification-service: group-id = notification-service
+  user-service: group-id = user-service
+  realtime-edge: group-id = realtime-edge
+
+With single-partition topics (auto-created, default 1 partition), only one
+consumer in each group reads each partition. Two instances of notification-service
+would be in the same group but only one processes each partition.
+
+To scale consumers horizontally:
+  - Increase topic partition count (minimum = desired consumer count)
+  - Multiple instances of the service can then each process a different partition
+
+This is a Kafka fundamentals requirement for horizontal consumer scaling.
+
+Recommended fix direction:
+  For high-volume topics (chat.message.events), create with 6-12 partitions:
+  kafka-topics --create --topic chat.message.events --partitions 12 --replication-factor 3
+  Then 12 notification-service instances can each handle 1 partition independently.
+
+================================================================================
+SECTION 3 — EVENT DESIGN REVIEW
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[STRENGTH] ChatMessagePayload Is Comprehensive for Fan-Out
+──────────────────────────────────────────────────────────────────────────────
+File: common/common-events/.../ChatMessagePayload.java
+
+The ChatMessagePayload contains:
+  messageId, roomId, senderId, seq, type, content, replyToMessageId,
+  attachments, blocks, mentionedUserIds, recipientUserIds, isDirect flag
+
+The inclusion of recipientUserIds and mentionedUserIds in the event allows
+notification-service to determine notification targets without making additional
+DB queries. The isDirect flag allows quick discrimination between private and
+group message handling. This is good event design for downstream consumer autonomy.
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] No Event Versioning — Schema Evolution Is Unsafe
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: common/common-events/.../EventMetadata.java (no version field)
+      common/common-events/.../SharedEventCatalog.java
+
+EventMetadata has: eventId, eventType, sourceService, createdAt, correlationId.
+No `version` field. No schema version in EventEnvelope.
+
+Risk scenario:
+  1. chat-service adds `threadId` (required) to ChatMessagePayload in v2.
+  2. notification-service is on v1 — does not know about threadId.
+  3. During rolling deployment, v2 chat-service publishes messages with threadId.
+  4. v1 notification-service deserializes: if @JsonProperty required → DeserializationException
+     → DLQ → notification lost. If optional → threadId silently ignored → functional.
+
+Without version field, consumers cannot selectively handle only versions they support.
+
+Recommended fix direction:
+  Add `version: int = 1` to EventMetadata.
+  Consumers declare @KafkaListener with a condition that checks version:
+    if (metadata.version > MY_MAX_VERSION) skip and log warning
+  Use additive-only changes (new nullable fields) as the primary evolution strategy.
+  For major breaking changes: new event type (e.g., "chat.message.sent.v2").
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] Dual Topic Names for Chat Messages (Legacy + New)
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: common/common-kafka/.../KafkaTopics.java
+  CHAT_MESSAGE_SENT = "chat.message.sent" (legacy comment)
+
+ChatEventType.MESSAGE_SENT enum value determines the actual topic name used.
+If MESSAGE_SENT.value() returns "chat.message.sent" (legacy) and some consumers
+subscribe to "chat.message.events" (new), there is a topic mismatch.
+
+KafkaTopics constants show both exist. The realtime-edge consumer subscribes
+to topics defined by KafkaTopics enum constants. If the producer (chat-service)
+uses a different topic name (from ChatEventType enum), events are silently missed.
+
+Recommended fix direction:
+  1. Add an integration test that verifies: producer topic == consumer topic
+  2. Eliminate one of the duplicate constants
+  3. Document in KafkaTopics which constant is canonical
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] Notification Service Deduplication Is In-Memory (Not Distributed)
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: notification-service/.../application/NotificationKafkaEventApplicationService.java
+  ConcurrentHashMap<UUID, Instant> with 5-minute TTL window
+
+In-memory deduplication works correctly for single-instance deployment.
+Failures:
+  1. Service restart: ConcurrentHashMap is cleared → Kafka reprocesses from committed
+     offset → all events in the 5-minute window are processed again → duplicate notifications
+  2. Multiple instances: instance A processes event, instance B doesn't know → instance B
+     also processes the same event → duplicate notification
+
+Runtime impact: Users receive duplicate notifications on service restarts or multi-instance deploys
+
+Recommended fix direction:
+  Replace ConcurrentHashMap with Redis SETNX:
+    SETNX "notif:dedup:{eventId}" "1" EX 300 (5min TTL)
+  Returns 1 (success) only on first attempt → process the event
+  Returns 0 (key exists) on duplicate → skip
+  This works across instances and survives restarts.
+
+================================================================================
+SECTION 4 — REDIS ARCHITECTURE REVIEW
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[STRENGTH] ITimeRedisCache Interface Provides a Clean Abstraction
+──────────────────────────────────────────────────────────────────────────────
+File: common/common-redis/.../ITimeRedisCache.java
+      user-service/.../service/impl/UserProfileService.java
+
+The safe get/put pattern with exception catching provides resilience:
+  - safeGetProfileFromCache(): catches Redis exceptions, returns null (DB fallback)
+  - safePutProfileToCache(): catches Redis exceptions, no-ops silently
+  - Redis down = graceful degradation to DB, not service failure
+
+The interface provides a clean abstraction over Redis operations. Services
+don't directly use RedisTemplate, reducing coupling.
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] All Services Share Single Redis Instance — No Namespace Isolation
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: chatappBE/docker-compose.yml (single redis container)
+
+All services use the same Redis instance (redis:6379) with no database segregation
+(no SELECT dbIndex in configuration). Services using Redis:
+  - gateway-service: rate limiter keys (e.g., "request_rate_limiter.{ip}")
+  - user-service: user profile cache (e.g., "user:profile:{userId}")
+  - presence-service: presence state (e.g., "presence:state:{userId}")
+  - notification-service: notification pub/sub channels
+  - chat-service: pub/sub relay
+  - realtime-edge-service: event delivery channels
+
+Key collision risk: if two services accidentally use the same key pattern:
+  - Gateway rate limiter key collides with a user cache key → rate limiter corruption
+  - presence:state key collides with a future chat cache key → presence corruption
+
+Currently key prefixes are different enough to avoid collision, but there is no
+enforced isolation. Redis key namespace discipline must be maintained manually.
+
+Redis memory pressure: all workloads share the same memory budget. A presence
+storm (10K users connect simultaneously) can cause Redis OOM, which would also
+kill rate limiting, user cache, and notification pub/sub.
+
+Recommended fix direction:
+  Short term: Document the key namespace convention for each service.
+    Enforce via code review.
+  Medium term: Use Redis databases (SELECT 0-15) per service.
+    Redis supports 16 logical databases, zero overhead.
+  Long term: Separate Redis instances per service (or Redis Cluster with
+    hash tags for partitioning).
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] Presence Connection Counter Can Drift Negative
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: presence-service/.../service/PresenceService.java
+  Method: offline() → presenceEphemeralStatePort.decrementConnectionCount(userId)
+  Method: online() → presenceEphemeralStatePort.incrementConnectionCount(userId)
+
+The connection counter uses Redis INCR/DECR. The decrementConnectionCount()
+presumably does DECR "presence:conn:{userId}".
+
+Redis DECR has no floor — it will decrement below 0. If:
+  1. User has 1 connection (counter = 1)
+  2. Network drops → WebSocket handler is called twice for the same disconnect
+     (Spring WebSocket framework may call afterConnectionClosed twice under certain conditions)
+  3. DECR is called twice: 1 → 0 → -1
+
+With counter = -1: any subsequent login triggers INCR → counter = 0 → user
+never appears online until another connection comes in and goes offline.
+
+More concretely: remainingConnections = DECR returns -1 > 0 = FALSE, so offline
+cleanup runs (correct for counter -1). But subsequent online() calls: counter -1+1=0
+→ firstConnection = (0 == 1) = FALSE → USER_ONLINE event NOT published → user
+appears offline to everyone else despite being connected.
+
+Recommended fix direction:
+  Use Redis SETNX/SET pattern instead of INCR/DECR:
+  - Track individual session IDs in a set: SADD "presence:sessions:{userId}" sessionId
+  - online(): SADD (returns 1 if new) → firstConnection check on set size
+  - offline(): SREM → remainingConnections = SCARD
+  - No negative counter possible
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] Presence Redis Keys Have No Explicit Expiry on Ephemeral State
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+Files: presence-service/.../state/port/PresenceEphemeralStatePort.java
+
+Ephemeral state keys (presence:online set, presence:room:{roomId} sets,
+presence:conn:{userId} counter) have NO TTL. They rely on explicit cleanup
+during online/offline lifecycle events.
+
+If presence-service crashes while users are connected:
+  - Connection counters remain positive in Redis
+  - Online user set contains phantom users
+  - Room presence sets contain phantom users
+  - On restart: no cleanup of stale state
+  - All users appear online even though they've reconnected
+
+The TTL-based presence:state:{userId} key provides some protection (expires when
+heartbeats stop). But ephemeral sets (presence:online, presence:room:*) persist
+indefinitely until explicit cleanup.
+
+Recommended fix direction:
+  On presence-service startup: clear all ephemeral presence state (presence:conn:*,
+  presence:online, presence:room:*) and let clients reconnect and re-establish state.
+  Add a @EventListener(ApplicationReadyEvent.class) that runs this cleanup.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] Redis Pub/Sub Is Not Durable — Events Lost on No Subscriber
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+Files: notification-service/.../redis/RedisNotificationPublisher.java
+       chat-service/.../config/ChatRedisEventConfig.java
+
+Redis PUBLISH is fire-and-forget. If the WebSocket handler is not subscribed
+to the channel at publish time (e.g., realtime-edge restarting, no sessions for
+that user/room), the published event is permanently lost.
+
+For notifications: user has no active WebSocket session → notification published
+to Redis → no subscriber → event lost. User sees notification only on next REST poll
+(or when they refresh the page). This is acceptable behavior but should be explicit.
+
+For chat messages to room: realtime-edge is restarting → Redis PUBLISH → no subscriber
+→ users miss the message delivery over WebSocket. The message IS saved in DB, so a
+page refresh (REST poll) will retrieve it. But the real-time delivery is lost.
+
+Recommended fix direction:
+  Document this as expected degradation. Add monitoring: if Redis PUBLISH returns 0
+  (subscriber count), log a warning for operational awareness.
+  Long-term: Redis Streams provide persistent pub/sub with consumer groups and acks.
+
+================================================================================
+SECTION 5 — REDIS KEY DESIGN REVIEW
+================================================================================
+
+Known Redis key patterns (from code analysis):
+
+  PREFIX                      SERVICE       TYPE    TTL?
+  ──────────────────────────────────────────────────────────────────────────
+  request_rate_limiter.*      gateway       Hash    Yes (rate limiter)
+  user:profile:{userId}       user-svc      String  Yes (5 min)
+  presence:state:{userId}     presence      String  Yes (TTL = heartbeat interval)
+  presence:conn:{userId}      presence      String  No  (explicit INCR/DECR)
+  presence:online             presence      Set     No  (explicit SADD/SREM)
+  presence:room:{roomId}      presence      Set     No  (explicit SADD/SREM)
+  presence:user-rooms:{uid}   presence      Set     No  (explicit SADD/SREM)
+  notification:{userId}       notification  Pub/Sub N/A (ephemeral channel)
+  room:{roomId}               chat/realtime Pub/Sub N/A (ephemeral channel)
+  realtime.edge.handoff.*     realtime-edge Pub/Sub N/A (disabled by default)
+  ──────────────────────────────────────────────────────────────────────────
+
+Observations:
+1. All presence ephemeral state (presence:conn, presence:online, presence:room:*)
+   has NO TTL. This is a leak risk as described above.
+2. No Redis key eviction policy is configured in docker-compose (default: noeviction).
+   With noeviction, Redis returns OOM error rather than evicting data.
+3. For production: configure maxmemory-policy: allkeys-lru or volatile-lru.
+
+================================================================================
+SECTION 6 — KAFKA INFRASTRUCTURE REVIEW
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[CRITICAL] Single Kafka Broker, Replication Factor 1
+──────────────────────────────────────────────────────────────────────────────
+Severity: CRITICAL
+File: chatappBE/docker-compose.yml
+  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+  Single broker configuration
+
+A single Kafka broker with RF=1 means:
+  - Broker restart: all consumers pause until broker is back
+  - Broker disk failure: event data is lost (no replica)
+  - No partition leader failover (only one broker = only one possible leader)
+
+For a chat application where event delivery drives notifications, presence, and
+realtime updates: a 2-minute Kafka restart causes:
+  - All message notifications stalled
+  - All presence events stalled (user appears offline despite being connected)
+  - All friendship event notifications stalled
+  - Backlogs of unprocessed events accumulate during the outage
+
+Recommended fix direction:
+  Minimum viable Kafka cluster: 3 brokers, RF=3, min.insync.replicas=2.
+  Docker Compose multi-broker example:
+    kafka-1, kafka-2, kafka-3 each with unique KAFKA_BROKER_ID and separate ports.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] KAFKA_AUTO_CREATE_TOPICS_ENABLE: true In Production
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: chatappBE/docker-compose.yml
+  KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+Auto-created topics use default partition count (1) and replication factor (1).
+This means:
+  1. A new service that publishes to a typo topic (e.g., "chat.messge.events")
+     creates a new topic silently → events go nowhere
+  2. The intended topic never receives the events
+  3. There is no alerting for this scenario
+
+With KAFKA_AUTO_CREATE_TOPICS_ENABLE: false, publishing to a non-existent topic
+would fail immediately, making the misconfiguration visible.
+
+Recommended fix direction:
+  Set KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false" in production.
+  Create topics explicitly with correct partition count and replication factor
+  using kafka-topics.sh scripts in deployment pipeline.
+
+================================================================================
+SECTION 7 — STRENGTHS SUMMARY
+================================================================================
+
+[STRENGTH-1] EventEnvelope with validated metadata at publish and deserialize time.
+  Files: DefaultKafkaEventProducer.java, EventEnvelopeKafkaDeserializer.java
+
+[STRENGTH-2] SharedEventCatalog prevents conflicting event type registrations.
+  File: common/common-events/.../SharedEventCatalog.java
+
+[STRENGTH-3] notification-service and user-service have DLQ with FixedBackOff retry.
+  File: notification-service/KafkaConsumerConfig.java
+
+[STRENGTH-4] After-commit publishing prevents phantom events for rolled-back txns.
+  Files: AccountCreatedAfterCommitPublisher, FriendCommandService, NotificationCommandService
+
+[STRENGTH-5] ITimeRedisCache with safe get/put provides Redis resilience.
+  File: common/common-redis/.../ITimeRedisCache.java
+
+[STRENGTH-6] Presence TTL keyspace notification provides eventual offline detection.
+  File: presence-service/.../service/PresenceService.java (handleUserOfflineByTTL)
+
+================================================================================
+END OF KAFKA / REDIS REVIEW
+================================================================================

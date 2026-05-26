@@ -7,8 +7,6 @@ import com.chatweb.common.redis.subscriber.RedisEventHandler;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * Canonical Redis event dispatcher.
@@ -16,20 +14,11 @@ import java.util.stream.Collectors;
 @Slf4j
 public class RedisEventDispatcher {
 
-    private final Map<String, RedisEventHandler<?>> eventHandlerMap;
+    private final List<? extends RedisEventHandler<?>> handlers;
     private final RedisPubSubObserver observer;
 
     public RedisEventDispatcher(List<? extends RedisEventHandler<?>> handlers, RedisPubSubObserver observer) {
-        this.eventHandlerMap = handlers.stream()
-                .collect(Collectors.toMap(
-                        RedisEventHandler::eventType,
-                        h -> h,
-                        (a, b) -> {
-                            throw new IllegalStateException(
-                                    "Duplicate Redis handler for eventType=" + a.eventType()
-                            );
-                        }
-                ));
+        this.handlers = handlers;
         this.observer = observer;
     }
 
@@ -45,19 +34,30 @@ public class RedisEventDispatcher {
     // is caught at startup by the duplicate-registration check in DefaultEventPayloadRegistry.
     @SuppressWarnings({"unchecked", "rawtypes"})
     public void dispatch(EventEnvelope<?> envelope) {
+        dispatch(null, envelope);
+    }
+
+    // Safe: the registry guarantees payload class alignment at registration time via SharedEventCatalog.
+    // A type mismatch would only occur if a handler is registered for the wrong event type.
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public void dispatch(String channel, EventEnvelope<?> envelope) {
         String eventType = envelope == null || envelope.metadata() == null
                 ? null
                 : envelope.metadata().getEventType();
-        RedisEventHandler handler = eventHandlerMap.get(eventType);
+
+        RedisEventHandler handler = handlers.stream()
+                .filter(h -> h.supports(channel, envelope))
+                .findFirst()
+                .orElse(null);
 
         if (handler == null) {
-            log.warn("No handler for eventType={}", eventType);
+            log.warn("No handler for channel={} eventType={}", channel, eventType);
             return;
         }
 
-        RedisEventRoutingContext context = RedisEventRoutingContext.of(null, envelope);
+        RedisEventRoutingContext context = RedisEventRoutingContext.of(channel, envelope);
         try {
-            handler.handle(envelope);
+            handler.handle(channel, envelope);
         } catch (Exception ex) {
             if (observer != null) {
                 observer.logError(context, envelope, ex);

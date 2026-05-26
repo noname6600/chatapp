@@ -11,7 +11,7 @@ import com.chatweb.chat.modules.message.domain.repository.ChatMessageRepository;
 import com.chatweb.chat.modules.message.domain.repository.RoomPinnedMessageRepository;
 import com.chatweb.chat.modules.message.domain.service.IMessagePreviewService;
 import com.chatweb.chat.modules.message.infrastructure.service.DefaultMessagePreviewService;
-import com.chatweb.chat.realtime.port.ChatRealtimePort;
+import com.chatweb.chat.modules.message.application.service.IMessageEventPublisher;
 import com.chatweb.chat.modules.room.entity.Room;
 import com.chatweb.chat.modules.room.entity.RoomMember;
 import com.chatweb.chat.modules.room.enums.Role;
@@ -90,7 +90,7 @@ class RoomPinServiceIntegrationTest {
                 roomPinnedMessageRepository,
                 systemMessageService,
                 messageMapper,
-                                mock(ChatRealtimePort.class),
+                                mock(IMessageEventPublisher.class),
                 previewService
         );
     }

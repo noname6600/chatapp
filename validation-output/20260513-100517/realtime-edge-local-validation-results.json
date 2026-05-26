@@ -1,0 +1,105 @@
+﻿{
+    "runId":  "20260513-100517",
+    "mode":  "test",
+    "startedAt":  "2026-05-13T10:05:17.9498217+07:00",
+    "completedAt":  "2026-05-13T10:09:40.3472435+07:00",
+    "outputDir":  "D:\\Work\\PET\\chatappPET\\chatapp\\validation-output\\20260513-100517",
+    "logDir":  "D:\\Work\\PET\\chatappPET\\chatapp\\validation-output\\20260513-100517\\logs",
+    "status":  "PASS",
+    "entryGates":  [
+                       {
+                           "name":  "multi-domain-compile",
+                           "status":  "PASS",
+                           "durationSeconds":  29.42,
+                           "exitCode":  0,
+                           "logFile":  "D:\\Work\\PET\\chatappPET\\chatapp\\validation-output\\20260513-100517\\logs\\gate-multi-domain-compile.log"
+                       },
+                       {
+                           "name":  "friendship-compileTest",
+                           "status":  "PASS",
+                           "durationSeconds":  23.29,
+                           "exitCode":  0,
+                           "logFile":  "D:\\Work\\PET\\chatappPET\\chatapp\\validation-output\\20260513-100517\\logs\\gate-friendship-compileTest.log"
+                       },
+                       {
+                           "name":  "focused-migration-tests",
+                           "status":  "PASS",
+                           "durationSeconds":  29.33,
+                           "exitCode":  0,
+                           "logFile":  "D:\\Work\\PET\\chatappPET\\chatapp\\validation-output\\20260513-100517\\logs\\gate-focused-migration-tests.log"
+                       },
+                       {
+                           "name":  "full-edge-test-suite",
+                           "status":  "PASS",
+                           "durationSeconds":  38.47,
+                           "exitCode":  0,
+                           "logFile":  "D:\\Work\\PET\\chatappPET\\chatapp\\validation-output\\20260513-100517\\logs\\gate-full-edge-test-suite.log"
+                       }
+                   ],
+    "environment":  {
+                        "compose":  {
+                                        "started":  false,
+                                        "status":  "NOT-TESTED"
+                                    },
+                        "containers":  [
+
+                                       ],
+                        "endpoints":  [
+
+                                      ]
+                    },
+    "integrationTests":  [
+                             {
+                                 "name":  "integration-all",
+                                 "status":  "PASS",
+                                 "durationSeconds":  25.36,
+                                 "exitCode":  0,
+                                 "logFile":  "D:\\Work\\PET\\chatappPET\\chatapp\\validation-output\\20260513-100517\\logs\\test-integration-all.log"
+                             },
+                             {
+                                 "name":  "notification-integration",
+                                 "status":  "PASS",
+                                 "durationSeconds":  24.33,
+                                 "exitCode":  0,
+                                 "logFile":  "D:\\Work\\PET\\chatappPET\\chatapp\\validation-output\\20260513-100517\\logs\\test-notification-integration.log"
+                             },
+                             {
+                                 "name":  "presence-integration",
+                                 "status":  "PASS",
+                                 "durationSeconds":  24.38,
+                                 "exitCode":  0,
+                                 "logFile":  "D:\\Work\\PET\\chatappPET\\chatapp\\validation-output\\20260513-100517\\logs\\test-presence-integration.log"
+                             },
+                             {
+                                 "name":  "chat-integration",
+                                 "status":  "PASS",
+                                 "durationSeconds":  24.37,
+                                 "exitCode":  0,
+                                 "logFile":  "D:\\Work\\PET\\chatappPET\\chatapp\\validation-output\\20260513-100517\\logs\\test-chat-integration.log"
+                             },
+                             {
+                                 "name":  "friendship-integration",
+                                 "status":  "PASS",
+                                 "durationSeconds":  31.53,
+                                 "exitCode":  0,
+                                 "logFile":  "D:\\Work\\PET\\chatappPET\\chatapp\\validation-output\\20260513-100517\\logs\\test-friendship-integration.log"
+                             }
+                         ],
+    "scenarios":  [
+
+                  ],
+    "artifacts":  {
+                      "runStateJson":  "D:\\Work\\PET\\chatappPET\\chatapp\\validation-output\\20260513-100517\\run-state.json",
+                      "reportJson":  "D:\\Work\\PET\\chatappPET\\chatapp\\validation-output\\20260513-100517\\realtime-edge-local-validation-results.json",
+                      "reportMd":  "D:\\Work\\PET\\chatappPET\\chatapp\\validation-output\\20260513-100517\\realtime-edge-local-validation-results.md",
+                      "reviewJson":  "D:\\Work\\PET\\chatappPET\\chatapp\\review code\\realtime-edge-local-validation-results.json",
+                      "reviewMd":  "D:\\Work\\PET\\chatappPET\\chatapp\\review code\\realtime-edge-local-validation-results.md"
+                  },
+    "issues":  [
+
+               ],
+    "recommendation":  "ready for staging",
+    "notes":  [
+
+              ]
+}

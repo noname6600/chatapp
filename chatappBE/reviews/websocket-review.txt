@@ -1,0 +1,464 @@
+================================================================================
+  WEBSOCKET / REALTIME ARCHITECTURE REVIEW — CHATAPP BACKEND
+  Reviewer Role: Distributed Systems Analyst + Realtime Systems Reviewer
+  Date: 2026-05-18
+  Codebase: d:/Work/PET/chatappPET/chatapp/chatappBE
+================================================================================
+
+================================================================================
+SECTION 1 — ARCHITECTURE OVERVIEW
+================================================================================
+
+The system has a dual WebSocket architecture:
+
+PATH A (Legacy — still active):
+  Client → Nginx → Gateway (/ws/**) → per-service WebSocket handlers
+  Services with own WebSocket:
+    chat-service:8083         → /ws/chat
+    presence-service:8084     → /ws/presence (legacy endpoint)
+    friendship-service:8085   → /ws/friendship
+    notification-service:8086 → /ws/notifications
+
+PATH B (New — realtime-edge-service):
+  Client → (separate path) → realtime-edge-service:8090
+  realtime-edge aggregates all WebSocket concerns in one place
+  Calls downstream services via HTTP for business operations
+
+The two paths coexist. The realtime-edge-service is NOT in docker-compose.yml.
+This means the default deployment uses PATH A (legacy per-service WebSocket).
+
+================================================================================
+SECTION 2 — SESSION LIFECYCLE REVIEW
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] RealtimeWebSocketHandler.afterConnectionEstablished Makes Blocking HTTP Call
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: realtime-edge-service/.../websocket/RealtimeWebSocketHandler.java
+      realtime-edge-service/.../adapter/out/presence/EdgePresenceLifecycleBridge.java
+
+On every new WebSocket connection to /ws/presence:
+  presenceLifecycleBridge.onPresenceConnected(userId)
+  → HTTP POST to presence-service:8084/api/v1/presence/ws/connect
+
+This HTTP call is in the WebSocket connection establishment path.
+Connect timeout for HTTP calls: 1000ms (from application.yaml:
+  realtime.services.presence.http.connect-timeout-ms: 1000)
+Read timeout: 2000ms.
+
+Worst case: 3 seconds to establish a WebSocket connection (connect + read timeout).
+Under high connection bursts (e.g., app startup after downtime with 10K users reconnecting):
+  - 10K simultaneous /ws/presence connections
+  - Each requires HTTP call to presence-service
+  - presence-service becomes bottleneck under connection surge
+  - Socket accept queue fills up
+  - New connections are dropped
+
+Security concern: An attacker can exhaust the presence-service with a low-effort
+WebSocket connection flood (each connection is cheap for the attacker, expensive for presence-service).
+
+Recommended fix direction:
+  Make presence lifecycle signals async/fire-and-forget:
+  - Enqueue a presence connect event to a Redis queue
+  - Background worker processes the queue
+  - WebSocket connection succeeds immediately
+  - Presence state updates are eventually consistent (within ~100ms)
+
+Architecture level: Architectural + Performance
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] Session Cleanup Relies on Lease TTL (90s) — Stale State Window
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: realtime-edge-service/src/main/resources/application.yaml
+  realtime.session-registry.lease.ttl-seconds: 90
+  realtime.session-registry.cleanup.interval-ms: 30000
+
+RealtimeSession has a leaseExpiresAt = connectedAt + 90s. The cleanup job runs
+every 30s. Sessions must be actively refreshed (how? updateActivity() is called
+on message receipt) or they expire.
+
+Issue 1: If client is connected but idle (no messages) for 90 seconds, the session
+  lease expires. Cleanup job marks it for removal. Next heartbeat from client
+  finds no session → reconnect required. This creates unnecessary reconnections
+  for idle users.
+
+Issue 2: Between lease expiry and cleanup job run (up to 30s), the session state
+  is inconsistent: session appears to exist in registry but lease is expired.
+  Event delivery during this window is unpredictable.
+
+Issue 3: The cleanup.interval-ms (30s) creates a 30-second window where up to
+  500 (cleanup.batch-size) stale sessions accumulate. For 10K concurrent users,
+  a burst of disconnections would take multiple cleanup cycles to fully process.
+
+Recommended fix direction:
+  - Implement explicit lease renewal tied to WebSocket PING/PONG frames
+  - Use WebSocket PING frames every 30s; presence heartbeat renews lease
+  - Increase batch-size for cleanup or make cleanup event-driven (on disconnect)
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] afterConnectionClosed Does Not Distinguish Clean vs Unclean Disconnect
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: realtime-edge-service/.../websocket/RealtimeWebSocketHandler.java
+  afterConnectionClosed(WebSocketSession session, CloseStatus status)
+
+The disconnect handler calls presenceLifecycleBridge.onPresenceDisconnected() in
+all cases regardless of CloseStatus code. This means:
+  - Normal close (1000): user intentionally disconnected → presence offline
+  - Abnormal close (1006): network drop → presence offline immediately
+  - Going Away (1001): page reload → presence offline immediately
+
+For page reloads and brief network interruptions, the user immediately goes offline.
+If the client reconnects within a few seconds, they appear online again, but there
+is a brief flicker of "offline" state that other users see. For group rooms with
+20 members, a page reload triggers:
+  1. USER_OFFLINE event → all 20 members notified
+  2. USER_ONLINE event seconds later → all 20 members notified again
+
+At 100 concurrent users, each page reload generates ~200 redundant presence events.
+
+Note: presence-service handles multi-connection counting (connection counter).
+If realtime-edge-service calls onPresenceDisconnected immediately, but there
+is actually another connection from the same user (different tab), the presence
+counter is decremented. Whether this causes an offline event depends on
+EdgePresenceLifecycleBridge logic.
+
+Recommended fix direction:
+  - On abnormal close: wait 5 seconds before calling onPresenceDisconnected
+    (to allow reconnection without flickering)
+  - For normal close (1000): call immediately
+  - Add reconnection token: client sends reconnection token on reconnect,
+    server cancels pending disconnect cleanup
+
+================================================================================
+SECTION 3 — AUTHENTICATION IN WEBSOCKET
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[STRENGTH] JwtHandshakeInterceptor Correctly Validates JWT at Upgrade Time
+──────────────────────────────────────────────────────────────────────────────
+File: realtime-edge-service/.../websocket/JwtHandshakeInterceptor.java
+
+JWT validation at WebSocket handshake time (HTTP upgrade) is the correct approach.
+Once upgraded, the WebSocket frame protocol has no native auth mechanism.
+The JWT is validated once at upgrade, userId is extracted and stored as a
+session attribute. Subsequent message handling trusts the session attribute.
+
+The JWKS URI used: gateway's /.well-known/jwks.json (via localhost:8080).
+This means realtime-edge validates through the same JWKS endpoint as other services.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] JWT Expiry Is Not Re-Checked After WebSocket Connection Is Established
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: realtime-edge-service/.../websocket/JwtHandshakeInterceptor.java
+
+JWT is validated once at connection time. After that, the WebSocket session lives
+on without re-validation. A 15-minute JWT that was valid at connection time:
+  - Connection at T=0: JWT valid → session established
+  - T=16 minutes: JWT is expired, but WebSocket session is still active
+  - The session's leaseExpiresAt is 90s by default (from realtime.session-registry)
+    which is MUCH shorter than JWT expiry. But lease renewal keeps the session alive.
+
+If leaseExpiresAt keeps getting refreshed (via heartbeats/messages), a WebSocket
+session can persist for HOURS past JWT expiry.
+
+Impact: After a user logs out on another tab (refresh token revoked), their
+WebSocket session on another tab remains active until:
+  a) The WebSocket connection drops (triggering disconnect + cleanup)
+  b) The session lease expires without renewal
+
+During this window, the user can receive messages and presence events even though
+their auth session is revoked.
+
+Recommended fix direction:
+  - On each access token renewal (refresh flow): invalidate old WebSocket sessions
+    associated with that userId (via session registry)
+  - Or: store JWT expiry in RealtimeSession, check on each message received,
+    close connection if JWT would be expired by now
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] Access Token Is Stored in WebSocket Session Attributes
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: realtime-edge-service/.../websocket/JwtHandshakeInterceptor.java
+  Session attribute: "accessToken" → raw JWT string
+
+The raw access token (JWT) is stored in the WebSocket session attributes for
+use in subsequent service calls (e.g., chatCommandRouter.canAccessRoom uses it).
+WebSocket session attributes are held in JVM memory.
+
+If the JVM heap is dumped for debugging, the raw JWT is visible in the heap.
+This is acceptable for most threat models but should be noted.
+
+More critically: the accessToken stored in the session is the token used AT
+CONNECTION TIME. After a token refresh, this stored token becomes stale, causing
+calls to downstream services to fail if they re-validate the JWT rather than
+trusting X-User-Id.
+
+Recommended fix direction:
+  Track the access token expiry in the session. Provide a mechanism for the
+  client to update the access token over the WebSocket (send a new token frame
+  type). Server validates and updates the session attribute.
+
+================================================================================
+SECTION 4 — ROOM JOIN / SUBSCRIPTION FLOW
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[STRENGTH] Channel Authorization Is Enforced in ChannelSubscriptionManager
+──────────────────────────────────────────────────────────────────────────────
+File: realtime-edge-service/.../subscription/ChannelSubscriptionManager.java
+
+Room subscriptions require explicit authorization:
+  - room/presence/typing channels: chatCommandRouter.canAccessRoom(token, roomId)
+  - user/notification channels: session.userId must equal channel's userId
+
+This prevents a user from subscribing to another user's room events or notifications.
+The authorization model is correct. The implementation is in a dedicated manager class.
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] canAccessRoom Makes HTTP Call Per JOIN Command
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: realtime-edge-service/.../subscription/ChannelSubscriptionManager.java
+      chatCommandRouter.canAccessRoom(token, roomId) → HTTP to chat-service
+
+Every JOIN message from a WebSocket client triggers an HTTP call to chat-service
+to verify room membership. For a user with 20 active rooms:
+  - On reconnect: 20 JOIN commands → 20 HTTP calls to chat-service
+  - Under 1000 reconnecting users: 20,000 simultaneous HTTP calls to chat-service
+  - chat-service connection pool exhaustion
+  - JOIN failures → client doesn't receive messages for those rooms
+
+This is a significant scalability and reliability risk at the WebSocket layer.
+
+Runtime impact: Reconnect storms after network partitions overwhelm chat-service
+
+Recommended fix direction:
+  Cache room membership in realtime-edge-service with a short TTL (60-300s).
+  Key: "room-access:{userId}:{roomId}" → boolean. On cache hit: skip HTTP call.
+  This reduces HTTP calls by ~99% on reconnect scenarios.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] No Maximum Subscription Limit Per Session
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: realtime-edge-service/.../connection/RealtimeSession.java
+  Field: subscriptions: HashSet<String>
+
+There is no maximum on how many channels a session can subscribe to. A malicious
+or buggy client could subscribe to thousands of channels:
+  - Each subscription is a HashSet entry in-memory
+  - Each subscribed channel means the session receives events for that channel
+  - Memory leak: session grows unboundedly
+
+Also: when a message is published to a channel, the system iterates all sessions
+subscribed to that channel. If one session is subscribed to 1000 channels,
+subscription index iteration is O(n) per event.
+
+Recommended fix direction:
+  Add MAX_SUBSCRIPTIONS_PER_SESSION = 50 (or configurable). Return error if exceeded.
+
+================================================================================
+SECTION 5 — DISCONNECT & RECONNECT HANDLING
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] No Client-Side Reconnection Protocol in Server
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: realtime-edge-service/.../connection/RealtimeSession.java
+  state: CONNECTED / RECONNECTING / DISCONNECTED
+
+RealtimeSession has a RECONNECTING state, and dispatch.handoff.enabled is
+configurable. However, the handoff mechanism is disabled by default:
+  realtime.dispatch.handoff.enabled: false
+
+With handoff disabled:
+  - On client disconnect + reconnect: all subscriptions are lost
+  - Client must re-subscribe to all rooms/channels after reconnect
+  - Any events published between disconnect and reconnect are lost
+  - Client shows stale state (no messages received during disconnection)
+
+There is no "catch-up" mechanism: the client cannot request events missed
+while disconnected. The sequence numbers in messages (seq field in ChatMessage)
+provide a basis for catch-up but the WebSocket layer doesn't implement it.
+
+Recommended fix direction:
+  - On reconnect: client sends last received seq per room
+  - Server fetches missed messages from DB and delivers them
+  - This is the standard WebSocket catch-up pattern
+
+──────────────────────────────────────────────────────────────────────────────
+[LOW] WebSocket PING Frame Handling Not Confirmed
+──────────────────────────────────────────────────────────────────────────────
+Severity: LOW
+File: realtime-edge-service/.../websocket/RealtimeWebSocketHandler.java
+  handleTextMessage() handles text frames
+  No handlePongMessage() override visible
+
+Spring's AbstractWebSocketHandler calls handlePongMessage() on PONG frames.
+If not overridden, pong frames are silently dropped. This means:
+  - Server can send PING frames to check liveness
+  - Client responds with PONG
+  - Server never receives the PONG acknowledgment
+  - Session may be incorrectly marked stale
+
+Chat handler does have: { "type": "PING" } → PONG as application-level ping.
+But this is application-level, not WebSocket protocol PING/PONG frames.
+
+Recommended fix direction:
+  Override handlePongMessage() to call session.updateActivity().
+  Alternatively: rely on application-level PING/PONG exclusively and document
+  that protocol-level frames are not used.
+
+================================================================================
+SECTION 6 — MEMORY LEAK RISKS
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] InMemoryRealtimeSessionRegistry Memory Leak on Unclean Disconnect
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: realtime-edge-service/.../connection/InMemoryRealtimeSessionRegistry.java
+  Stores: sessions (Map<sessionId, RealtimeSession>)
+          userSessions (Map<userId, Set<sessionId>>)
+          channelSessions (Map<channel, Set<sessionId>>)
+
+On UNCLEAN disconnect (network drop, crash):
+  - afterConnectionClosed() IS called by Spring's WebSocket layer (even for unclean closes)
+    via onError/onClose callbacks in WebSocketSession
+  - So cleanup should happen
+
+However, if the server itself crashes or the WebSocket session object is garbage
+collected without triggering the close handler (possible in certain JVM crash/OOM scenarios):
+  - sessions map retains dead session entries
+  - channelSessions map retains references to dead sessionIds
+  - Event delivery to dead sessionIds fails silently
+
+The cleanup job (every 30s, batch 500) handles expired leases. But if updateActivity()
+is never called after disconnect (because the disconnect handler ran), the session
+lease expires and cleanup job removes it correctly.
+
+Bounded risk: cleanup job is a valid safety net. The primary concern is the 30-90s
+window between unclean disconnect and cleanup.
+
+Recommended fix direction:
+  Confirm that Spring WebSocket framework calls afterConnectionClosed() reliably
+  on all disconnect types. Add a test for connection loss simulation.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] Notification Session Registry Has No Cleanup Mechanism
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: notification-service/.../websocket/NotificationSessionRegistry.java
+  Backed by ConcurrentHashMap
+
+The notification-service has its own WebSocket handler (legacy path) with its own
+session registry. Unlike realtime-edge-service, there is no evidence of a cleanup
+job for the notification session registry. Dead sessions from network drops
+would accumulate in the ConcurrentHashMap until the JVM is restarted.
+
+At 10K concurrent users with 1% disconnect rate per minute:
+  100 disconnects/minute × 60 minutes = 6,000 dead sessions in memory per hour
+
+Runtime impact: Memory leak over time in notification-service
+
+Recommended fix direction:
+  Add cleanup in afterConnectionClosed() to remove session from registry.
+  Spring WebSocket DOES call afterConnectionClosed() on all disconnect types.
+  If the implementation registers in afterConnectionEstablished() and deregisters
+  in afterConnectionClosed(), this should be fine. Confirm the implementation.
+
+================================================================================
+SECTION 7 — SCALING READINESS
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[CRITICAL] realtime-edge-service Cannot Scale Horizontally Without Config Change
+──────────────────────────────────────────────────────────────────────────────
+Severity: CRITICAL
+File: realtime-edge-service/src/main/resources/application.yaml
+  realtime.session-registry.mode: in-memory
+
+As documented in the architecture review, in-memory session registry prevents
+horizontal scaling. Two instances of realtime-edge-service will have split-brain
+session state. Event delivery fails for sessions on a different instance than
+the one receiving the Redis pub/sub event.
+
+The distributed mode (Redis-backed) exists but is not default. This needs to
+be the default for production deployment.
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] No Server-Sent Events (SSE) Fallback
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+The entire realtime delivery mechanism relies on WebSocket. There is no SSE
+fallback for environments where WebSocket is blocked (corporate firewalls, some
+proxy configurations). If WebSocket connection fails, the client has no
+alternative real-time channel.
+
+notification-service has a NotificationWebSocketHandler (WebSocket) but no
+SSE endpoint. Notifications are critical (friend requests, message mentions) and
+losing them to WebSocket connectivity issues degrades the user experience significantly.
+
+Recommended fix direction:
+  Add an SSE endpoint for notifications: GET /api/v1/notifications/stream
+  This is a standard Spring MVC SseEmitter or WebFlux ServerSentEvent stream.
+  Client connects via SSE as fallback when WebSocket fails.
+
+================================================================================
+SECTION 8 — NOTIFICATION WEBSOCKET SPECIFIC REVIEW
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] NotificationWebSocketHandler Tracks Metrics But Not Errors
+──────────────────────────────────────────────────────────────────────────────
+File: notification-service/.../websocket/NotificationWebSocketHandler.java
+
+The handler tracks active connections count (metric) but error handling is not visible.
+If WebSocketUserBroadcaster.broadcast() fails (dead session, encode error):
+  - Is the session cleaned up from registry?
+  - Is the error logged with context (userId, notification type)?
+
+RedisNotificationPublisher publishes to per-user Redis channels. If the user
+has no active WebSocket session (no subscription to their notification channel):
+  - The Redis PUBLISH has no subscribers
+  - The notification is published to DB but never pushed
+  - User only sees it on next page load/reconnect (polling fallback)
+
+This is acceptable behavior but should be documented as the expected degradation mode.
+
+================================================================================
+SECTION 9 — STRENGTHS SUMMARY
+================================================================================
+
+[STRENGTH-1] JwtHandshakeInterceptor — JWT validation at upgrade time is correct.
+  File: realtime-edge-service/.../websocket/JwtHandshakeInterceptor.java
+
+[STRENGTH-2] ChannelSubscriptionManager with authorization — prevents cross-user
+  subscriptions with explicit authorization per channel type.
+  File: realtime-edge-service/.../subscription/ChannelSubscriptionManager.java
+
+[STRENGTH-3] RealtimeSession state machine — CONNECTED/RECONNECTING/DISCONNECTED
+  provides a foundation for graceful reconnect handling.
+  File: realtime-edge-service/.../connection/RealtimeSession.java
+
+[STRENGTH-4] EdgePresenceLifecycleBridge — signals offline only when last session
+  disconnects, correctly handling multi-tab/multi-device presence.
+  File: realtime-edge-service/.../adapter/out/presence/EdgePresenceLifecycleBridge.java
+
+[STRENGTH-5] Redis pub/sub for event delivery — decouples event producers from
+  WebSocket delivery. Services publish to Redis; realtime-edge distributes to sessions.
+  File: realtime-edge-service/.../adapter/in/redis/RedisEventListener.java
+
+[STRENGTH-6] Application-level PING/PONG for connection health — provides
+  connection keepalive at the application layer independent of WebSocket protocol frames.
+  File: RealtimeWebSocketHandler.java (PING → PONG)
+
+================================================================================
+END OF WEBSOCKET / REALTIME REVIEW
+================================================================================

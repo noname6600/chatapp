@@ -12,7 +12,7 @@ import com.chatweb.chat.modules.room.repository.RoomMemberRepository;
 import com.chatweb.chat.modules.room.repository.RoomRepository;
 import com.chatweb.chat.modules.room.enums.RoomType;
 import com.chatweb.chat.modules.room.cache.policy.RoomCacheInvalidationPolicy;
-import com.chatweb.chat.realtime.port.ChatRealtimePort;
+import com.chatweb.chat.modules.room.service.IRoomMembershipEventPublisher;
 import com.chatweb.common.core.exception.BusinessException;
 import com.chatweb.common.core.exception.CommonErrorCode;
 import org.junit.jupiter.api.BeforeEach;
@@ -67,7 +67,7 @@ class RoomServiceInviteJoinIntegrationTest {
                 mock(InviteCodeGenerator.class),
                 mock(GroupAvatarGenerator.class),
                 mock(RoomCacheInvalidationPolicy.class),
-                mock(ChatRealtimePort.class),
+                mock(IRoomMembershipEventPublisher.class),
                 mock(ISystemMessageService.class)
         );
     }

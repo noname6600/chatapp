@@ -9,11 +9,10 @@ import com.chatweb.chat.modules.message.domain.repository.ChatMessageRepository;
 import com.chatweb.chat.modules.message.domain.service.IMessageSequenceService;
 import com.chatweb.chat.modules.room.entity.RoomMember;
 import com.chatweb.chat.modules.room.repository.RoomMemberRepository;
+import com.chatweb.chat.support.TransactionPublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Instant;
 import java.util.List;
@@ -24,9 +23,9 @@ import java.util.UUID;
 @Transactional
 public class SystemMessageService implements ISystemMessageService {
 
-        private final ChatMessageRepository chatMessageRepository;
+    private final ChatMessageRepository chatMessageRepository;
     private final RoomMemberRepository roomMemberRepository;
-        private final IMessageSequenceService messageSequenceService;
+    private final IMessageSequenceService messageSequenceService;
     private final IMessageEventPublisher messageEventPublisher;
 
     @Override
@@ -63,20 +62,8 @@ public class SystemMessageService implements ISystemMessageService {
                 .build();
 
         chatMessageRepository.save(systemMessage);
-                publishSystemMessageAfterCommit(systemMessage);
+        TransactionPublisher.publishAfterCommit(() ->
+                messageEventPublisher.publishMessageCreated(systemMessage, List.of(), List.of())
+        );
     }
-
-        private void publishSystemMessageAfterCommit(ChatMessage systemMessage) {
-                if (TransactionSynchronizationManager.isSynchronizationActive()) {
-                        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                                @Override
-                                public void afterCommit() {
-                                        messageEventPublisher.publishMessageCreated(systemMessage, List.of(), List.of());
-                                }
-                        });
-                        return;
-                }
-
-                messageEventPublisher.publishMessageCreated(systemMessage, List.of(), List.of());
-        }
 }

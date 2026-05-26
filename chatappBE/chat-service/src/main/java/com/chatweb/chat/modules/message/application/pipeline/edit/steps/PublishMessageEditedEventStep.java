@@ -6,8 +6,7 @@ import com.chatweb.chat.modules.room.service.IRoomService;
 import com.chatweb.common.core.pipeline.PipelineStep;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
+import com.chatweb.chat.support.TransactionPublisher;
 
 @Component
 @RequiredArgsConstructor
@@ -33,18 +32,7 @@ public class PublishMessageEditedEventStep
             savedMessage.getContent()
         );
 
-        if (TransactionSynchronizationManager.isActualTransactionActive()
-                && TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    eventPublisher.publishMessageEdited(savedMessage);
-                }
-            });
-            return;
-        }
-
-        eventPublisher.publishMessageEdited(savedMessage);
+        TransactionPublisher.publishAfterCommit(() -> eventPublisher.publishMessageEdited(savedMessage));
     }
 
     @Override

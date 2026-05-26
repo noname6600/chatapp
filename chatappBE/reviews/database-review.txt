@@ -1,0 +1,504 @@
+================================================================================
+  DATABASE ARCHITECTURE REVIEW — CHATAPP BACKEND
+  Reviewer Role: Database Architect + Backend Performance Engineer
+  Date: 2026-05-18
+  Codebase: d:/Work/PET/chatappPET/chatapp/chatappBE
+================================================================================
+
+================================================================================
+SECTION 1 — SCHEMA MANAGEMENT STRATEGY
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[BLOCKER] No Database Migration Framework — ddl-auto: update in All Services
+──────────────────────────────────────────────────────────────────────────────
+Severity: BLOCKER
+Files (all services):
+  auth-service/application.yaml: hibernate.ddl-auto: update
+  user-service/application.yaml: hibernate.ddl-auto: update
+  chat-service/application.yaml: hibernate.ddl-auto: update
+  friendship-service/application.yaml: hibernate.ddl-auto: update
+  notification-service/application.yaml: hibernate.ddl-auto: update
+
+hibernate.ddl-auto: update behavior:
+  - Adds new columns and tables on startup (safe for additive changes)
+  - NEVER removes columns or tables (orphaned schema accumulates)
+  - NEVER renames columns (drops old, adds new — DATA LOSS)
+  - May fail silently for type changes that Hibernate can't apply
+  - No migration history — no way to know what was the schema at version N
+  - No rollback capability: if a bad migration partially executes, there is no
+    way to revert to the previous state without manual intervention
+
+This is a critical gap for any production system with real user data.
+
+Examples of changes that WILL fail silently or cause data loss:
+  1. Renaming a field: @Column(name="old_name") → @Column(name="new_name")
+     → Hibernate drops old column (data lost), adds new empty column
+  2. Adding a NOT NULL column without @ColumnDefault
+     → Hibernate fails to add column if existing rows exist
+  3. Changing field type: String → enum
+     → Hibernate may fail on existing varchar data that doesn't match enum
+
+Runtime impact:
+  - First schema mismatch on deployment: service fails to start
+  - Data loss on field rename: discovered only when queries return empty results
+
+Recommended fix direction (MANDATORY before production with user data):
+  1. Add Flyway dependency to all services:
+       implementation 'org.flywaydb:flyway-core'
+  2. Set hibernate.ddl-auto: validate (validate schema matches entities, fail on mismatch)
+  3. Create initial migration scripts from current schema:
+       V1__initial_schema.sql (per service)
+  4. All future schema changes go through Flyway migration scripts
+  5. Review and test migrations in staging before production deploy
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] open-in-view: false Is Set Correctly — But Confirms No OSIV Anti-Pattern
+──────────────────────────────────────────────────────────────────────────────
+Severity: STRENGTH
+File: multiple application.yaml files — spring.jpa.open-in-view: false
+
+Spring Boot defaults open-in-view to TRUE which keeps the Hibernate session open
+for the entire HTTP request duration, allowing lazy loading in view rendering
+but tying DB connections to HTTP threads. All services explicitly set this to FALSE.
+
+This is a correct production configuration. It forces all DB access to happen
+within @Transactional boundaries, preventing lazy loading surprises and releasing
+DB connections promptly.
+
+================================================================================
+SECTION 2 — ENTITY DESIGN REVIEW
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[STRENGTH] Entity Indexing Is Thoughtful — All Foreign Keys Are Indexed
+──────────────────────────────────────────────────────────────────────────────
+
+auth-service entities (JwtKeyEntity, RefreshToken, VerificationToken, etc.):
+  - All hash/token fields have unique indexes (idx_refresh_token_hash)
+  - Foreign key patterns (accountId fields) have non-unique indexes for lookups
+  - Compound indexes where natural query patterns exist (idx_verification_used)
+
+chat-service entities (ChatMessage, Room, RoomMember):
+  - ChatMessage: idx_msg_room_seq (composite: roomId + seq) — critical for pagination
+  - ChatMessage: idx_msg_room_created (composite: roomId + createdAt)
+  - ChatMessage: uq_chat_messages_room_seq (unique: roomId + seq) — monotonicity
+  - RoomMember: idx_room_member_room_user (composite) — member lookup
+  - Room: idx_rooms_last_message_at — room list ordering
+
+friendship-service entities (Friendship):
+  - idx_friend_user_low, idx_friend_user_high — directional lookups for friend list
+  - Unique constraint (user_low, user_high) — prevents duplicates
+
+user-service (UserProfile):
+  - idx_username (unique) — for username search
+
+Overall indexing is well-considered.
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] Room Entity Denormalization Creates Update Consistency Risk
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: chat-service/src/main/java/com/example/chat/modules/room/entity/Room.java
+
+Room entity contains a denormalized preview of the last message:
+  - lastMessageId: UUID
+  - lastMessageSenderId: UUID
+  - lastMessageSenderName: String (max 200 chars)
+  - lastMessagePreview: String (max 200 chars)
+  - lastMessageAt: Instant
+  - lastSeq: Long
+
+These fields are updated by PublishMessageEventStep and/or updateLastMessageSafe()
+in RoomRepository. Issues:
+
+1. Race condition: Two messages sent simultaneously for the same room.
+   Both read Room, get the same lastSeq, both try to set lastMessage preview.
+   The pessimistic lock in nextSeq() handles sequence ordering, but the preview
+   update may overwrite the later message's preview with the earlier one.
+
+2. Data inconsistency: If the update to Room fails (optimistic lock, DB error)
+   after the ChatMessage is saved, the Room preview is stale (shows old message
+   as last message) even though the new message exists in the DB.
+
+3. Display name staleness: lastMessageSenderName is denormalized from user-service.
+   If the sender changes their display name, the Room.lastMessageSenderName
+   shows the old name for the last message preview.
+
+4. Message deletion: If the last message is deleted, Room.lastMessage* fields
+   are not automatically updated to show the previous message.
+
+Recommended fix direction:
+  Short term: Accept the display name staleness (common in chat apps).
+  For race condition: use updatePreviewIfMatch() (seen in RoomRepository) which
+    conditionally updates only if the update is for a newer seq.
+  For deletion: add cleanup logic that updates Room preview when the last message is deleted.
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] RoomMember Denormalizes User Display Info (displayName, avatarUrl)
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: chat-service/src/main/java/com/example/chat/modules/room/entity/RoomMember.java
+  Fields: displayName (max 120), avatarUrl (max 500)
+
+RoomMember stores displayName and avatarUrl copied from user-service at join time.
+  - No mechanism to update these when user changes their profile
+  - User changes display name → all rooms still show old name in member list
+  - User updates avatar → all rooms still show old avatar
+
+This is a classic denormalization stale data problem. In a chat app, member
+lists showing outdated display names are a UX degradation that compounds over time.
+
+There is no background job or event listener (AccountUpdatedEvent) to sync
+these denormalized fields.
+
+Note: This is a common pattern in chat systems for read performance (avoid JOINs
+to user-service for every member list query). The trade-off is acceptable if a
+periodic sync mechanism exists.
+
+Recommended fix direction:
+  Option A: Remove displayName/avatarUrl from RoomMember. Fetch from user-service
+    via Feign on member list queries (with caching).
+  Option B: Subscribe to a UserProfileUpdated Kafka event and update all
+    RoomMember records for that user across all rooms.
+  Option C: Accept staleness and document a "profile sync" job that runs nightly.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] ChatMessage.blocksJson Stored as TEXT Without Schema Validation
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: chat-service/.../domain/entity/ChatMessage.java
+  Field: String blocksJson (TEXT)
+
+Blocks (rich message content: ROOM_INVITE, rich formatting, etc.) are stored
+as a raw JSON string in a TEXT column. Issues:
+  1. No validation of JSON structure at persistence time
+  2. No schema enforcement — blocksJson can contain arbitrary JSON
+  3. Queries cannot filter/index on block content
+  4. PostgreSQL's jsonb type would allow indexed queries and structural validation
+
+For the current feature set (blocks are only read, not queried), TEXT is acceptable.
+But as the block types grow, this becomes harder to maintain.
+
+Recommended fix direction:
+  Convert blocksJson column to PostgreSQL's JSONB type.
+  This enables: structural validation, indexed queries (jsonb @> operator),
+  and partial block reads without deserializing the entire payload.
+
+================================================================================
+SECTION 3 — TRANSACTION BOUNDARY REVIEW
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[STRENGTH] Pipeline Steps Share One Transaction (PersistMessage + Sequence)
+──────────────────────────────────────────────────────────────────────────────
+File: chat-service/.../pipeline/send/steps/PersistMessageStep.java
+      chat-service/.../infrastructure/sequence/RedisMessageSequenceService.java
+
+The sequence generation (SELECT FOR UPDATE) and message persistence happen in
+the same @Transactional scope. This means:
+  - Sequence is allocated only if message is successfully persisted
+  - If message persistence fails, the SELECT FOR UPDATE is rolled back
+  - No sequence numbers are "used up" by failed messages
+  - No gaps in sequence numbers (within a transaction)
+
+This is correct transactional design for sequence generation.
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] forwardMessage() in MessageCommandService Has Partial Transaction Risk
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: chat-service/.../application/command/impl/MessageCommandService.java
+  @Transactional forwardMessage()
+
+forwardMessage() is @Transactional:
+  1. Verifies room membership
+  2. Loads source message
+  3. Allocates sequence (SELECT FOR UPDATE on room)
+  4. Saves forwardedMessage (INSERT)
+  5. Saves forwardedAttachments (batch INSERT)
+  6. Calls: messageEventPublisher.publishMessageCreated(...)
+     → publishAfterCommit() → Kafka publish after txn commit
+
+The Kafka publish is outside the transaction (via afterCommit). If Kafka publish
+fails after the transaction commits, the message is saved in DB but no
+notification is sent, and no real-time push occurs.
+
+Users see the forward in DB (on page refresh) but receive no real-time delivery.
+This is the same outbox problem described throughout this review.
+
+Assessment: Same root cause as the outbox gap. Acceptable short-term.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] @Transactional on Service Methods Called by Pipeline Steps (Nested Transactions)
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: chat-service/.../infrastructure/sequence/RedisMessageSequenceService.java
+  @Transactional nextSeq() — uses PROPAGATION.REQUIRED (default)
+
+PersistMessageStep calls sequenceService.nextSeq() from within the pipeline.
+If PersistMessageStep itself is @Transactional and nextSeq is also @Transactional:
+  - Spring uses the outer transaction (REQUIRED joins existing)
+  - SELECT FOR UPDATE runs in the outer transaction's scope
+  - This is correct behavior
+
+However, if PersistMessageStep is called within a larger non-transactional context:
+  - nextSeq() opens its own transaction
+  - SELECT FOR UPDATE is committed when nextSeq() returns
+  - The lock is released BEFORE message persistence
+  - Another thread can get the same sequence number
+  - Sequence uniqueness violation (unique constraint on room_id, seq)
+
+This must be verified: PipelineExecutor and all callers must be transactional
+or nextSeq() must be nested within the same transaction as persistence.
+The @Transactional on MessageCommandService.sendMessage is not visible, but
+if absent, this is a critical race condition.
+
+Recommended fix direction:
+  Ensure sendMessage() is @Transactional. Add a test that verifies sequence
+  monotonicity under concurrent sends.
+
+================================================================================
+SECTION 4 — N+1 QUERY RISKS
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] Room Member List Loads Members Without Batch Fetch
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: chat-service/.../room/repository/RoomMemberRepository.java
+  findByRoomId() — returns Page<RoomMember>
+
+RoomMember has: displayName, avatarUrl (stored directly). No joins needed for
+basic member list. This is safe.
+
+However, for room list operations (GET /my rooms), each room's last message
+preview and member count may require:
+  - N queries for N rooms: SELECT count(*) FROM room_members WHERE room_id=?
+    (for each room in the user's room list)
+
+This depends on how RoomQueryService.findRoomsOfUser() is implemented. If it:
+  a) Uses a JOIN query that counts members in one SQL → safe
+  b) Loads rooms then issues per-room count queries → N+1
+
+findRoomsOfUserAdvanced() in RoomRepository suggests a custom query.
+RoomRepositoryRoomsOfUserAdvancedIntegrationTest confirms this is tested.
+Assessment: Likely safe (custom query). Verify with EXPLAIN ANALYZE in production.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] ChatAttachment Queries Are Batched (Safe)
+──────────────────────────────────────────────────────────────────────────────
+Severity: STRENGTH
+File: chat-service/.../domain/repository/ChatAttachmentRepository.java
+  findByMessageIdIn(List<UUID>) — batch by message IDs
+
+Message queries that return multiple messages correctly batch-fetch their
+attachments using findByMessageIdIn. This prevents the N+1 pattern where
+each message would trigger a separate attachment query.
+
+Similarly, ChatReactionRepository.summarizeReactionsForMessages() and
+countReactionsForMessages() take lists of IDs.
+
+This is correct, performant batch loading.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] Notification Table Has No Archival Strategy — Unbounded Growth
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: notification-service/.../application/NotificationCommandService.java
+  "trims to 200 notifications max per user"
+File: notification-service/.../entity/Notification.java
+
+NotificationCommandService trims to 200 max per user. This is a good defense
+against unbounded growth. However:
+  1. The trim logic runs within each notification creation. If service is under
+     load, the DELETE for old notifications runs N times per user per day.
+  2. At 10K active users each generating 10 notifications/day:
+     100K notification creates per day + 100K potential deletes = 200K writes/day
+  3. Over time, 2,000,000 notification rows (10K users × 200 rows)
+
+For the current scale this is fine. The 200-row cap prevents catastrophic growth.
+
+Recommended monitoring: Add an index-based check on notification count per user
+in the DB health checks.
+
+================================================================================
+SECTION 5 — QUERY EFFICIENCY REVIEW
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[STRENGTH] ChatMessage Pagination Uses Seq-Based Cursors (Not OFFSET)
+──────────────────────────────────────────────────────────────────────────────
+File: chat-service/.../domain/repository/ChatMessageRepository.java
+  findBeforeSeq(roomId, seq, limit)
+  findRange(roomId, startSeq, endSeq)
+  findLatestByRoom(roomId, limit)
+  findAround(roomId, messageId, halfWindow)
+
+Cursor-based pagination using seq (sequence number) is significantly more
+efficient than OFFSET-based pagination at large page numbers:
+  - OFFSET 10000: scans and discards 10000 rows before returning results
+  - WHERE seq < :beforeSeq LIMIT N: uses the (roomId, seq) index directly
+
+The composite index idx_msg_room_seq on (roomId, seq) makes these queries O(log N).
+This is production-grade pagination design.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] findByIdForUpdate (SELECT FOR UPDATE) Is Used Outside Sequence Generation
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: chat-service/.../room/repository/RoomRepository.java
+  @Lock(LockModeType.PESSIMISTIC_WRITE) findByIdForUpdate()
+
+This method is used by RedisMessageSequenceService for sequence generation (intended).
+But if other code calls findByIdForUpdate() for non-sequence purposes (e.g., room
+updates during admin operations), it acquires the same exclusive row lock that
+message sending competes for.
+
+Risk: An admin operation (update room name, update avatar) could hold the room
+lock for 100-500ms during an HTTP request to user-service. During this time, all
+message sends to that room are blocked at the DB lock level.
+
+Recommended fix direction:
+  Use @Lock(LockModeType.OPTIMISTIC) for non-sequence room updates.
+  Reserve PESSIMISTIC_WRITE exclusively for sequence generation.
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] UserProfileRepository.findTop10ByUsernameContainingIgnoreCaseOrderByUsernameAsc
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: user-service/.../repository/UserProfileRepository.java
+
+The method name reveals: LIKE %username% query (ContainingIgnoreCase).
+PostgreSQL cannot use the btree index on username for LIKE %term% queries
+(only for LIKE term% prefix searches). This results in a full sequential scan
+of the user_profiles table for every username search.
+
+At 1M users: every username search scans 1M rows = seconds of latency.
+
+The findTop10 limit reduces result set size but does NOT reduce the scan size.
+PostgreSQL must still scan all rows that match the LIKE pattern before applying LIMIT.
+
+Recommended fix direction:
+  Option A: Add a GIN/GiST trigram index:
+    CREATE EXTENSION pg_trgm;
+    CREATE INDEX idx_username_trgm ON user_profiles USING GIN (username gin_trgm_ops);
+    This enables fast ILIKE queries.
+  Option B: Use full-text search (tsvector) for username search.
+  Option C: Use a search service (Elasticsearch) for user search at large scale.
+
+================================================================================
+SECTION 6 — CONSISTENCY MODEL
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] Eventual Consistency Gaps Are Not Documented
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+
+The system has several eventual consistency windows that are not documented:
+
+1. account.created Kafka event → UserProfile created:
+   Window: 50-500ms after registration
+   Impact: User logs in, tries to access profile → 404 until Kafka event processed
+
+2. friend.request.sent Kafka event → Notification created:
+   Window: 100-2000ms after request sent
+   Impact: Recipient doesn't see notification immediately after request is sent
+
+3. Room.lastMessage* denormalization:
+   Window: immediate (updated in same transaction as message save OR in afterCommit)
+   Impact: Room preview may be briefly stale if update fails
+
+4. RoomMember.displayName staleness:
+   Window: indefinite (no sync mechanism)
+   Impact: Member list shows stale display names
+
+These windows are acceptable for a chat application but should be documented
+so engineers understand the expected behavior.
+
+Recommended fix direction:
+  Add @implNote or README documentation for each eventual consistency boundary.
+  Add monitoring for Kafka consumer lag to detect when windows grow unexpectedly.
+
+================================================================================
+SECTION 7 — DATABASE ISOLATION & PERMISSIONS
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] All Services Use Same Superuser — No Per-Service DB Users
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: chatappBE/docker-compose.yml
+  All services: AUTH_DATABASE_USER: ${POSTGRES_USER:-postgres}
+                CHAT_DATABASE_USER: ${POSTGRES_USER:-postgres}
+
+The same PostgreSQL superuser (postgres) has access to ALL 6 databases.
+If any service's DB credentials are compromised:
+  - Attacker can query any of the 6 databases
+  - User passwords, JWT private keys, message history, friendship data —
+    all accessible with a single credential
+
+This violates the principle of least privilege at the DB level.
+
+Recommended fix direction:
+  Create per-service DB users with grants only on their own schema:
+  CREATE USER auth_svc WITH PASSWORD 'strong-random';
+  GRANT CONNECT ON DATABASE auth_service TO auth_svc;
+  GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO auth_svc;
+  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO auth_svc;
+
+  Each service uses its own user in its connection URL.
+
+================================================================================
+SECTION 8 — CONNECTION POOLING
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] No HikariCP Pool Configuration — Default Pool Size May Cause Exhaustion
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+Files: No spring.datasource.hikari.* configuration found in any service's application.yaml
+
+HikariCP defaults (Spring Boot): maximum-pool-size = 10 connections per service.
+With 7 services each holding 10 connections: 70 DB connections total.
+
+PostgreSQL default max_connections = 100.
+70 connections from services + Pgbouncer overhead + DBA connections = close to 100.
+
+Under load spikes, Hikari may exhaust the pool, causing connection timeouts.
+More critically: no explicit configuration means no visibility into pool behavior.
+
+Recommended fix direction:
+  Add explicit pool configuration to each service:
+  spring.datasource.hikari.maximum-pool-size: 20
+  spring.datasource.hikari.minimum-idle: 5
+  spring.datasource.hikari.connection-timeout: 30000
+  spring.datasource.hikari.idle-timeout: 600000
+  spring.datasource.hikari.max-lifetime: 1800000
+  spring.datasource.hikari.leak-detection-threshold: 60000
+
+  Add PgBouncer (connection pooler) in front of PostgreSQL.
+  PostgreSQL max_connections should be sized for PgBouncer connections,
+  not application service connections.
+
+================================================================================
+SECTION 9 — SUMMARY TABLE
+================================================================================
+
+| # | Severity | Issue                                       | Service                     |
+|---|----------|---------------------------------------------|-----------------------------|
+| 1 | BLOCKER  | No migration framework (ddl-auto: update)   | All services                |
+| 2 | HIGH     | Room entity denormalization (stale preview)  | chat-service Room.java      |
+| 3 | HIGH     | RoomMember displayName staleness            | chat-service RoomMember.java|
+| 4 | HIGH     | All services use same Postgres superuser    | docker-compose.yml          |
+| 5 | HIGH     | No HikariCP pool config (default 10)        | All services                |
+| 6 | HIGH     | forwardMessage partial transaction risk      | MessageCommandService       |
+| 7 | HIGH     | Username LIKE %% search = full table scan   | user-service repository     |
+| 8 | MEDIUM   | blocksJson stored as TEXT (not jsonb)       | ChatMessage.java            |
+| 9 | MEDIUM   | Notification table trim logic on hot path   | NotificationCommandService  |
+|10 | MEDIUM   | Nested transaction risk in sequence gen     | RedisMessageSequenceService |
+
+================================================================================
+END OF DATABASE REVIEW
+================================================================================

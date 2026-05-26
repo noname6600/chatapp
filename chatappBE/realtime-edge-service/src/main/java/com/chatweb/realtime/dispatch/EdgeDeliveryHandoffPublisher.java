@@ -1,13 +1,17 @@
 package com.chatweb.realtime.dispatch;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.chatweb.common.event.EventEnvelope;
+import com.chatweb.common.event.EventMetadata;
+import com.chatweb.common.event.TraceContext;
+import com.chatweb.common.redis.publisher.RedisEventPublisher;
 import io.micrometer.core.instrument.Metrics;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
+import java.util.UUID;
 import java.util.concurrent.locks.LockSupport;
 
 /**
@@ -18,8 +22,7 @@ import java.util.concurrent.locks.LockSupport;
 @Slf4j
 public class EdgeDeliveryHandoffPublisher {
 
-    private final StringRedisTemplate redis;
-    private final ObjectMapper objectMapper;
+    private final RedisEventPublisher redisEventPublisher;
 
     @Value("${realtime.dispatch.handoff.enabled:false}")
     private boolean enabled;
@@ -47,7 +50,17 @@ public class EdgeDeliveryHandoffPublisher {
 
         for (int attempt = 1; attempt <= attempts; attempt++) {
             try {
-                redis.convertAndSend(channel, objectMapper.writeValueAsString(event));
+                String envelopeEventId = event.getHandoffEventId() == null || event.getHandoffEventId().isBlank()
+                    ? UUID.randomUUID().toString()
+                    : event.getHandoffEventId();
+                EventMetadata metadata = new EventMetadata(
+                    envelopeEventId,
+                    EdgeDeliveryHandoffEvent.REDIS_EVENT_TYPE,
+                    "realtime-edge-service",
+                    Instant.now(),
+                    TraceContext.correlationIdOrEventId(envelopeEventId)
+                );
+                redisEventPublisher.publish(channel, new EventEnvelope<>(metadata, event));
                 Metrics.counter("realtime.dispatch.remote.handoff.publish.success", "targetInstanceId", event.getTargetInstanceId()).increment();
                 log.debug("[HANDOFF][PUB][SUCCESS] attempt={} targetInstance={} deliveryType={} eventType={} originalEventId={} sessions={} channel={}",
                         attempt,
@@ -105,7 +118,7 @@ public class EdgeDeliveryHandoffPublisher {
 
     private String normalizePrefix(String value) {
         if (value == null || value.isBlank()) {
-            return "realtime.edge.handoff";
+            return EdgeDeliveryHandoffEvent.REDIS_CHANNEL_PREFIX;
         }
         return value.endsWith(".") ? value.substring(0, value.length() - 1) : value;
     }

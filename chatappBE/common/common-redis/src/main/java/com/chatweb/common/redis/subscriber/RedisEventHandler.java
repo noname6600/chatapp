@@ -17,9 +17,23 @@ public interface RedisEventHandler<T> {
     String eventType();
 
     /**
+     * Returns whether this handler supports the given channel/envelope pair.
+     *
+     * <p>Default behavior keeps backward compatibility with eventType-based routing.
+     */
+    default boolean supports(String channel, EventEnvelope<?> envelope) {
+        String incomingEventType = envelope == null || envelope.metadata() == null
+                ? null
+                : envelope.metadata().getEventType();
+        String configuredEventType = eventType();
+        return configuredEventType != null && configuredEventType.equals(incomingEventType);
+    }
+
+    /**
      * Handles an incoming Redis event.
      *
+     * @param channel the Redis channel that delivered the message
      * @param envelope the incoming event envelope
      */
-    void handle(EventEnvelope<T> envelope);
+    void handle(String channel, EventEnvelope<T> envelope);
 }

@@ -8,17 +8,9 @@ import java.util.UUID;
 
 public interface IMessageEventPublisher {
 
-    void publishMessageCreated(
-            ChatMessage message,
-            List<ChatAttachment> attachments,
-            List<UUID> mentionedUserIds
-    );
+    void publishMessageCreated(ChatMessage message, List<ChatAttachment> attachments, List<UUID> mentionedUserIds);
 
-    void publishMessageEdited(
-            ChatMessage message
-    );
+    void publishMessageEdited(ChatMessage message);
 
-    void publishMessageDeleted(
-            ChatMessage message
-    );
+    void publishMessageDeleted(ChatMessage message);
 }

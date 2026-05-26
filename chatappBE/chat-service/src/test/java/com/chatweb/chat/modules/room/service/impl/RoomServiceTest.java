@@ -11,7 +11,7 @@ import com.chatweb.chat.modules.room.enums.RoomType;
 import com.chatweb.chat.modules.room.repository.RoomBanRepository;
 import com.chatweb.chat.modules.room.repository.RoomMemberRepository;
 import com.chatweb.chat.modules.room.repository.RoomRepository;
-import com.chatweb.chat.realtime.port.ChatRealtimePort;
+import com.chatweb.chat.modules.room.service.IRoomMembershipEventPublisher;
 import com.chatweb.common.core.exception.BusinessException;
 import com.chatweb.common.core.exception.CommonErrorCode;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -50,7 +50,7 @@ class RoomServiceTest {
 	@Mock
 	private RoomCacheInvalidationPolicy roomCacheInvalidationPolicy;
 	@Mock
-	private ChatRealtimePort chatRealtimePort;
+	private IRoomMembershipEventPublisher membershipEventPublisher;
 	@Mock
 	private ISystemMessageService systemMessageService;
 
@@ -149,7 +149,7 @@ class RoomServiceTest {
 		roomService.removeMember(roomId, ownerId, targetId);
 
 		verify(memberRepo).deleteByRoomIdAndUserId(roomId, targetId);
-		verify(chatRealtimePort).publishRoomEvent(any(), any(), any(), any());
+		verify(membershipEventPublisher).publishMemberRemoved(any(), any());
 	}
 
 	@Test

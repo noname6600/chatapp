@@ -11,8 +11,7 @@ import com.chatweb.common.integration.chat.ReactionPayload;
 import com.chatweb.common.integration.enums.ReactionAction;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
+import com.chatweb.chat.support.TransactionPublisher;
 
 @Component
 @RequiredArgsConstructor
@@ -56,18 +55,7 @@ public class PublishReactionEventStep
                 .actorDisplayName(actorDisplayName)
                 .build();
 
-                if (TransactionSynchronizationManager.isActualTransactionActive()
-                                && TransactionSynchronizationManager.isSynchronizationActive()) {
-                        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                                @Override
-                                public void afterCommit() {
-                                        eventPublisher.publishReactionUpdated(payload);
-                                }
-                        });
-                        return;
-                }
-
-        eventPublisher.publishReactionUpdated(payload);
+        TransactionPublisher.publishAfterCommit(() -> eventPublisher.publishReactionUpdated(payload));
     }
 
     @Override

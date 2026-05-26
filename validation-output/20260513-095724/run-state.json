@@ -1,0 +1,80 @@
+﻿{
+    "runId":  "20260513-095724",
+    "mode":  "full",
+    "startedAt":  "2026-05-13T09:57:24.2260348+07:00",
+    "completedAt":  "2026-05-13T09:59:59.8702293+07:00",
+    "outputDir":  "D:\\Work\\PET\\chatappPET\\chatapp\\validation-output\\20260513-095724",
+    "logDir":  "D:\\Work\\PET\\chatappPET\\chatapp\\validation-output\\20260513-095724\\logs",
+    "status":  "FAIL",
+    "entryGates":  [
+                       {
+                           "name":  "multi-domain-compile",
+                           "status":  "PASS",
+                           "durationSeconds":  33.41,
+                           "exitCode":  0,
+                           "logFile":  "D:\\Work\\PET\\chatappPET\\chatapp\\validation-output\\20260513-095724\\logs\\gate-multi-domain-compile.log"
+                       },
+                       {
+                           "name":  "friendship-compileTest",
+                           "status":  "PASS",
+                           "durationSeconds":  28.37,
+                           "exitCode":  0,
+                           "logFile":  "D:\\Work\\PET\\chatappPET\\chatapp\\validation-output\\20260513-095724\\logs\\gate-friendship-compileTest.log"
+                       },
+                       {
+                           "name":  "focused-migration-tests",
+                           "status":  "PASS",
+                           "durationSeconds":  35.49,
+                           "exitCode":  0,
+                           "logFile":  "D:\\Work\\PET\\chatappPET\\chatapp\\validation-output\\20260513-095724\\logs\\gate-focused-migration-tests.log"
+                       },
+                       {
+                           "name":  "full-edge-test-suite",
+                           "status":  "FAIL",
+                           "durationSeconds":  46.62,
+                           "exitCode":  1,
+                           "logFile":  "D:\\Work\\PET\\chatappPET\\chatapp\\validation-output\\20260513-095724\\logs\\gate-full-edge-test-suite.log"
+                       }
+                   ],
+    "environment":  {
+                        "compose":  {
+                                        "started":  false,
+                                        "status":  "NOT-TESTED"
+                                    },
+                        "containers":  [
+
+                                       ],
+                        "endpoints":  [
+
+                                      ]
+                    },
+    "integrationTests":  [
+
+                         ],
+    "scenarios":  [
+
+                  ],
+    "artifacts":  {
+                      "runStateJson":  "D:\\Work\\PET\\chatappPET\\chatapp\\validation-output\\20260513-095724\\run-state.json",
+                      "reportJson":  "D:\\Work\\PET\\chatappPET\\chatapp\\validation-output\\20260513-095724\\realtime-edge-local-validation-results.json",
+                      "reportMd":  "D:\\Work\\PET\\chatappPET\\chatapp\\validation-output\\20260513-095724\\realtime-edge-local-validation-results.md",
+                      "reviewJson":  "D:\\Work\\PET\\chatappPET\\chatapp\\review code\\realtime-edge-local-validation-results.json",
+                      "reviewMd":  "D:\\Work\\PET\\chatappPET\\chatapp\\review code\\realtime-edge-local-validation-results.md"
+                  },
+    "issues":  [
+                   {
+                       "severity":  "critical",
+                       "area":  "entry-gates",
+                       "message":  "Entry gate failed: full-edge-test-suite"
+                   },
+                   {
+                       "severity":  "critical",
+                       "area":  "execution",
+                       "message":  "Entry gate failed: full-edge-test-suite"
+                   }
+               ],
+    "recommendation":  "stop and investigate",
+    "notes":  [
+
+              ]
+}
