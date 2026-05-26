@@ -80,6 +80,7 @@ services:
   # MICROSERVICES
   # ─────────────────────────────────────────────────────────
   auth-service: &auth-service-base
+    container_name: chatappbe-auth-service
     build:
       context: .
       dockerfile: auth-service/Dockerfile
@@ -114,6 +115,7 @@ services:
 
   auth-service-2:
     <<: *auth-service-base
+    container_name: chatappbe-auth-service-2
     networks:
       chatapp-net:
         aliases:
@@ -121,12 +123,14 @@ services:
 
   auth-service-3:
     <<: *auth-service-base
+    container_name: chatappbe-auth-service-3
     networks:
       chatapp-net:
         aliases:
           - auth-service
 
   user-service: &user-service-base
+    container_name: chatappbe-user-service
     build:
       context: .
       dockerfile: user-service/Dockerfile
@@ -159,6 +163,7 @@ services:
 
   user-service-2:
     <<: *user-service-base
+    container_name: chatappbe-user-service-2
     networks:
       chatapp-net:
         aliases:
@@ -166,12 +171,14 @@ services:
 
   user-service-3:
     <<: *user-service-base
+    container_name: chatappbe-user-service-3
     networks:
       chatapp-net:
         aliases:
           - user-service
 
   chat-service: &chat-service-base
+    container_name: chatappbe-chat-service
     build:
       context: .
       dockerfile: chat-service/Dockerfile
@@ -209,6 +216,7 @@ services:
 
   chat-service-2:
     <<: *chat-service-base
+    container_name: chatappbe-chat-service-2
     networks:
       chatapp-net:
         aliases:
@@ -216,12 +224,14 @@ services:
 
   chat-service-3:
     <<: *chat-service-base
+    container_name: chatappbe-chat-service-3
     networks:
       chatapp-net:
         aliases:
           - chat-service
 
   presence-service: &presence-service-base
+    container_name: chatappbe-presence-service
     build:
       context: .
       dockerfile: presence-service/Dockerfile
@@ -251,6 +261,7 @@ services:
 
   presence-service-2:
     <<: *presence-service-base
+    container_name: chatappbe-presence-service-2
     networks:
       chatapp-net:
         aliases:
@@ -258,12 +269,14 @@ services:
 
   presence-service-3:
     <<: *presence-service-base
+    container_name: chatappbe-presence-service-3
     networks:
       chatapp-net:
         aliases:
           - presence-service
 
   friendship-service: &friendship-service-base
+    container_name: chatappbe-friendship-service
     build:
       context: .
       dockerfile: friendship-service/Dockerfile
@@ -299,6 +312,7 @@ services:
 
   friendship-service-2:
     <<: *friendship-service-base
+    container_name: chatappbe-friendship-service-2
     networks:
       chatapp-net:
         aliases:
@@ -306,12 +320,14 @@ services:
 
   friendship-service-3:
     <<: *friendship-service-base
+    container_name: chatappbe-friendship-service-3
     networks:
       chatapp-net:
         aliases:
           - friendship-service
 
   notification-service: &notification-service-base
+    container_name: chatappbe-notification-service
     build:
       context: .
       dockerfile: notification-service/Dockerfile
@@ -346,6 +362,7 @@ services:
 
   notification-service-2:
     <<: *notification-service-base
+    container_name: chatappbe-notification-service-2
     networks:
       chatapp-net:
         aliases:
@@ -353,12 +370,14 @@ services:
 
   notification-service-3:
     <<: *notification-service-base
+    container_name: chatappbe-notification-service-3
     networks:
       chatapp-net:
         aliases:
           - notification-service
 
   realtime-edge-service: &realtime-edge-service-base
+    container_name: chatappbe-realtime-edge-service
     build:
       context: .
       dockerfile: realtime-edge-service/Dockerfile
@@ -398,6 +417,7 @@ services:
 
   realtime-edge-service-2:
     <<: *realtime-edge-service-base
+    container_name: chatappbe-realtime-edge-service-2
     networks:
       chatapp-net:
         aliases:
@@ -405,12 +425,14 @@ services:
 
   realtime-edge-service-3:
     <<: *realtime-edge-service-base
+    container_name: chatappbe-realtime-edge-service-3
     networks:
       chatapp-net:
         aliases:
           - realtime-edge-service
 
   upload-service: &upload-service-base
+    container_name: chatappbe-upload-service
     build:
       context: .
       dockerfile: upload-service/Dockerfile
@@ -437,6 +459,7 @@ services:
 
   upload-service-2:
     <<: *upload-service-base
+    container_name: chatappbe-upload-service-2
     networks:
       chatapp-net:
         aliases:
@@ -444,6 +467,7 @@ services:
 
   upload-service-3:
     <<: *upload-service-base
+    container_name: chatappbe-upload-service-3
     networks:
       chatapp-net:
         aliases:
@@ -453,6 +477,7 @@ services:
   # API GATEWAY
   # ─────────────────────────────────────────────────────────
   gateway-service: &gateway-service-base
+    container_name: chatappbe-gateway-service
     build:
       context: .
       dockerfile: gateway-service/Dockerfile
@@ -509,14 +534,17 @@ services:
 
   gateway-service-2:
     <<: *gateway-service-base
+    container_name: chatappbe-gateway-service-2
 
   gateway-service-3:
     <<: *gateway-service-base
+    container_name: chatappbe-gateway-service-3
 
   # ─────────────────────────────────────────────────────────
   # FRONTEND
   # ─────────────────────────────────────────────────────────
   frontend: &frontend-base
+    container_name: chatappbe-frontend
     build:
       context: ../chatappFE
       dockerfile: Dockerfile
