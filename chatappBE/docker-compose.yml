@@ -79,11 +79,10 @@ services:
   # ─────────────────────────────────────────────────────────
   # MICROSERVICES
   # ─────────────────────────────────────────────────────────
-  auth-service:
+  auth-service: &auth-service-base
     build:
       context: .
       dockerfile: auth-service/Dockerfile
-    container_name: chatapp-auth
     depends_on:
       postgres:
         condition: service_healthy
@@ -113,11 +112,24 @@ services:
       retries: 3
       start_period: 60s
 
-  user-service:
+  auth-service-2:
+    <<: *auth-service-base
+    networks:
+      chatapp-net:
+        aliases:
+          - auth-service
+
+  auth-service-3:
+    <<: *auth-service-base
+    networks:
+      chatapp-net:
+        aliases:
+          - auth-service
+
+  user-service: &user-service-base
     build:
       context: .
       dockerfile: user-service/Dockerfile
-    container_name: chatapp-user
     depends_on:
       postgres:
         condition: service_healthy
@@ -145,11 +157,24 @@ services:
       retries: 3
       start_period: 60s
 
-  chat-service:
+  user-service-2:
+    <<: *user-service-base
+    networks:
+      chatapp-net:
+        aliases:
+          - user-service
+
+  user-service-3:
+    <<: *user-service-base
+    networks:
+      chatapp-net:
+        aliases:
+          - user-service
+
+  chat-service: &chat-service-base
     build:
       context: .
       dockerfile: chat-service/Dockerfile
-    container_name: chatapp-chat
     depends_on:
       postgres:
         condition: service_healthy
@@ -182,11 +207,24 @@ services:
       retries: 3
       start_period: 60s
 
-  presence-service:
+  chat-service-2:
+    <<: *chat-service-base
+    networks:
+      chatapp-net:
+        aliases:
+          - chat-service
+
+  chat-service-3:
+    <<: *chat-service-base
+    networks:
+      chatapp-net:
+        aliases:
+          - chat-service
+
+  presence-service: &presence-service-base
     build:
       context: .
       dockerfile: presence-service/Dockerfile
-    container_name: chatapp-presence
     depends_on:
       redis:
         condition: service_healthy
@@ -211,11 +249,24 @@ services:
       retries: 3
       start_period: 60s
 
-  friendship-service:
+  presence-service-2:
+    <<: *presence-service-base
+    networks:
+      chatapp-net:
+        aliases:
+          - presence-service
+
+  presence-service-3:
+    <<: *presence-service-base
+    networks:
+      chatapp-net:
+        aliases:
+          - presence-service
+
+  friendship-service: &friendship-service-base
     build:
       context: .
       dockerfile: friendship-service/Dockerfile
-    container_name: chatapp-friendship
     depends_on:
       postgres:
         condition: service_healthy
@@ -246,11 +297,24 @@ services:
       retries: 3
       start_period: 60s
 
-  notification-service:
+  friendship-service-2:
+    <<: *friendship-service-base
+    networks:
+      chatapp-net:
+        aliases:
+          - friendship-service
+
+  friendship-service-3:
+    <<: *friendship-service-base
+    networks:
+      chatapp-net:
+        aliases:
+          - friendship-service
+
+  notification-service: &notification-service-base
     build:
       context: .
       dockerfile: notification-service/Dockerfile
-    container_name: chatapp-notification
     depends_on:
       postgres:
         condition: service_healthy
@@ -280,11 +344,24 @@ services:
       retries: 3
       start_period: 60s
 
-  realtime-edge-service:
+  notification-service-2:
+    <<: *notification-service-base
+    networks:
+      chatapp-net:
+        aliases:
+          - notification-service
+
+  notification-service-3:
+    <<: *notification-service-base
+    networks:
+      chatapp-net:
+        aliases:
+          - notification-service
+
+  realtime-edge-service: &realtime-edge-service-base
     build:
       context: .
       dockerfile: realtime-edge-service/Dockerfile
-    container_name: chatapp-realtime-edge
     depends_on:
       redis:
         condition: service_healthy
@@ -319,11 +396,24 @@ services:
       retries: 3
       start_period: 60s
 
-  upload-service:
+  realtime-edge-service-2:
+    <<: *realtime-edge-service-base
+    networks:
+      chatapp-net:
+        aliases:
+          - realtime-edge-service
+
+  realtime-edge-service-3:
+    <<: *realtime-edge-service-base
+    networks:
+      chatapp-net:
+        aliases:
+          - realtime-edge-service
+
+  upload-service: &upload-service-base
     build:
       context: .
       dockerfile: upload-service/Dockerfile
-    container_name: chatapp-upload
     depends_on:
       auth-service:
         condition: service_healthy
@@ -345,14 +435,27 @@ services:
       retries: 3
       start_period: 60s
 
+  upload-service-2:
+    <<: *upload-service-base
+    networks:
+      chatapp-net:
+        aliases:
+          - upload-service
+
+  upload-service-3:
+    <<: *upload-service-base
+    networks:
+      chatapp-net:
+        aliases:
+          - upload-service
+
   # ─────────────────────────────────────────────────────────
   # API GATEWAY
   # ─────────────────────────────────────────────────────────
-  gateway-service:
+  gateway-service: &gateway-service-base
     build:
       context: .
       dockerfile: gateway-service/Dockerfile
-    container_name: chatapp-gateway
     depends_on:
       redis:
         condition: service_healthy
@@ -404,14 +507,19 @@ services:
       retries: 3
       start_period: 30s
 
+  gateway-service-2:
+    <<: *gateway-service-base
+
+  gateway-service-3:
+    <<: *gateway-service-base
+
   # ─────────────────────────────────────────────────────────
   # FRONTEND
   # ─────────────────────────────────────────────────────────
-  frontend:
+  frontend: &frontend-base
     build:
       context: ../chatappFE
       dockerfile: Dockerfile
-    container_name: chatapp-frontend
     networks:
       - chatapp-net
     restart: unless-stopped
@@ -422,6 +530,12 @@ services:
       retries: 3
       start_period: 30s
 
+  frontend-2:
+    <<: *frontend-base
+
+  frontend-3:
+    <<: *frontend-base
+
   # ─────────────────────────────────────────────────────────
   # EDGE PROXY
   # ─────────────────────────────────────────────────────────
@@ -431,7 +545,15 @@ services:
     depends_on:
       frontend:
         condition: service_healthy
+      frontend-2:
+        condition: service_healthy
+      frontend-3:
+        condition: service_healthy
       gateway-service:
+        condition: service_healthy
+      gateway-service-2:
+        condition: service_healthy
+      gateway-service-3:
         condition: service_healthy
     ports:
       - "80:80"
