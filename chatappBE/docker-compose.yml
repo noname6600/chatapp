@@ -217,6 +217,17 @@ services:
   chat-service-2:
     <<: *chat-service-base
     container_name: chatappbe-chat-service-2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      chat-service:
+        condition: service_healthy
     networks:
       chatapp-net:
         aliases:
@@ -225,6 +236,17 @@ services:
   chat-service-3:
     <<: *chat-service-base
     container_name: chatappbe-chat-service-3
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      chat-service:
+        condition: service_healthy
     networks:
       chatapp-net:
         aliases:
@@ -262,6 +284,15 @@ services:
   presence-service-2:
     <<: *presence-service-base
     container_name: chatappbe-presence-service-2
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      presence-service:
+        condition: service_healthy
     networks:
       chatapp-net:
         aliases:
@@ -270,6 +301,15 @@ services:
   presence-service-3:
     <<: *presence-service-base
     container_name: chatappbe-presence-service-3
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      presence-service:
+        condition: service_healthy
     networks:
       chatapp-net:
         aliases:
@@ -313,6 +353,17 @@ services:
   friendship-service-2:
     <<: *friendship-service-base
     container_name: chatappbe-friendship-service-2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      friendship-service:
+        condition: service_healthy
     networks:
       chatapp-net:
         aliases:
@@ -321,6 +372,17 @@ services:
   friendship-service-3:
     <<: *friendship-service-base
     container_name: chatappbe-friendship-service-3
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      friendship-service:
+        condition: service_healthy
     networks:
       chatapp-net:
         aliases:
@@ -363,6 +425,17 @@ services:
   notification-service-2:
     <<: *notification-service-base
     container_name: chatappbe-notification-service-2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
     networks:
       chatapp-net:
         aliases:
@@ -371,6 +444,17 @@ services:
   notification-service-3:
     <<: *notification-service-base
     container_name: chatappbe-notification-service-3
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
     networks:
       chatapp-net:
         aliases:
