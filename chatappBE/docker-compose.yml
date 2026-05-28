@@ -75,15 +75,16 @@ services:
       interval: 15s
       timeout: 10s
       retries: 5
+      start_period: 60s
 
   # ─────────────────────────────────────────────────────────
   # MICROSERVICES
   # ─────────────────────────────────────────────────────────
-  auth-service:
+  auth-service: &auth-service-base
+    container_name: chatappbe-auth-service
     build:
       context: .
       dockerfile: auth-service/Dockerfile
-    container_name: chatapp-auth
     depends_on:
       postgres:
         condition: service_healthy
@@ -94,8 +95,8 @@ services:
       AUTH_DATABASE_URL: jdbc:postgresql://postgres:5432/${AUTH_DATABASE_NAME:-auth_service}
       AUTH_DATABASE_USER: ${POSTGRES_USER:-postgres}
       AUTH_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      KAFKA_SERVERS: kafka:9092
-      USER_SERVICE_BASE_URL: http://user-service:8082/api/v1/users
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092,chatapp-kafka:9092}
+      USER_SERVICE_BASE_URL: ${USER_SERVICE_BASE_URL:-http://user-service:8082/api/v1/users}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
@@ -111,13 +112,21 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 360s
 
-  user-service:
+  auth-service-2:
+    <<: *auth-service-base
+    container_name: chatappbe-auth-service-2
+    networks:
+      chatapp-net:
+        aliases:
+          - auth-service
+
+  user-service: &user-service-base
+    container_name: chatappbe-user-service
     build:
       context: .
       dockerfile: user-service/Dockerfile
-    container_name: chatapp-user
     depends_on:
       postgres:
         condition: service_healthy
@@ -130,10 +139,10 @@ services:
       USER_DATABASE_URL: jdbc:postgresql://postgres:5432/${USER_DATABASE_NAME:-user_service}
       USER_DATABASE_USER: ${POSTGRES_USER:-postgres}
       USER_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092,chatapp-kafka:9092}
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:-http://auth-service:8081/.well-known/jwks.json}
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
     networks:
       - chatapp-net
@@ -143,13 +152,21 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 360s
 
-  chat-service:
+  user-service-2:
+    <<: *user-service-base
+    container_name: chatappbe-user-service-2
+    networks:
+      chatapp-net:
+        aliases:
+          - user-service
+
+  chat-service: &chat-service-base
+    container_name: chatappbe-chat-service
     build:
       context: .
       dockerfile: chat-service/Dockerfile
-    container_name: chatapp-chat
     depends_on:
       postgres:
         condition: service_healthy
@@ -164,12 +181,12 @@ services:
       CHAT_DATABASE_URL: jdbc:postgresql://postgres:5432/${CHAT_DATABASE_NAME:-chat_service}
       CHAT_DATABASE_USER: ${POSTGRES_USER:-postgres}
       CHAT_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_PORT: 6379
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
-      SERVICES_USER_URL: http://user-service:8082
-      SERVICES_FRIENDSHIP_URL: http://friendship-service:8085
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092,chatapp-kafka:9092}
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:-http://auth-service:8081/.well-known/jwks.json}
+      SERVICES_USER_URL: ${SERVICES_USER_URL:-http://user-service:8082}
+      SERVICES_FRIENDSHIP_URL: ${SERVICES_FRIENDSHIP_URL:-http://friendship-service:8085}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
       CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
     networks:
@@ -180,13 +197,32 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 360s
 
-  presence-service:
+  chat-service-2:
+    <<: *chat-service-base
+    container_name: chatappbe-chat-service-2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      chat-service:
+        condition: service_healthy
+    networks:
+      chatapp-net:
+        aliases:
+          - chat-service
+
+  presence-service: &presence-service-base
+    container_name: chatappbe-presence-service
     build:
       context: .
       dockerfile: presence-service/Dockerfile
-    container_name: chatapp-presence
     depends_on:
       redis:
         condition: service_healthy
@@ -196,10 +232,10 @@ services:
         condition: service_healthy
     environment:
       PORT: 8084
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_PORT: 6379
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092,chatapp-kafka:9092}
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:-http://auth-service:8081/.well-known/jwks.json}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
     networks:
       - chatapp-net
@@ -209,13 +245,30 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 360s
 
-  friendship-service:
+  presence-service-2:
+    <<: *presence-service-base
+    container_name: chatappbe-presence-service-2
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      presence-service:
+        condition: service_healthy
+    networks:
+      chatapp-net:
+        aliases:
+          - presence-service
+
+  friendship-service: &friendship-service-base
+    container_name: chatappbe-friendship-service
     build:
       context: .
       dockerfile: friendship-service/Dockerfile
-    container_name: chatapp-friendship
     depends_on:
       postgres:
         condition: service_healthy
@@ -230,11 +283,11 @@ services:
       FRIENDSHIP_DATABASE_URL: jdbc:postgresql://postgres:5432/${FRIENDSHIP_DATABASE_NAME:-friendship_service}
       FRIENDSHIP_DATABASE_USER: ${POSTGRES_USER:-postgres}
       FRIENDSHIP_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_PORT: 6379
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
-      USER_SERVICE_URL: http://user-service:8082
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092,chatapp-kafka:9092}
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:-http://auth-service:8081/.well-known/jwks.json}
+      USER_SERVICE_URL: ${USER_SERVICE_URL:-http://user-service:8082}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
     networks:
       - chatapp-net
@@ -244,13 +297,32 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 360s
 
-  notification-service:
+  friendship-service-2:
+    <<: *friendship-service-base
+    container_name: chatappbe-friendship-service-2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      friendship-service:
+        condition: service_healthy
+    networks:
+      chatapp-net:
+        aliases:
+          - friendship-service
+
+  notification-service: &notification-service-base
+    container_name: chatappbe-notification-service
     build:
       context: .
       dockerfile: notification-service/Dockerfile
-    container_name: chatapp-notification
     depends_on:
       postgres:
         condition: service_healthy
@@ -265,10 +337,10 @@ services:
       NOTIFICATION_DATABASE_URL: jdbc:postgresql://postgres:5432/${NOTIFICATION_DATABASE_NAME:-notification_service}
       NOTIFICATION_DATABASE_USER: ${POSTGRES_USER:-postgres}
       NOTIFICATION_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_PORT: 6379
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092,chatapp-kafka:9092}
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:-http://auth-service:8081/.well-known/jwks.json}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
     networks:
       - chatapp-net
@@ -278,13 +350,32 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 360s
 
-  realtime-edge-service:
+  notification-service-2:
+    <<: *notification-service-base
+    container_name: chatappbe-notification-service-2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+    networks:
+      chatapp-net:
+        aliases:
+          - notification-service
+
+  realtime-edge-service: &realtime-edge-service-base
+    container_name: chatappbe-realtime-edge-service
     build:
       context: .
       dockerfile: realtime-edge-service/Dockerfile
-    container_name: chatapp-realtime-edge
     depends_on:
       redis:
         condition: service_healthy
@@ -300,15 +391,15 @@ services:
         condition: service_healthy
     environment:
       PORT: 8090
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092,chatapp-kafka:9092}
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:-http://auth-service:8081/.well-known/jwks.json}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
-      CHAT_SERVICE_URL: http://chat-service:8083
-      PRESENCE_SERVICE_URL: http://presence-service:8084
-      NOTIFICATION_SERVICE_URL: http://notification-service:8086
-      FRIENDSHIP_SERVICE_URL: http://friendship-service:8085
+      CHAT_SERVICE_URL: ${CHAT_SERVICE_URL:-http://chat-service:8083}
+      PRESENCE_SERVICE_URL: ${PRESENCE_SERVICE_URL:-http://presence-service:8084}
+      NOTIFICATION_SERVICE_URL: ${NOTIFICATION_SERVICE_URL:-http://notification-service:8086}
+      FRIENDSHIP_SERVICE_URL: ${FRIENDSHIP_SERVICE_URL:-http://friendship-service:8085}
     networks:
       - chatapp-net
     restart: unless-stopped
@@ -317,19 +408,27 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 360s
 
-  upload-service:
+  realtime-edge-service-2:
+    <<: *realtime-edge-service-base
+    container_name: chatappbe-realtime-edge-service-2
+    networks:
+      chatapp-net:
+        aliases:
+          - realtime-edge-service
+
+  upload-service: &upload-service-base
+    container_name: chatappbe-upload-service
     build:
       context: .
       dockerfile: upload-service/Dockerfile
-    container_name: chatapp-upload
     depends_on:
       auth-service:
         condition: service_healthy
     environment:
       PORT: 8088
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:-http://auth-service:8081/.well-known/jwks.json}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
       CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
       CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
@@ -343,16 +442,24 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 360s
+
+  upload-service-2:
+    <<: *upload-service-base
+    container_name: chatappbe-upload-service-2
+    networks:
+      chatapp-net:
+        aliases:
+          - upload-service
 
   # ─────────────────────────────────────────────────────────
   # API GATEWAY
   # ─────────────────────────────────────────────────────────
-  gateway-service:
+  gateway-service: &gateway-service-base
+    container_name: chatappbe-gateway-service
     build:
       context: .
       dockerfile: gateway-service/Dockerfile
-    container_name: chatapp-gateway
     depends_on:
       redis:
         condition: service_healthy
@@ -374,24 +481,24 @@ services:
         condition: service_healthy
     environment:
       PORT: 8080
-      AUTH_SERVICE_HOST: auth-service
-      AUTH_SERVICE_PORT: 8081
-      USER_SERVICE_HOST: user-service
-      USER_SERVICE_PORT: 8082
-      CHAT_SERVICE_HOST: chat-service
-      CHAT_SERVICE_PORT: 8083
-      PRESENCE_SERVICE_HOST: presence-service
-      PRESENCE_SERVICE_PORT: 8084
-      FRIENDSHIP_SERVICE_HOST: friendship-service
-      FRIENDSHIP_SERVICE_PORT: 8085
-      NOTIFICATION_SERVICE_HOST: notification-service
-      NOTIFICATION_SERVICE_PORT: 8086
-      UPLOAD_SERVICE_HOST: upload-service
-      UPLOAD_SERVICE_PORT: 8088
-      REALTIME_EDGE_SERVICE_HOST: realtime-edge-service
-      REALTIME_EDGE_SERVICE_PORT: 8090
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
+      AUTH_SERVICE_HOST: ${AUTH_SERVICE_HOST:-auth-service}
+      AUTH_SERVICE_PORT: ${AUTH_SERVICE_PORT:-8081}
+      USER_SERVICE_HOST: ${USER_SERVICE_HOST:-user-service}
+      USER_SERVICE_PORT: ${USER_SERVICE_PORT:-8082}
+      CHAT_SERVICE_HOST: ${CHAT_SERVICE_HOST:-chat-service}
+      CHAT_SERVICE_PORT: ${CHAT_SERVICE_PORT:-8083}
+      PRESENCE_SERVICE_HOST: ${PRESENCE_SERVICE_HOST:-presence-service}
+      PRESENCE_SERVICE_PORT: ${PRESENCE_SERVICE_PORT:-8084}
+      FRIENDSHIP_SERVICE_HOST: ${FRIENDSHIP_SERVICE_HOST:-friendship-service}
+      FRIENDSHIP_SERVICE_PORT: ${FRIENDSHIP_SERVICE_PORT:-8085}
+      NOTIFICATION_SERVICE_HOST: ${NOTIFICATION_SERVICE_HOST:-notification-service}
+      NOTIFICATION_SERVICE_PORT: ${NOTIFICATION_SERVICE_PORT:-8086}
+      UPLOAD_SERVICE_HOST: ${UPLOAD_SERVICE_HOST:-upload-service}
+      UPLOAD_SERVICE_PORT: ${UPLOAD_SERVICE_PORT:-8088}
+      REALTIME_EDGE_SERVICE_HOST: ${REALTIME_EDGE_SERVICE_HOST:-realtime-edge-service}
+      REALTIME_EDGE_SERVICE_PORT: ${REALTIME_EDGE_SERVICE_PORT:-8090}
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
       GATEWAY_JWT_CLOCK_SKEW_SECONDS: ${GATEWAY_JWT_CLOCK_SKEW_SECONDS:-60}
     networks:
@@ -402,16 +509,20 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 420s
+
+  gateway-service-2:
+    <<: *gateway-service-base
+    container_name: chatappbe-gateway-service-2
 
   # ─────────────────────────────────────────────────────────
   # FRONTEND
   # ─────────────────────────────────────────────────────────
-  frontend:
+  frontend: &frontend-base
+    container_name: chatappbe-frontend
     build:
       context: ../chatappFE
       dockerfile: Dockerfile
-    container_name: chatapp-frontend
     networks:
       - chatapp-net
     restart: unless-stopped
@@ -432,6 +543,8 @@ services:
       frontend:
         condition: service_healthy
       gateway-service:
+        condition: service_healthy
+      gateway-service-2:
         condition: service_healthy
     ports:
       - "80:80"

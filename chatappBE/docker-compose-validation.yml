@@ -99,8 +99,8 @@ services:
       AUTH_DATABASE_USER: ${POSTGRES_USER:-postgres}
       AUTH_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       JWT_SECRET: ${JWT_SECRET:-validation-secret-key-please-change}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
     networks:
       - validation-net
     healthcheck:
@@ -126,9 +126,9 @@ services:
       USER_DATABASE_URL: jdbc:postgresql://postgres:5432/user_service
       USER_DATABASE_USER: ${POSTGRES_USER:-postgres}
       USER_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      AUTH_SERVICE_URL: http://auth-service:8080
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
+      AUTH_SERVICE_URL: ${AUTH_SERVICE_URL:-http://auth-service:8080}
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
     networks:
       - validation-net
 
@@ -153,10 +153,10 @@ services:
       NOTIFICATION_DATABASE_URL: jdbc:postgresql://postgres:5432/notification_service
       NOTIFICATION_DATABASE_USER: ${POSTGRES_USER:-postgres}
       NOTIFICATION_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      AUTH_SERVICE_URL: http://auth-service:8080
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_PORT: 6379
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      AUTH_SERVICE_URL: ${AUTH_SERVICE_URL:-http://auth-service:8080}
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
     networks:
       - validation-net
 
@@ -178,9 +178,9 @@ services:
       SPRING_PROFILES_ACTIVE: validation
       PRESENCE_DATABASE_USER: ${POSTGRES_USER:-postgres}
       PRESENCE_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      AUTH_SERVICE_URL: http://auth-service:8080
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
+      AUTH_SERVICE_URL: ${AUTH_SERVICE_URL:-http://auth-service:8080}
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
     networks:
       - validation-net
 
@@ -205,10 +205,10 @@ services:
       CHAT_DATABASE_URL: jdbc:postgresql://postgres:5432/chat_service
       CHAT_DATABASE_USER: ${POSTGRES_USER:-postgres}
       CHAT_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      AUTH_SERVICE_URL: http://auth-service:8080
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      AUTH_SERVICE_URL: ${AUTH_SERVICE_URL:-http://auth-service:8080}
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
     networks:
       - validation-net
 
@@ -233,10 +233,10 @@ services:
       FRIENDSHIP_DATABASE_URL: jdbc:postgresql://postgres:5432/friendship_service
       FRIENDSHIP_DATABASE_USER: ${POSTGRES_USER:-postgres}
       FRIENDSHIP_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      AUTH_SERVICE_URL: http://auth-service:8080
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      AUTH_SERVICE_URL: ${AUTH_SERVICE_URL:-http://auth-service:8080}
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
     networks:
       - validation-net
 
@@ -264,14 +264,14 @@ services:
       - "8087:8080"
     environment:
       SPRING_PROFILES_ACTIVE: validation
-      AUTH_SERVICE_URL: http://auth-service:8080
-      NOTIFICATION_SERVICE_URL: http://notification-service:8080
-      PRESENCE_SERVICE_URL: http://presence-service:8080
-      CHAT_SERVICE_URL: http://chat-service:8080
-      FRIENDSHIP_SERVICE_URL: http://friendship-service:8080
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      AUTH_SERVICE_URL: ${AUTH_SERVICE_URL:-http://auth-service:8080}
+      NOTIFICATION_SERVICE_URL: ${NOTIFICATION_SERVICE_URL:-http://notification-service:8080}
+      PRESENCE_SERVICE_URL: ${PRESENCE_SERVICE_URL:-http://presence-service:8080}
+      CHAT_SERVICE_URL: ${CHAT_SERVICE_URL:-http://chat-service:8080}
+      FRIENDSHIP_SERVICE_URL: ${FRIENDSHIP_SERVICE_URL:-http://friendship-service:8080}
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
       EDGE_INSTANCE_ID: edge-1
     networks:
       - validation-net
@@ -282,3 +282,4 @@ networks:
 
 volumes:
   postgres-data:
+
