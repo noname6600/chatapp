@@ -228,6 +228,16 @@ export const usePresenceStore = create<PresenceState>((set, get) => ({
             : user.status
       })
 
+      // Merge into global userStatuses so UI components using getUserStatus() reflect room presence.
+      const mergedUserStatuses = { ...state.userStatuses }
+      users.forEach((user) => {
+        if (!myId || user.userId !== myId) {
+          if (!mergedUserStatuses[user.userId] || mergedUserStatuses[user.userId] === "OFFLINE") {
+            mergedUserStatuses[user.userId] = roomStatuses[user.userId]
+          }
+        }
+      })
+
       return {
         roomUserStatuses: {
           ...state.roomUserStatuses,
@@ -237,6 +247,8 @@ export const usePresenceStore = create<PresenceState>((set, get) => ({
           ...state.onlineUsersByRoom,
           [roomId]: buildVisibleUserMap(roomStatuses),
         },
+        userStatuses: mergedUserStatuses,
+        onlineUsers: buildVisibleUserMap(mergedUserStatuses),
       }
     }),
 

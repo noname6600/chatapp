@@ -514,10 +514,12 @@ public class RealtimeWebSocketHandler extends TextWebSocketHandler {
     }
 
     private void subscribeSession(RealtimeSession session, String channel) {
+        session.subscribe(channel);
         sessionRegistry.addSubscription(session.getSessionId(), channel);
     }
 
     private void unsubscribeSession(RealtimeSession session, String channel) {
+        session.unsubscribe(channel);
         sessionRegistry.removeSubscription(session.getSessionId(), channel);
     }
 

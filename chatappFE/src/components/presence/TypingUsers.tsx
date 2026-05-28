@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import UserAvatar from "../user/UserAvatar";
 import { useUserStore } from "../../store/user.store";
 import TypingDots from "./TypingDots";
@@ -13,6 +14,12 @@ export default function TypingUsers({
   className,
 }: TypingUsersProps) {
   const users = useUserStore((s) => s.users);
+  const fetchUsers = useUserStore((s) => s.fetchUsers);
+
+  useEffect(() => {
+    const missing = userIds.filter((id) => !users[id]);
+    if (missing.length) void fetchUsers(missing);
+  }, [fetchUsers, userIds, users]);
 
   if (userIds.length === 0) return null;
 

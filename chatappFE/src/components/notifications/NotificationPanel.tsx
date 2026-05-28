@@ -77,7 +77,7 @@ const isRoomNotification = (notification: Notification) => {
 
 const formatSenderLabel = (notification: Notification, usersById: Record<string, { displayName?: string | null }>) => {
   const actorDisplayName = notification.actorDisplayName?.trim()
-  if (actorDisplayName) return actorDisplayName
+  if (actorDisplayName && !UUID_PATTERN.test(actorDisplayName)) return actorDisplayName
 
   if (notification.actorId && usersById[notification.actorId]?.displayName) {
     const cached = String(usersById[notification.actorId]?.displayName ?? "").trim()
@@ -193,7 +193,7 @@ const NotificationPanel = ({
     for (const notification of notifications) {
       if (
         notification.actorId &&
-        !notification.actorDisplayName &&
+        (!notification.actorDisplayName || UUID_PATTERN.test(notification.actorDisplayName)) &&
         (!notification.senderName || UUID_PATTERN.test(notification.senderName))
       ) {
         ids.push(notification.actorId)
