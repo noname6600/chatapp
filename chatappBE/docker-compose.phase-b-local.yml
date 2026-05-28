@@ -73,8 +73,8 @@ services:
       NOTIFICATION_DATABASE_URL: jdbc:postgresql://postgres:5432/${NOTIFICATION_DATABASE_NAME:-notification_service}
       NOTIFICATION_DATABASE_USER: ${POSTGRES_USER:-postgres}
       NOTIFICATION_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
       SPRING_KAFKA_BOOTSTRAP_SERVERS: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
       PHASEB_LOCAL_VALIDATION_ENABLED: "true"
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://local-validation.invalid/jwks
@@ -95,10 +95,10 @@ services:
         condition: service_started
     environment:
       SPRING_SERVER_PORT: 8085
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
       SPRING_KAFKA_BOOTSTRAP_SERVERS: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
-      SERVICES_NOTIFICATION_URL: http://notification-service:8086
+      SERVICES_NOTIFICATION_URL: ${SERVICES_NOTIFICATION_URL:-http://notification-service:8086}
       PHASEB_LOCAL_VALIDATION_ENABLED: "true"
       JWT_JWK_SET_URI: http://local-validation.invalid/jwks
     ports:
@@ -106,3 +106,4 @@ services:
 
 volumes:
   phaseb-local-postgres-data:
+
