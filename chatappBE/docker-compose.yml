@@ -75,6 +75,7 @@ services:
       interval: 15s
       timeout: 10s
       retries: 5
+      start_period: 60s
 
   # ─────────────────────────────────────────────────────────
   # MICROSERVICES
@@ -111,7 +112,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 360s
 
   auth-service-2:
     <<: *auth-service-base
@@ -159,7 +160,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 360s
 
   user-service-2:
     <<: *user-service-base
@@ -212,7 +213,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 360s
 
   chat-service-2:
     <<: *chat-service-base
@@ -279,7 +280,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 360s
 
   presence-service-2:
     <<: *presence-service-base
@@ -348,7 +349,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 360s
 
   friendship-service-2:
     <<: *friendship-service-base
@@ -420,7 +421,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 360s
 
   notification-service-2:
     <<: *notification-service-base
@@ -497,7 +498,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 360s
 
   realtime-edge-service-2:
     <<: *realtime-edge-service-base
@@ -539,7 +540,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 360s
 
   upload-service-2:
     <<: *upload-service-base
@@ -614,7 +615,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 420s
 
   gateway-service-2:
     <<: *gateway-service-base
