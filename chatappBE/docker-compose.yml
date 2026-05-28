@@ -395,6 +395,7 @@ services:
         condition: service_healthy
     environment:
       PORT: 8090
+      REALTIME_INSTANCE_ID: chatappbe-realtime-edge-service
       SPRING_KAFKA_BOOTSTRAP_SERVERS: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092,chatapp-kafka:9092}
       SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
       SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
@@ -417,6 +418,8 @@ services:
   realtime-edge-service-2:
     <<: *realtime-edge-service-base
     container_name: chatappbe-realtime-edge-service-2
+    environment:
+      REALTIME_INSTANCE_ID: chatappbe-realtime-edge-service-2
     networks:
       chatapp-net:
         aliases:
