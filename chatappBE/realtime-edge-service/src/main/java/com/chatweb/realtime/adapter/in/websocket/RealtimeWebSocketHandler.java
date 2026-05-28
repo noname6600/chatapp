@@ -109,6 +109,7 @@ public class RealtimeWebSocketHandler extends TextWebSocketHandler {
             if (type != null && type.startsWith("presence.")) {
                 if (handlePresenceMessage(session, realtimeSession, message.getPayload())) {
                     realtimeSession.updateActivity();
+                    sessionRegistry.refreshSessionLease(realtimeSession.getSessionId());
                     return;
                 }
             }
@@ -116,6 +117,7 @@ public class RealtimeWebSocketHandler extends TextWebSocketHandler {
             if (type != null && isChatMessageType(type)) {
                 if (handleChatMessage(session, realtimeSession, message.getPayload())) {
                     realtimeSession.updateActivity();
+                    sessionRegistry.refreshSessionLease(realtimeSession.getSessionId());
                     return;
                 }
             }
