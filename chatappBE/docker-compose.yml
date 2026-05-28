@@ -122,14 +122,6 @@ services:
         aliases:
           - auth-service
 
-  auth-service-3:
-    <<: *auth-service-base
-    container_name: chatappbe-auth-service-3
-    networks:
-      chatapp-net:
-        aliases:
-          - auth-service
-
   user-service: &user-service-base
     container_name: chatappbe-user-service
     build:
@@ -165,14 +157,6 @@ services:
   user-service-2:
     <<: *user-service-base
     container_name: chatappbe-user-service-2
-    networks:
-      chatapp-net:
-        aliases:
-          - user-service
-
-  user-service-3:
-    <<: *user-service-base
-    container_name: chatappbe-user-service-3
     networks:
       chatapp-net:
         aliases:
@@ -218,25 +202,6 @@ services:
   chat-service-2:
     <<: *chat-service-base
     container_name: chatappbe-chat-service-2
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-      auth-service:
-        condition: service_healthy
-      chat-service:
-        condition: service_healthy
-    networks:
-      chatapp-net:
-        aliases:
-          - chat-service
-
-  chat-service-3:
-    <<: *chat-service-base
-    container_name: chatappbe-chat-service-3
     depends_on:
       postgres:
         condition: service_healthy
@@ -299,23 +264,6 @@ services:
         aliases:
           - presence-service
 
-  presence-service-3:
-    <<: *presence-service-base
-    container_name: chatappbe-presence-service-3
-    depends_on:
-      redis:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-      auth-service:
-        condition: service_healthy
-      presence-service:
-        condition: service_healthy
-    networks:
-      chatapp-net:
-        aliases:
-          - presence-service
-
   friendship-service: &friendship-service-base
     container_name: chatappbe-friendship-service
     build:
@@ -354,25 +302,6 @@ services:
   friendship-service-2:
     <<: *friendship-service-base
     container_name: chatappbe-friendship-service-2
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-      auth-service:
-        condition: service_healthy
-      friendship-service:
-        condition: service_healthy
-    networks:
-      chatapp-net:
-        aliases:
-          - friendship-service
-
-  friendship-service-3:
-    <<: *friendship-service-base
-    container_name: chatappbe-friendship-service-3
     depends_on:
       postgres:
         condition: service_healthy
@@ -442,25 +371,6 @@ services:
         aliases:
           - notification-service
 
-  notification-service-3:
-    <<: *notification-service-base
-    container_name: chatappbe-notification-service-3
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-      auth-service:
-        condition: service_healthy
-      notification-service:
-        condition: service_healthy
-    networks:
-      chatapp-net:
-        aliases:
-          - notification-service
-
   realtime-edge-service: &realtime-edge-service-base
     container_name: chatappbe-realtime-edge-service
     build:
@@ -508,14 +418,6 @@ services:
         aliases:
           - realtime-edge-service
 
-  realtime-edge-service-3:
-    <<: *realtime-edge-service-base
-    container_name: chatappbe-realtime-edge-service-3
-    networks:
-      chatapp-net:
-        aliases:
-          - realtime-edge-service
-
   upload-service: &upload-service-base
     container_name: chatappbe-upload-service
     build:
@@ -545,14 +447,6 @@ services:
   upload-service-2:
     <<: *upload-service-base
     container_name: chatappbe-upload-service-2
-    networks:
-      chatapp-net:
-        aliases:
-          - upload-service
-
-  upload-service-3:
-    <<: *upload-service-base
-    container_name: chatappbe-upload-service-3
     networks:
       chatapp-net:
         aliases:
@@ -621,10 +515,6 @@ services:
     <<: *gateway-service-base
     container_name: chatappbe-gateway-service-2
 
-  gateway-service-3:
-    <<: *gateway-service-base
-    container_name: chatappbe-gateway-service-3
-
   # ─────────────────────────────────────────────────────────
   # FRONTEND
   # ─────────────────────────────────────────────────────────
@@ -655,8 +545,6 @@ services:
       gateway-service:
         condition: service_healthy
       gateway-service-2:
-        condition: service_healthy
-      gateway-service-3:
         condition: service_healthy
     ports:
       - "80:80"
