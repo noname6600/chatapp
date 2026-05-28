@@ -17,7 +17,6 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
-import org.springframework.data.redis.connection.MessageListener;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.util.List;
@@ -69,7 +68,7 @@ public class RedisAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public MessageListener redisEventListener(
+    public RedisEventListener redisEventListener(
             RedisEventSerializer serializer,
             RedisEventDispatcher dispatcher,
             RedisPubSubObserver logger
