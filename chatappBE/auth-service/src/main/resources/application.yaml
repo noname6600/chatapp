@@ -6,6 +6,17 @@ spring:
   application:
     name: auth-service
 
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+
+  session:
+    store-type: redis
+    redis:
+      namespace: auth-service:session
+    timeout: 600s
+
   kafka:
     bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:
