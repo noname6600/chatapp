@@ -8,6 +8,7 @@ interface UserState {
   lastFetchedMap: Record<string, number>;
 
   fetchUsers: (ids: string[]) => Promise<void>;
+  cacheUsers: (profiles: UserProfile[]) => void;
   updateUserLocal: (profile: UserProfile) => void;
 }
 
@@ -19,6 +20,19 @@ export const useUserStore = create<UserState>()(
     (set, get) => ({
       users: {},
       lastFetchedMap: {},
+
+      cacheUsers: (profiles: UserProfile[]) =>
+        set((state) => {
+          const now = Date.now();
+          const updatedUsers = { ...state.users };
+          const updatedTimes = { ...state.lastFetchedMap };
+          profiles.forEach((u) => {
+            if (!u.accountId) return;
+            updatedUsers[u.accountId] = u;
+            updatedTimes[u.accountId] = now;
+          });
+          return { users: updatedUsers, lastFetchedMap: updatedTimes };
+        }),
 
       updateUserLocal: (profile: UserProfile) =>
         set((state) => {
