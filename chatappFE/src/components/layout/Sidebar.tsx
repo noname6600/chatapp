@@ -7,6 +7,7 @@ import type { PresenceStatus } from "../../types/presence";
 import { getStatusDotClass } from "../../utils/presenceStatus";
 import { useAuth } from "../../hooks/useAuth";
 import { useFriendStore } from "../../store/friend.store";
+import { useRooms } from "../../store/room.store";
 import UserAvatar from "../user/UserAvatar";
 import NotificationBell from "../notifications/NotificationBell";
 
@@ -23,6 +24,12 @@ const Sidebar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const unreadFriendRequests = useFriendStore((s) => s.unreadFriendRequestCount);
+
+  const { roomsById } = useRooms();
+  const totalChatUnread = Object.values(roomsById).reduce(
+    (sum, room) => sum + (room.unreadCount ?? 0),
+    0
+  );
 
   const selfPresence = usePresenceStore((s) => s.selfPresence);
   const setSelfPresence = usePresenceStore((s) => s.setSelfPresence);
@@ -46,7 +53,13 @@ const Sidebar = () => {
   const handleStatusChange = async (nextStatus: PresenceStatus) => {
     try {
       setStatusSaving(true);
-      const nextPresence = await updateMyPresenceApi({ mode: "MANUAL", status: nextStatus });
+      // ONLINE = "let the system manage me" → AUTO mode (can drift to AWAY on inactivity)
+      // AWAY / OFFLINE = explicit override → MANUAL mode (persisted across sessions)
+      const payload =
+        nextStatus === "ONLINE"
+          ? ({ mode: "AUTO" } as const)
+          : ({ mode: "MANUAL", status: nextStatus } as const);
+      const nextPresence = await updateMyPresenceApi(payload);
       setSelfPresence(nextPresence);
       if (userId) {
         setUserStatus(userId, nextPresence.effectiveStatus);
@@ -308,6 +321,16 @@ const Sidebar = () => {
             >
               <span className="relative flex items-center justify-center gap-2">
                 <span>{isCollapsed ? item.label[0].toUpperCase() : item.label}</span>
+                {item.to === "/chat" && totalChatUnread > 0 && !isCollapsed && (
+                  <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                    {totalChatUnread > 99 ? "99+" : totalChatUnread}
+                  </span>
+                )}
+                {item.to === "/chat" && totalChatUnread > 0 && isCollapsed && (
+                  <span className="absolute -right-2 -top-2 inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                    {totalChatUnread > 99 ? "99+" : totalChatUnread}
+                  </span>
+                )}
                 {item.to === "/friends" && unreadFriendRequests > 0 && !isCollapsed && (
                   <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
                     {unreadFriendRequests > 99 ? "99+" : unreadFriendRequests}

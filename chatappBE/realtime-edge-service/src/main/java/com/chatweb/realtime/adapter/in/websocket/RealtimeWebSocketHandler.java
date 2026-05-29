@@ -194,41 +194,36 @@ public class RealtimeWebSocketHandler extends TextWebSocketHandler {
                         return true;
                     }
 
-                    try {
-                        subscribeSession(realtimeSession, presenceChannel);
-                        subscribeSession(realtimeSession, typingChannel);
-                        sideEffectQueue.submit("presence.room.join", () -> {
-                            try {
-                                presenceDomainClient.joinRoom(accessToken, roomId);
+                    // Subscribe immediately — subscriptions must survive even if the
+                    // presence-service HTTP call fails, otherwise typing events stop working.
+                    subscribeSession(realtimeSession, presenceChannel);
+                    subscribeSession(realtimeSession, typingChannel);
+                    sideEffectQueue.submit("presence.room.join", () -> {
+                        try {
+                            presenceDomainClient.joinRoom(accessToken, roomId);
+                        } catch (Exception ex) {
+                            log.warn("[PRESENCE] presence.room.join domain call failed userId={} roomId={} — subscriptions kept",
+                                    realtimeSession.getUserId(), roomId, ex);
+                            // Do NOT unsubscribe — the channel subscription is still valid for
+                            // receiving presence/typing events even if the domain state update failed.
+                            return;
+                        }
 
-                                JsonNode users = presenceDomainClient.roomSnapshot(accessToken, roomId);
-                                Map<String, Object> payload = new LinkedHashMap<>();
-                                payload.put("roomId", roomId);
-                                payload.put("users", users);
+                        try {
+                            JsonNode users = presenceDomainClient.roomSnapshot(accessToken, roomId);
+                            Map<String, Object> payload = new LinkedHashMap<>();
+                            payload.put("roomId", roomId);
+                            payload.put("users", users);
 
-                                Map<String, Object> response = new LinkedHashMap<>();
-                                response.put("type", "presence.room.snapshot");
-                                response.put("payload", payload);
-                                session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
-                            } catch (Exception ex) {
-                                unsubscribeSession(realtimeSession, presenceChannel);
-                                unsubscribeSession(realtimeSession, typingChannel);
-                                log.warn("[PRESENCE] presence.room.join failed userId={} roomId={}",
-                                        realtimeSession.getUserId(), roomId, ex);
-                                try {
-                                    sendError(session, "Failed to join room presence");
-                                } catch (Exception sendEx) {
-                                    log.debug("[PRESENCE] failed to send join failure frame", sendEx);
-                                }
-                            }
-                        });
-                    } catch (Exception ex) {
-                        unsubscribeSession(realtimeSession, presenceChannel);
-                        unsubscribeSession(realtimeSession, typingChannel);
-                        log.warn("[PRESENCE] presence.room.join failed userId={} roomId={}",
-                                realtimeSession.getUserId(), roomId, ex);
-                        sendError(session, "Failed to join room presence");
-                    }
+                            Map<String, Object> response = new LinkedHashMap<>();
+                            response.put("type", "presence.room.snapshot");
+                            response.put("payload", payload);
+                            session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
+                        } catch (Exception ex) {
+                            log.warn("[PRESENCE] presence.room.snapshot failed userId={} roomId={}",
+                                    realtimeSession.getUserId(), roomId, ex);
+                        }
+                    });
                     return true;
                 }
                 case "presence.room.leave" -> {

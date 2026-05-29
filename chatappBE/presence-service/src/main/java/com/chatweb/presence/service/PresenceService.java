@@ -264,7 +264,11 @@ public class PresenceService implements IPresenceService {
     }
 
     public List<PresenceUserStatePayload> getAllPresenceUsers() {
+        // Skip users whose TTL-cache entry is null — they are between heartbeats or
+        // being cleaned up by the expiry listener. Returning them as OFFLINE would
+        // incorrectly downgrade their status in clients' local stores.
         return presenceEphemeralStatePort.getOnlineUsers().stream()
+                .filter(userId -> getStoredPresenceState(userId) != null)
                 .map(this::toUserState)
                 .sorted(Comparator.comparing(payload -> payload.getUserId().toString()))
                 .toList();
@@ -272,6 +276,7 @@ public class PresenceService implements IPresenceService {
 
     public List<PresenceUserStatePayload> getRoomPresence(UUID roomId) {
         return presenceEphemeralStatePort.getRoomUsers(roomId).stream()
+                .filter(userId -> getStoredPresenceState(userId) != null)
                 .map(this::toUserState)
                 .sorted(Comparator.comparing(payload -> payload.getUserId().toString()))
                 .toList();

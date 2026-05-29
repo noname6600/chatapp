@@ -171,14 +171,19 @@ onRealtimeOpen(() => {
   startHeartbeat()
   bindActivityTracking()
 
-  // Optimistically mark self as ONLINE the moment the socket opens.
-  // The backend will call presence.connect() and the snapshot will confirm.
-  // We skip this only when the user has manually chosen a different status.
+  // Optimistically apply self status the moment the socket opens so the UI
+  // reflects the correct state before the backend's USER_ONLINE event arrives.
+  // - AUTO mode → ONLINE (activity-based, always starts online)
+  // - MANUAL mode with ONLINE/AWAY → apply the saved manual status immediately
+  // - MANUAL mode with OFFLINE → leave as-is; the user explicitly chose offline
   const myId = localStorage.getItem("my_user_id")
   if (myId) {
     const store = usePresenceStore.getState()
-    if (!store.selfPresence || store.selfPresence.mode === "AUTO") {
+    const selfPresence = store.selfPresence
+    if (!selfPresence || selfPresence.mode === "AUTO") {
       store.setUserStatus(myId, "ONLINE")
+    } else if (selfPresence.mode === "MANUAL" && selfPresence.manualStatus != null && selfPresence.manualStatus !== "OFFLINE") {
+      store.setUserStatus(myId, selfPresence.manualStatus)
     }
   }
 
