@@ -19,7 +19,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class MessagePinEventPublisherAdapter implements IMessagePinEventPublisher {
 
-    private final ChatRedisPublisher chatRedisPublisher;
     private final KafkaEventPublisher kafkaEventPublisher;
 
     @Value("${spring.application.name}")
@@ -30,7 +29,6 @@ public class MessagePinEventPublisherAdapter implements IMessagePinEventPublishe
         MessagePinPayload payload = MessagePinPayload.builder()
                 .roomId(roomId).messageId(messageId).actorUserId(actorId).pinnedAt(pinnedAt)
                 .build();
-        chatRedisPublisher.publishRoomRealtimeEvent(roomId, ChatEventType.MESSAGE_PINNED.value(), payload);
         publishToKafka(roomId.toString(), ChatEventType.MESSAGE_PINNED.value(), payload);
     }
 
@@ -39,7 +37,6 @@ public class MessagePinEventPublisherAdapter implements IMessagePinEventPublishe
         MessagePinPayload payload = MessagePinPayload.builder()
                 .roomId(roomId).messageId(messageId).actorUserId(actorId).pinnedAt(unpinnedAt)
                 .build();
-        chatRedisPublisher.publishRoomRealtimeEvent(roomId, ChatEventType.MESSAGE_UNPINNED.value(), payload);
         publishToKafka(roomId.toString(), ChatEventType.MESSAGE_UNPINNED.value(), payload);
     }
 

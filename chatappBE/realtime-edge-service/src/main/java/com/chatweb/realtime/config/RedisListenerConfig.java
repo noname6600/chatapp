@@ -31,8 +31,7 @@ public class RedisListenerConfig {
     public RedisMessageListenerContainer redisMessageListenerContainer() {
         RedisMessageListenerContainer container = new RedisMessageListenerContainer();
         container.setConnectionFactory(redisConnectionFactory);
-        container.addMessageListener(redisEventListener, new PatternTopic("realtime.chat.room.*"));
-        container.addMessageListener(redisEventListener, new PatternTopic("realtime.notification.user.*"));
+        // Chat and notification delivery moved to Kafka — only presence stays on Redis pub/sub.
         container.addMessageListener(redisEventListener, new PatternTopic("realtime.presence.*"));
         if (handoffEnabled) {
             container.addMessageListener(redisEventListener, new PatternTopic(edgeDeliveryHandoffPublisher.topicPattern()));

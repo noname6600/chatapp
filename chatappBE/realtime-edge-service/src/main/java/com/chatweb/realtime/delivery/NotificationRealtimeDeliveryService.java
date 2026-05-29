@@ -3,12 +3,14 @@ package com.chatweb.realtime.delivery;
 import com.chatweb.realtime.connection.RealtimeSession;
 import com.chatweb.realtime.connection.RealtimeSessionRegistry;
 import com.chatweb.realtime.connection.RealtimeWebSocketSessionStore;
+import com.chatweb.realtime.dispatch.EdgeCrossInstanceDispatchCoordinator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.socket.WebSocketSession;
 
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -16,6 +18,9 @@ import java.util.stream.Collectors;
 
 /**
  * Delivers notification events to active websocket sessions for a target user.
+ *
+ * deliverToUserWithHandoff — Kafka path (primary). Finds ALL sessions for the user
+ * across every instance, delivers locally, and handoffs to remote instances.
  */
 @Service
 @RequiredArgsConstructor
@@ -24,20 +29,32 @@ public class NotificationRealtimeDeliveryService {
 
     private final RealtimeSessionRegistry sessionRegistry;
     private final RealtimeWebSocketSessionStore webSocketSessionStore;
+    private final EdgeCrossInstanceDispatchCoordinator dispatchCoordinator;
     private final ObjectMapper objectMapper;
     private final WebSocketOutboundDeliveryQueue outboundDeliveryQueue;
 
-    public int deliverToUser(UUID userId, String eventType, String eventId, Object payload) {
-        int delivered = 0;
+    public int deliverToUserWithHandoff(UUID userId, String wsEventType, String eventId, Object payload) {
         String notificationChannel = "notification:" + userId;
-        // Redis pub/sub: every instance receives this event. Each delivers only to its own
-        // locally-owned sessions to avoid duplicates with other instances.
-        var localSessions = sessionRegistry.findByUserIdOwnedByCurrentInstance(userId)
+        var allSessions = sessionRegistry.findByUserId(userId)
                 .stream()
                 .filter(s -> s.isSubscribedTo(notificationChannel))
                 .collect(Collectors.toList());
 
-        for (RealtimeSession session : localSessions) {
+        var split = dispatchCoordinator.splitByOwnership(allSessions);
+        int delivered = deliverLocal(split.localOwned(), wsEventType, eventId, payload, userId);
+
+        dispatchCoordinator.publishRemoteHandoffs(
+                split, "notification", wsEventType, eventId, notificationChannel, userId, payload);
+
+        log.debug("[NOTI-DELIVERY] wsEventType={} eventId={} localDelivered={} remoteInstances={} user={}",
+                wsEventType, eventId, delivered, split.remoteByInstance().size(), userId);
+        return delivered;
+    }
+
+    private int deliverLocal(Collection<RealtimeSession> sessions, String eventType,
+                             String eventId, Object payload, UUID userId) {
+        int delivered = 0;
+        for (RealtimeSession session : sessions) {
             WebSocketSession webSocketSession = webSocketSessionStore
                     .findBySessionId(session.getSessionId())
                     .orElse(null);
@@ -60,9 +77,6 @@ public class NotificationRealtimeDeliveryService {
                         userId, session.getSessionId(), eventType, ex);
             }
         }
-
-        log.debug("[NOTI-DELIVERY] Delivered eventType={} eventId={} to {} sessions for user={}",
-                eventType, eventId, delivered, userId);
         return delivered;
     }
 }

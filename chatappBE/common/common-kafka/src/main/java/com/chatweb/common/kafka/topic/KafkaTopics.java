@@ -31,7 +31,10 @@ public final class KafkaTopics {
     public static final String TOPIC_CHAT_MESSAGE_EVENTS   = "chat.message.events";
     public static final String TOPIC_CHAT_REACTION_UPDATED = "chat.reaction.updated";
 
+    // Notification realtime delivery â€” carries pre-built WS payloads from notification-service
+    public static final String TOPIC_NOTIFICATION_REALTIME = “notification.realtime”;
+
     // Infrastructure routes â€” transport-specific, no matching event type in common-events
-    public static final String TOPIC_SYSTEM_DEAD_LETTER = "system.dead-letter";
-    public static final String TOPIC_SYSTEM_RETRY       = "system.retry";
+    public static final String TOPIC_SYSTEM_DEAD_LETTER = “system.dead-letter”;
+    public static final String TOPIC_SYSTEM_RETRY       = “system.retry”;
 }

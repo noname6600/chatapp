@@ -17,6 +17,7 @@ import com.chatweb.common.integration.chat.ChatMessagePayload;
 import com.chatweb.common.kafka.producer.KafkaEventPublisher;
 import com.chatweb.common.kafka.topic.KafkaTopics;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -28,7 +29,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class MessageEventPublisherAdapter implements IMessageEventPublisher {
 
-    private final ChatRedisPublisher chatRedisPublisher;
     private final ChatMessagePayloadFactory chatMessagePayloadFactory;
     private final MessageUpdatedPayloadFactory messageUpdatedPayloadFactory;
     private final MessageDeletedPayloadFactory messageDeletedPayloadFactory;
@@ -54,14 +54,12 @@ public class MessageEventPublisherAdapter implements IMessageEventPublisher {
                 message, attachments, mentionedUserIds, recipientUserIds, isDirect
         );
 
-        chatRedisPublisher.publishRoomRealtimeEvent(message.getRoomId(), ChatEventType.MESSAGE_SENT.value(), payload);
         publishToKafka(ChatEventType.MESSAGE_SENT.value(), message.getRoomId().toString(), payload);
     }
 
     @Override
     public void publishMessageEdited(ChatMessage message) {
         var payload = messageUpdatedPayloadFactory.from(message);
-        chatRedisPublisher.publishRoomRealtimeEvent(message.getRoomId(), ChatEventType.MESSAGE_EDITED.value(), payload);
         publishToKafka(KafkaTopics.TOPIC_CHAT_MESSAGE_EVENTS, message.getRoomId().toString(), ChatEventType.MESSAGE_EDITED.value(), payload);
     }
 
@@ -69,7 +67,6 @@ public class MessageEventPublisherAdapter implements IMessageEventPublisher {
     public void publishMessageDeleted(ChatMessage message) {
         UUID deletedBy = message.getDeletedBy() != null ? message.getDeletedBy() : message.getSenderId();
         var payload = messageDeletedPayloadFactory.from(message, deletedBy);
-        chatRedisPublisher.publishRoomRealtimeEvent(message.getRoomId(), ChatEventType.MESSAGE_DELETED.value(), payload);
         publishToKafka(KafkaTopics.TOPIC_CHAT_MESSAGE_EVENTS, message.getRoomId().toString(), ChatEventType.MESSAGE_DELETED.value(), payload);
     }
 

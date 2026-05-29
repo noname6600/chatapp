@@ -18,7 +18,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ReactionEventPublisherAdapter implements IReactionEventPublisher {
 
-    private final ChatRedisPublisher chatRedisPublisher;
     private final KafkaEventPublisher kafkaEventPublisher;
 
     @Value("${spring.application.name}")
@@ -26,9 +25,6 @@ public class ReactionEventPublisherAdapter implements IReactionEventPublisher {
 
     @Override
     public void publishReactionUpdated(ReactionPayload payload) {
-        chatRedisPublisher.publishRoomRealtimeEvent(
-                payload.getRoomId(), ChatEventType.REACTION_UPDATED.value(), payload
-        );
         String eventId = UUID.randomUUID().toString();
         kafkaEventPublisher.publish(
                 ChatEventType.REACTION_UPDATED.value(),
