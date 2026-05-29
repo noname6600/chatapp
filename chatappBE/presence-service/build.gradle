@@ -1,4 +1,4 @@
-plugins {
+﻿plugins {
 	id 'java'
 	id 'org.springframework.boot' version '3.5.6'
 	id 'io.spring.dependency-management' version '1.1.7'
@@ -33,6 +33,7 @@ dependencies {
     implementation project(':common:common-events')
     implementation project(':common:common-redis-cache')
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
@@ -60,3 +61,4 @@ tasks.named('bootRun') {
             "-Duser.timezone=Asia/Ho_Chi_Minh"
     ]
 }
+

@@ -1,4 +1,4 @@
-server:
+﻿server:
   port: ${PORT:8086}
 
 spring:
@@ -69,7 +69,11 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true
 
 
 common:
@@ -90,3 +94,5 @@ notification:
       initial-interval-ms: ${NOTIFICATION_KAFKA_RETRY_INITIAL_INTERVAL_MS:1000}
       max-interval-ms: ${NOTIFICATION_KAFKA_RETRY_MAX_INTERVAL_MS:30000}
       multiplier: ${NOTIFICATION_KAFKA_RETRY_MULTIPLIER:2.0}
+
+

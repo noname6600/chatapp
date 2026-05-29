@@ -34,9 +34,6 @@ import static org.mockito.Mockito.when;
 class MessageEventPublisherAdapterTest {
 
     @Mock
-    private ChatRedisPublisher chatRedisPublisher;
-
-    @Mock
     private ChatMessagePayloadFactory chatMessagePayloadFactory;
 
     @Mock

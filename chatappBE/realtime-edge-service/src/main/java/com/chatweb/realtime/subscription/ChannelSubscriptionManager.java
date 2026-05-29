@@ -132,17 +132,6 @@ public class ChannelSubscriptionManager {
         return hasAccess;
     }
 
-    public void invalidateRoomAccess(UUID userId, UUID roomId) {
-        if (userId == null || roomId == null) {
-            return;
-        }
-        try {
-            redisTemplate.delete(roomAccessCacheKey(userId, roomId));
-        } catch (Exception ex) {
-            log.warn("[AUTH] Failed to invalidate room access cache userId={} roomId={}", userId, roomId, ex);
-        }
-    }
-
     private String roomAccessCacheKey(UUID userId, UUID roomId) {
         return ROOM_ACCESS_CACHE_PREFIX + userId + ":" + roomId;
     }

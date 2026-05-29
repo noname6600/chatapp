@@ -1,4 +1,4 @@
-server:
+﻿server:
   port: ${PORT:8084}
 
 spring:
@@ -31,7 +31,11 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true
 
 
 common:
@@ -66,3 +70,4 @@ internal:
   auth:
     header: ${INTERNAL_AUTH_HEADER:X-Internal-Service-Token}
     token: ${INTERNAL_AUTH_TOKEN:}
+

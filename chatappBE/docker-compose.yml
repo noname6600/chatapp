@@ -576,6 +576,37 @@ services:
       - chatapp-net
     restart: "no"
 
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    container_name: chatapp-prometheus
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    networks:
+      - chatapp-net
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: chatapp-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    networks:
+      - chatapp-net
+    restart: unless-stopped
+
   certbot-renew:
     image: certbot/certbot:latest
     container_name: chatapp-certbot-renew
@@ -600,3 +631,5 @@ networks:
 
 volumes:
   postgres-data:
+  prometheus-data:
+  grafana-data:

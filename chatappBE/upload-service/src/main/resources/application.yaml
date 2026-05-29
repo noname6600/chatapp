@@ -1,4 +1,4 @@
-server:
+﻿server:
   port: ${PORT:8088}
 
 spring:
@@ -15,7 +15,11 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true
 
 common:
   security:
@@ -54,3 +58,5 @@ upload:
 logging:
   pattern:
     level: "%5p [${spring.application.name:},%X{traceId}]"
+
+

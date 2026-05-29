@@ -1,4 +1,4 @@
-server:
+﻿server:
   port: ${PORT:8082}
 
 spring:
@@ -76,7 +76,11 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true
 
 
 common:
@@ -97,3 +101,5 @@ internal:
 
 user:
   profile-cache-ttl-minutes: ${USER_PROFILE_CACHE_TTL_MINUTES:5}
+
+
