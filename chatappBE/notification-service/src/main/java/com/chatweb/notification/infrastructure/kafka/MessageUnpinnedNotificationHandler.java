@@ -7,6 +7,8 @@ import com.chatweb.notification.application.NotificationKafkaEventApplicationSer
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.UUID;
+
 @Component
 @RequiredArgsConstructor
 public class MessageUnpinnedNotificationHandler implements KafkaEventHandler<MessagePinPayload> {
@@ -21,8 +23,13 @@ public class MessageUnpinnedNotificationHandler implements KafkaEventHandler<Mes
     @Override
     public void handle(EventEnvelope<MessagePinPayload> event) {
         applicationService.handleChatMessageUnpinnedEvent(
-                event.metadata().getEventId(),
+                parseUuid(event.metadata().getEventId()),
                 event.payload()
         );
+    }
+
+    private UUID parseUuid(String id) {
+        if (id == null || id.isBlank()) return null;
+        try { return UUID.fromString(id); } catch (Exception e) { return null; }
     }
 }

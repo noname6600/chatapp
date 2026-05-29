@@ -63,3 +63,18 @@ application-prod.yaml
 openspec/
 chatappBE/openspec/
 chatappFE/openspec/
+
+# === Workspace / audit / review artefacts (never commit these) ===
+.claude/
+build.gradle
+cleanup-report/
+fix-reports/
+infra-review/
+review/
+review code/
+review-code/
+review-reports/
+validation-output/
+BACKEND_LEGACY_CODE_AUDIT.md
+DEEP_CODEBASE_AUDIT_REPORT.md
+DEEP_MICROSERVICES_ARCHITECTURE_ANALYSIS.md
