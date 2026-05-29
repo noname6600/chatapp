@@ -553,6 +553,8 @@ services:
         condition: service_healthy
       gateway-service-2:
         condition: service_healthy
+      grafana:
+        condition: service_started
     ports:
       - "80:80"
       - "443:443"
@@ -596,11 +598,14 @@ services:
     container_name: chatapp-grafana
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-changeme}
       GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: https://metrics.chatweb.nani.id.vn
+      GF_SERVER_DOMAIN: metrics.chatweb.nani.id.vn
     volumes:
       - grafana-data:/var/lib/grafana
       - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - prometheus
     networks:

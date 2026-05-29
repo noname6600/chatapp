@@ -64,7 +64,7 @@ public class JsonRedisEventSerializer implements RedisEventSerializer {
                     "Redis deserialize failed: missing eventType in metadata", null);
         }
 
-        // Phase 3: resolve payload â€” skip for known payload-less event types
+        // Phase 3: resolve payload â€" skip for known payload-less event types
         Object payloadObject = null;
         JsonNode payloadNode = node.get("payload");
 
@@ -91,7 +91,7 @@ public class JsonRedisEventSerializer implements RedisEventSerializer {
             }
         }
 
-        // Phase 4: build metadata â€” constructor validates all identity fields
+        // Phase 4: build metadata â€" constructor validates all identity fields
         Instant createdAt;
         try {
             createdAt = instantOrNull(metadataNode, "createdAt");

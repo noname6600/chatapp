@@ -33,16 +33,16 @@ public class ChatRealtimeDeliveryService {
     private final WebSocketOutboundDeliveryQueue outboundDeliveryQueue;
 
     public int deliverRoomWithHandoff(String roomId, String eventType, String eventId, Object payload) {
-        String roomChannel = “room:” + roomId;
+        String roomChannel = "room:" + roomId;
         Collection<RealtimeSession> allSessions = sessionRegistry.findByChannel(roomChannel);
         var split = dispatchCoordinator.splitByOwnership(allSessions);
 
         int delivered = deliverLocal(split.localOwned(), eventType, eventId, payload, roomId);
 
         dispatchCoordinator.publishRemoteHandoffs(
-                split, “chat”, eventType, eventId, roomChannel, null, payload);
+                split, "chat", eventType, eventId, roomChannel, null, payload);
 
-        log.debug(“[CHAT-DELIVERY] eventType={} roomId={} localDelivered={} remoteInstances={}”,
+        log.debug("[CHAT-DELIVERY] eventType={} roomId={} localDelivered={} remoteInstances={}",
                 eventType, roomId, delivered, split.remoteByInstance().size());
         return delivered;
     }
@@ -59,17 +59,17 @@ public class ChatRealtimeDeliveryService {
             }
 
             Map<String, Object> message = new LinkedHashMap<>();
-            message.put(“type”, eventType);
-            message.put(“payload”, payload);
-            message.put(“eventId”, eventId);
+            message.put("type", eventType);
+            message.put("payload", payload);
+            message.put("eventId", eventId);
 
             try {
                 String json = objectMapper.writeValueAsString(message);
-                if (outboundDeliveryQueue.enqueue(session.getSessionId(), webSocketSession, json, “chat”)) {
+                if (outboundDeliveryQueue.enqueue(session.getSessionId(), webSocketSession, json, "chat")) {
                     delivered++;
                 }
             } catch (Exception ex) {
-                log.warn(“[CHAT-DELIVERY][LOCAL-FAIL] eventType={} roomId={} sessionId={}”,
+                log.warn("[CHAT-DELIVERY][LOCAL-FAIL] eventType={} roomId={} sessionId={}",
                         eventType, roomId, session.getSessionId(), ex);
             }
         }

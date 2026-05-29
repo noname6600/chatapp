@@ -45,7 +45,7 @@ class RedisContractTest {
         serializer = new JsonRedisEventSerializer(mapper, registry);
     }
 
-    // â”€â”€ Serializer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // â"€â"€ Serializer â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
     @Test
     void serializer_roundTripsCanonicalEnvelopeShape() {
@@ -102,7 +102,7 @@ class RedisContractTest {
 
     @Test
     void deserializer_acceptsPayloadLessEventWithNullPayload() {
-        // Use a payload-less event type â€” no payload field in JSON, no registry lookup expected
+        // Use a payload-less event type â€" no payload field in JSON, no registry lookup expected
         DefaultRedisEventRegistry catalogRegistry = new DefaultRedisEventRegistry();
         SharedEventCatalog.registerAll(catalogRegistry);
         JsonRedisEventSerializer catalogSerializer = new JsonRedisEventSerializer(mapper, catalogRegistry);
@@ -121,7 +121,7 @@ class RedisContractTest {
         assertThat(result.payload()).isNull();
     }
 
-    // â”€â”€ SharedEventCatalog bootstrap â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // â"€â"€ SharedEventCatalog bootstrap â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
     @Test
     void sharedCatalog_bootstrapsRedisRegistryWithPayloadBearingEvents() {
@@ -146,7 +146,7 @@ class RedisContractTest {
         }
     }
 
-    // â”€â”€ Registry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // â"€â"€ Registry â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
     @Test
     void registry_registersAndResolvesPayloadClass() {
@@ -174,7 +174,7 @@ class RedisContractTest {
                 .isInstanceOf(IllegalStateException.class);
     }
 
-    // â”€â”€ RedisEventRoutingContext â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // â"€â"€ RedisEventRoutingContext â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
     @Test
     void routingContext_mapsEnvelopeMetadataConsistently() {

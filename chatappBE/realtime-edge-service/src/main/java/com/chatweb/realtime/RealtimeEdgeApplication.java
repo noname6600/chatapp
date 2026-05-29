@@ -8,7 +8,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
- * Realtime Edge Service â€” unified websocket ingress and event delivery.
+ * Realtime Edge Service â€" unified websocket ingress and event delivery.
  *
  * Owns:
  * - Websocket connection lifecycle (auth, session management)

@@ -13,6 +13,10 @@ public class KafkaMessagingException extends RuntimeException {
         this.topic = topic;
     }
 
+    public KafkaMessagingException(String topic, String message) {
+        this(topic, message, null);
+    }
+
     public String getTopic() {
         return topic;
     }

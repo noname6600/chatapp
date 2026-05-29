@@ -36,7 +36,7 @@ import java.util.Set;
  * which event type string. It covers all event types defined in the
  * {@code com.chatweb.common.integration.*} domain enums.
  *
- * <p>Usage â€” pre-populate a registry in transport auto-configurations:
+ * <p>Usage â€" pre-populate a registry in transport auto-configurations:
  * <pre>
  *   DefaultEventPayloadRegistry registry = new DefaultEventPayloadRegistry();
  *   SharedEventCatalog.registerAll(registry);
@@ -56,7 +56,7 @@ public final class SharedEventCatalog {
      * Canonical set of event type values that are part of the shared contract
      * but carry no shared payload class.
      *
-     * <p>These event types are valid and known â€” their absence from a
+     * <p>These event types are valid and known â€" their absence from a
      * {@link EventPayloadRegistry} is intentional. Payload resolution must not
      * be attempted for them during deserialization.
      */
@@ -80,7 +80,7 @@ public final class SharedEventCatalog {
      * type throws {@link IllegalStateException}.
      *
      * <p>Payload-less event types listed in {@link #PAYLOAD_LESS_EVENT_TYPES}
-     * are intentionally excluded â€” they carry no shared payload and should not
+     * are intentionally excluded â€" they carry no shared payload and should not
      * go through payload resolution.
      *
      * <p><strong>Important:</strong> Services must not re-register any of these shared event
@@ -96,7 +96,7 @@ public final class SharedEventCatalog {
         registry.register(AccountEventType.ACCOUNT_CREATED.value(), AccountCreatedPayload.class);
         // ACCOUNT_DELETED, ACCOUNT_DISABLED are payload-less (see PAYLOAD_LESS_EVENT_TYPES)
 
-        // Chat â€” message lifecycle
+        // Chat â€" message lifecycle
         registry.register(ChatEventType.MESSAGE_SENT.value(), ChatMessagePayload.class);
         registry.register(ChatEventType.MESSAGE_EDITED.value(), MessageUpdatedPayload.class);
         registry.register(ChatEventType.MESSAGE_DELETED.value(), MessageDeletedPayload.class);
@@ -107,7 +107,7 @@ public final class SharedEventCatalog {
         registry.register(ChatEventType.REACTION_UPDATED.value(), ReactionPayload.class);
         // MEMBER_JOINED, MEMBER_LEFT, MEMBER_REMOVED are payload-less (see PAYLOAD_LESS_EVENT_TYPES)
 
-        // Friendship â€” request lifecycle (FriendRequestPayload); status changes (FriendshipPayload)
+        // Friendship â€" request lifecycle (FriendRequestPayload); status changes (FriendshipPayload)
         registry.register(FriendshipEventType.FRIEND_REQUEST_SENT.value(), FriendRequestPayload.class);
         registry.register(FriendshipEventType.FRIEND_REQUEST_ACCEPTED.value(), FriendRequestPayload.class);
         registry.register(FriendshipEventType.FRIEND_REQUEST_DECLINED.value(), FriendRequestPayload.class);
@@ -121,14 +121,14 @@ public final class SharedEventCatalog {
         registry.register(NotificationEventType.NOTIFICATION_CREATED.value(), NotificationCreatedPayload.class);
         // NOTIFICATION_SENT is payload-less (see PAYLOAD_LESS_EVENT_TYPES)
 
-        // Presence â€” online/offline/heartbeat
+        // Presence â€" online/offline/heartbeat
         registry.register(PresenceEventType.USER_ONLINE.value(), PresenceUserOnlinePayload.class);
         registry.register(PresenceEventType.USER_OFFLINE.value(), PresenceUserOfflinePayload.class);
         registry.register(PresenceEventType.USER_STATUS_CHANGED.value(), PresenceUserStatePayload.class);
         registry.register(PresenceEventType.USER_HEARTBEAT.value(), PresenceHeartbeatPayload.class);
         // (USER_STATUS_CHANGED is payload-bearing, see registration above)
 
-        // Presence â€” room interaction
+        // Presence â€" room interaction
         registry.register(PresenceEventType.ROOM_TYPING.value(), PresenceTypingPayload.class);
         registry.register(PresenceEventType.ROOM_STOP_TYPING.value(), PresenceStopTypingPayload.class);
         registry.register(PresenceEventType.ROOM_JOIN.value(), PresenceRoomJoinPayload.class);

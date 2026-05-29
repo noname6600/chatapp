@@ -35,8 +35,4 @@ public class KafkaRetryDlqPolicy {
     public String deadLetterTopic(String sourceTopic) {
         return KafkaTopics.TOPIC_SYSTEM_DEAD_LETTER;
     }
-
-    public Integer deadLetterPartition(String sourceTopic, int sourcePartition) {
-        return null;
-    }
 }

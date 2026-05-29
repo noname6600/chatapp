@@ -28,7 +28,7 @@ public class DefaultRedisEventPublisher implements RedisEventPublisher {
         RedisEventRoutingContext context = RedisEventRoutingContext.of(channel, eventEnvelope);
         EventMetadata metadata = eventEnvelope.metadata();
 
-        // Stage: VALIDATE â€” fail fast on contract violations before any I/O
+        // Stage: VALIDATE â€" fail fast on contract violations before any I/O
         try {
             EventContractValidator.validateEventNameOrThrow(metadata.getEventType());
             EventContractValidator.validateIdentityOrThrow(
@@ -41,7 +41,7 @@ public class DefaultRedisEventPublisher implements RedisEventPublisher {
             throw new RedisPubSubException(channel, "Failed at Redis lifecycle stage VALIDATE", ex);
         }
 
-        // Stage: PUBLISH â€” serialize and send
+        // Stage: PUBLISH â€" serialize and send
         try {
             String payload = serializer.serialize(eventEnvelope);
             redisTemplate.convertAndSend(channel, payload);

@@ -20,21 +20,21 @@ public final class KafkaTopics {
     private KafkaTopics() {
     }
 
-    // Friendship routes â€” aggregate: multiple event types are routed to a single topic
+    // Friendship routes â€" aggregate: multiple event types are routed to a single topic
     public static final String TOPIC_FRIENDSHIP_EVENTS         = "friendship.events";
     public static final String TOPIC_FRIENDSHIP_REQUEST_EVENTS = "friendship.request.events";
 
-    // Per-event-type routes â€” Java annotations require compile-time constants so these
+    // Per-event-type routes â€" Java annotations require compile-time constants so these
     // mirror the values in common-events enums (AccountEventType, ChatEventType).
     public static final String TOPIC_ACCOUNT_CREATED       = "account.created";
     public static final String TOPIC_CHAT_MESSAGE_SENT     = "chat.message.sent";
     public static final String TOPIC_CHAT_MESSAGE_EVENTS   = "chat.message.events";
     public static final String TOPIC_CHAT_REACTION_UPDATED = "chat.reaction.updated";
 
-    // Notification realtime delivery â€” carries pre-built WS payloads from notification-service
-    public static final String TOPIC_NOTIFICATION_REALTIME = “notification.realtime”;
+    // Notification realtime delivery â€" carries pre-built WS payloads from notification-service
+    public static final String TOPIC_NOTIFICATION_REALTIME = "notification.realtime";
 
-    // Infrastructure routes â€” transport-specific, no matching event type in common-events
-    public static final String TOPIC_SYSTEM_DEAD_LETTER = “system.dead-letter”;
-    public static final String TOPIC_SYSTEM_RETRY       = “system.retry”;
+    // Infrastructure routes â€" transport-specific, no matching event type in common-events
+    public static final String TOPIC_SYSTEM_DEAD_LETTER = "system.dead-letter";
+    public static final String TOPIC_SYSTEM_RETRY       = "system.retry";
 }

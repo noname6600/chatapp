@@ -8,6 +8,7 @@ import com.chatweb.common.core.exception.BusinessException;
 import com.chatweb.common.core.exception.CommonErrorCode;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -18,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.security.*;
 import java.security.spec.*;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -27,8 +29,13 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 public class KeyManager implements IKeyManager {
 
+    // Redis key used as a cross-instance mutex for JWT key rotation.
+    private static final String ROTATION_LOCK_KEY = "auth:jwt:rotation-lock";
+    private static final Duration ROTATION_LOCK_TTL = Duration.ofSeconds(30);
+
     private final JwtKeyRepository repo;
     private final Clock clock;
+    private final StringRedisTemplate redisTemplate;
 
     @Value("${auth.jwt.access-token-expiration-ms}")
     private long jwtExpirationMs;
@@ -65,8 +72,36 @@ public class KeyManager implements IKeyManager {
     @Override
     @Transactional
     public synchronized KeyRecord rotateOnce() {
+        // Acquire a cross-instance Redis mutex so only one auth-service instance
+        // performs rotation at a time. Without this, two instances starting simultaneously
+        // could both generate different key pairs and each clear the other's active key.
+        String lockValue = UUID.randomUUID().toString();
+        boolean acquired = Boolean.TRUE.equals(
+                redisTemplate.opsForValue().setIfAbsent(ROTATION_LOCK_KEY, lockValue, ROTATION_LOCK_TTL));
+
+        if (!acquired) {
+            // Another instance is rotating. Wait briefly then return whatever they saved.
+            try { Thread.sleep(500); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+            return repo.findLatestActive()
+                    .map(entity -> {
+                        KeyRecord r = toRecord(entity);
+                        keyStore.put(r.getKid(), r);
+                        currentKid = r.getKid();
+                        return r;
+                    })
+                    .orElseThrow(() -> new BusinessException(
+                            CommonErrorCode.INTERNAL_ERROR, "Key rotation in progress but no key found in DB"));
+        }
 
         try {
+            // Double-check: another instance may have rotated while we waited for synchronized.
+            Optional<JwtKeyEntity> fresh = repo.findLatestActive();
+            if (fresh.isPresent() && !isEntityExpired(fresh.get())) {
+                KeyRecord r = toRecord(fresh.get());
+                keyStore.put(r.getKid(), r);
+                currentKid = r.getKid();
+                return r;
+            }
 
             repo.clearAllActive();
 
@@ -79,10 +114,8 @@ public class KeyManager implements IKeyManager {
 
             JwtKeyEntity entity = JwtKeyEntity.builder()
                     .kid(kid)
-                    .publicKey(Base64.getEncoder()
-                            .encodeToString(pair.getPublic().getEncoded()))
-                    .privateKey(Base64.getEncoder()
-                            .encodeToString(pair.getPrivate().getEncoded()))
+                    .publicKey(Base64.getEncoder().encodeToString(pair.getPublic().getEncoded()))
+                    .privateKey(Base64.getEncoder().encodeToString(pair.getPrivate().getEncoded()))
                     .active(true)
                     .createdAt(now)
                     .expiredAt(now.plusMillis(gracePeriodMs()))
@@ -92,29 +125,33 @@ public class KeyManager implements IKeyManager {
 
             KeyRecord record = toRecord(entity);
             keyStore.put(kid, record);
-
             currentKid = kid;
 
             log.info("JWT key rotated successfully. new kid={}", kid);
-
             return record;
 
         } catch (Exception e) {
-
             log.error("JWT key rotation failed", e);
-
-            throw new BusinessException(
-                    CommonErrorCode.INTERNAL_ERROR,
-                    "Key rotation failed"
-            );
+            throw new BusinessException(CommonErrorCode.INTERNAL_ERROR, "Key rotation failed");
+        } finally {
+            // Release lock only if we still own it (TTL guards against stale locks on crash).
+            redisTemplate.delete(ROTATION_LOCK_KEY);
         }
     }
 
     @Override
     public KeyRecord getCurrentKey() {
-        KeyRecord record = keyStore.get(currentKid);
+        KeyRecord record = currentKid != null ? keyStore.get(currentKid) : null;
 
         if (record == null || record.isExpired(Instant.now(clock))) {
+            // Before generating a new key, check whether another instance already rotated.
+            Optional<JwtKeyEntity> fresh = repo.findLatestActive();
+            if (fresh.isPresent() && !isEntityExpired(fresh.get())) {
+                KeyRecord r = toRecord(fresh.get());
+                keyStore.put(r.getKid(), r);
+                currentKid = r.getKid();
+                return r;
+            }
             return rotateOnce();
         }
 
@@ -142,18 +179,31 @@ public class KeyManager implements IKeyManager {
     @Scheduled(fixedDelay = 600000)
     @Transactional
     public void cleanupExpired() {
+        // Local cache cleanup runs on every instance (cheap). DB deletion uses a
+        // skip-lock so only one instance issues the DELETE per cycle.
         Instant now = Instant.now(clock);
-        repo.deleteExpired(now);
-        keyStore.entrySet()
-                .removeIf(e -> e.getValue().isExpired(now));
+        keyStore.entrySet().removeIf(e -> e.getValue().isExpired(now));
+
+        Boolean acquired = redisTemplate.opsForValue()
+                .setIfAbsent("auth:scheduler:key-cleanup-db", "1", Duration.ofMinutes(9));
+        if (Boolean.TRUE.equals(acquired)) {
+            repo.deleteExpired(now);
+        }
     }
 
     @Override
     public Collection<KeyRecord> getKeysForJwks() {
-        return keyStore.values()
+        // Read from DB so every instance returns ALL valid keys, not just the ones
+        // it personally rotated. Without this, instance A's JWKS would not include
+        // keys generated by instance B, causing verification failures across instances.
+        return repo.findByExpiredAtAfter(Instant.now(clock))
                 .stream()
-                .filter(k -> !k.isExpired(Instant.now(clock)))
+                .map(this::toRecord)
                 .toList();
+    }
+
+    private boolean isEntityExpired(JwtKeyEntity entity) {
+        return entity.getExpiredAt() != null && entity.getExpiredAt().isBefore(Instant.now(clock));
     }
 
     private KeyRecord toRecord(JwtKeyEntity e) {

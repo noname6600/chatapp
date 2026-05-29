@@ -345,7 +345,7 @@ class PipelineExecutorTest {
         PipelineGraphResolver<TestContext> resolver = new PipelineGraphResolver<>();
         List<PipelineStepDescriptor<TestContext>> sorted = resolver.resolve(steps);
 
-        // Multi-threaded executor â€” proves correct ordering even with concurrency
+        // Multi-threaded executor â€" proves correct ordering even with concurrency
         PipelineExecutor<TestContext> executor = new PipelineExecutor<>(sorted, Executors.newFixedThreadPool(4));
         long start = System.currentTimeMillis();
         executor.execute(context);

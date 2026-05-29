@@ -2,6 +2,7 @@ package com.chatweb.common.redis.config;
 
 import com.chatweb.common.redis.dispatcher.RedisEventDispatcher;
 import com.chatweb.common.redis.listener.RedisEventListener;
+import com.chatweb.common.redis.observability.MicrometerRedisPubSubLogger;
 import com.chatweb.common.redis.observability.RedisPubSubObserver;
 import com.chatweb.common.redis.observability.Slf4jRedisPubSubLogger;
 import com.chatweb.common.redis.publisher.DefaultRedisEventPublisher;
@@ -13,6 +14,7 @@ import com.chatweb.common.redis.serialization.RedisEventSerializer;
 import com.chatweb.common.redis.subscriber.RedisEventHandler;
 import com.chatweb.common.event.SharedEventCatalog;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -26,8 +28,15 @@ import java.util.List;
 public class RedisAutoConfiguration {
 
     @Bean
-    @ConditionalOnMissingBean
-    public RedisPubSubObserver redisPubSubObserver() {
+    @ConditionalOnMissingBean(RedisPubSubObserver.class)
+    @ConditionalOnClass(MeterRegistry.class)
+    public RedisPubSubObserver micrometerRedisPubSubObserver(MeterRegistry registry) {
+        return new MicrometerRedisPubSubLogger(registry);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(RedisPubSubObserver.class)
+    public RedisPubSubObserver slf4jRedisPubSubObserver() {
         return new Slf4jRedisPubSubLogger();
     }
 
@@ -61,9 +70,10 @@ public class RedisAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public RedisEventDispatcher redisEventDispatcher(
-            List<RedisEventHandler<?>> handlers
+            List<RedisEventHandler<?>> handlers,
+            RedisPubSubObserver observer
     ) {
-        return new RedisEventDispatcher(handlers);
+        return new RedisEventDispatcher(handlers, observer);
     }
 
     @Bean

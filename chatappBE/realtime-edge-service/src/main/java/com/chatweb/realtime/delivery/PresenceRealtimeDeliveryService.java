@@ -30,7 +30,7 @@ public class PresenceRealtimeDeliveryService {
 
     public int deliverGlobal(String eventType, String eventId, Object payload) {
         // Redis pub/sub: all instances receive this event. Each delivers only its locally-owned
-        // sessions â€” no handoff needed, other instances handle their own clients.
+        // sessions â€" no handoff needed, other instances handle their own clients.
         return deliverToSessions(
                 sessionRegistry.findByChannelOwnedByCurrentInstance(PRESENCE_GLOBAL_CHANNEL),
                 eventType, eventId, payload);

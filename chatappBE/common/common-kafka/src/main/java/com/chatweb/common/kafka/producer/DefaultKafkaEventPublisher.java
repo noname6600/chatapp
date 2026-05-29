@@ -45,7 +45,7 @@ public class DefaultKafkaEventPublisher implements KafkaEventPublisher {
         KafkaEventRoutingContext context = KafkaEventRoutingContext.of(topic, key, envelope);
         EventMetadata metadata = envelope.metadata();
 
-        // Stage: VALIDATE â€” fail fast on contract violations before any I/O
+        // Stage: VALIDATE â€" fail fast on contract violations before any I/O
         try {
             EventContractValidator.validateEventNameOrThrow(metadata.getEventType());
             EventContractValidator.validateIdentityOrThrow(
@@ -58,7 +58,7 @@ public class DefaultKafkaEventPublisher implements KafkaEventPublisher {
             throw new KafkaMessagingException(topic, "Failed at Kafka lifecycle stage VALIDATE", ex);
         }
 
-        // Stage: PUBLISH â€” fire-and-observe send completion asynchronously
+        // Stage: PUBLISH â€" fire-and-observe send completion asynchronously
         try {
             kafkaTemplate.send(topic, key, envelope)
                     .whenComplete((result, ex) -> {

@@ -13,10 +13,6 @@ public final class RedisChannels {
     }
 
     public static final String CHAT_ROOM_PREFIX = "realtime.chat.room.";
-    public static final String CHAT_ROOM_PATTERN = "realtime.chat.room.*";
-
-    public static final String NOTIFICATION_USER_PREFIX = "realtime.notification.user.";
-    public static final String NOTIFICATION_USER_PATTERN = "realtime.notification.user.*";
 
     public static final String PRESENCE_USER = "realtime.presence.user";
     public static final String PRESENCE_ROOM_PREFIX = "realtime.presence.room.";
@@ -25,10 +21,6 @@ public final class RedisChannels {
 
     public static String chatRoom(UUID roomId) {
         return CHAT_ROOM_PREFIX + roomId;
-    }
-
-    public static String notificationUser(UUID userId) {
-        return NOTIFICATION_USER_PREFIX + userId;
     }
 
     public static String presenceRoom(UUID roomId) {

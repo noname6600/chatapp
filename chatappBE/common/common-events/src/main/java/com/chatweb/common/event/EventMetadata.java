@@ -73,7 +73,7 @@ public final class EventMetadata {
      *
      * <p><strong>Only use this when your service is the originator of the event.</strong>
      * If you are building an event in response to a consumed event (e.g., fan-out, downstream
-     * processing), pass the upstream event's correlationId explicitly via the full constructor â€”
+     * processing), pass the upstream event's correlationId explicitly via the full constructor â€"
      * otherwise the correlation chain is silently broken and distributed tracing will not work.
      *
      * @param eventId unique event identifier

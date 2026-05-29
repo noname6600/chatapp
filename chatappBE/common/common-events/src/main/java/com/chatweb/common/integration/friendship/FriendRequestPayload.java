@@ -17,7 +17,7 @@ import java.util.UUID;
  * {@link FriendshipEventType#FRIEND_REQUEST_DECLINED}, and {@link FriendshipEventType#FRIEND_REQUEST_CANCELLED}.
  *
  * <p>The event type is carried in {@link com.chatweb.common.event.EventMetadata#getEventType()}
- * on the envelope. Use {@link FriendshipEventType} to determine the action â€” do not add a nested
+ * on the envelope. Use {@link FriendshipEventType} to determine the action â€" do not add a nested
  * action enum here.
  */
 @Getter

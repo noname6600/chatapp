@@ -22,8 +22,8 @@ import java.util.UUID;
  *
  * <p>Connect/disconnect decisions:
  * <ul>
- *   <li>{@code onPresenceConnected} â€” always signals presence-service that the user is online.</li>
- *   <li>{@code onPresenceDisconnected} â€” signals offline only when no other edge sessions for this
+ *   <li>{@code onPresenceConnected} â€" always signals presence-service that the user is online.</li>
+ *   <li>{@code onPresenceDisconnected} â€" signals offline only when no other edge sessions for this
  *       user remain subscribed to {@code "presence:global"}.</li>
  * </ul>
  *
