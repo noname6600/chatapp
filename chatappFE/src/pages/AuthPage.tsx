@@ -171,8 +171,8 @@ export default function AuthPage() {
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-gray-800 truncate">{u.displayName}</div>
-                    <div className="text-xs text-gray-400 truncate">{u.email}</div>
+                    <div className="text-sm font-medium text-gray-800">{u.email}</div>
+                    <div className="text-xs text-gray-400 truncate">{u.displayName}</div>
                   </div>
                   <button
                     type="button"

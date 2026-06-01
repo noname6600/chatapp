@@ -196,6 +196,7 @@ public class RoomQueryService implements IRoomQueryService {
                 .myRole(row.getRole())
                 .unreadCount(unreadCount)
                 .otherUserId(otherUserId)
+                .latestMessageAt(room.getLastMessageAt() != null ? room.getLastMessageAt().toString() : null)
                 .lastMessage(buildPreview(room))
                 .build();
     }

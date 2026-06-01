@@ -106,6 +106,7 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
             AND r.type = com.chatweb.chat.modules.room.enums.RoomType.PRIVATE
 
         WHERE me.userId = :userId
+        ORDER BY r.lastMessageAt DESC NULLS LAST, r.createdAt DESC
     """)
     List<RoomRow> findRoomsOfUserAdvanced(UUID userId);
 }

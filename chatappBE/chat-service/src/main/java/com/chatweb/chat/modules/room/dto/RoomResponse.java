@@ -32,6 +32,8 @@ public class RoomResponse {
 
     private UUID otherUserId;
 
+    private String latestMessageAt;
+
     private LastMessagePreview lastMessage;
 }
 
