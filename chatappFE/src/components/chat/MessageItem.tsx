@@ -423,7 +423,9 @@ export default function MessageItem({
           }}
         />
 
-        {isEditing ? (
+        {m.deleted ? (
+          <p className="text-sm italic text-gray-400">This message was deleted.</p>
+        ) : isEditing ? (
           editingBlocks !== null ? (
             <BlockMessageEditor
               blocks={editingBlocks}
@@ -447,42 +449,44 @@ export default function MessageItem({
             />
           )
         ) : (
-          <MessageContent
-            content={m.content ?? ""}
-            editedAt={m.editedAt}
-            replyPreview={
-              hasReplyReference
-                ? {
-                    senderId: repliedMessage?.senderId ?? "unknown",
-                    senderAvatar: replyPreview.senderAvatar,
-                    repliedToName: replyPreview.senderName,
-                    previewText: replyPreview.previewText,
-                    kind: replyPreview.kind,
-                    isOwnTarget: replyPreview.isOwnTarget,
-                    isMissingOriginal: replyPreview.isMissingOriginal,
-                    repliedMessageId: repliedMessageId ?? null,
-                  }
-                : null
-            }
-            blocks={m.blocks ?? []}
-            forwardedFromMessageId={m.forwardedFromMessageId ?? null}
-            resolveMentionLabel={resolveMentionLabel.resolveLabel}
-            resolveMentionUserId={resolveMentionLabel.resolveUserId}
-            onJumpToMessage={onJumpToMessage}
-          />
-        )}
+          <>
+            <MessageContent
+              content={m.content ?? ""}
+              editedAt={m.editedAt}
+              replyPreview={
+                hasReplyReference
+                  ? {
+                      senderId: repliedMessage?.senderId ?? "unknown",
+                      senderAvatar: replyPreview.senderAvatar,
+                      repliedToName: replyPreview.senderName,
+                      previewText: replyPreview.previewText,
+                      kind: replyPreview.kind,
+                      isOwnTarget: replyPreview.isOwnTarget,
+                      isMissingOriginal: replyPreview.isMissingOriginal,
+                      repliedMessageId: repliedMessageId ?? null,
+                    }
+                  : null
+              }
+              blocks={m.blocks ?? []}
+              forwardedFromMessageId={m.forwardedFromMessageId ?? null}
+              resolveMentionLabel={resolveMentionLabel.resolveLabel}
+              resolveMentionUserId={resolveMentionLabel.resolveUserId}
+              onJumpToMessage={onJumpToMessage}
+            />
 
-        {/* Attachments */}
-        {!hasStructuredBlocks && <AttachmentDisplay attachments={m.attachments} />}
+            {/* Attachments */}
+            {!hasStructuredBlocks && <AttachmentDisplay attachments={m.attachments} />}
 
-        {/* Reactions */}
-        {m.reactions && m.reactions.length > 0 && (
-          <ReactionGroup
-            reactions={m.reactions}
-            onReactionClick={toggleReaction}
-            disabled={reactionLoading}
-            currentUserId={currentUserId}
-          />
+            {/* Reactions */}
+            {m.reactions && m.reactions.length > 0 && (
+              <ReactionGroup
+                reactions={m.reactions}
+                onReactionClick={toggleReaction}
+                disabled={reactionLoading}
+                currentUserId={currentUserId}
+              />
+            )}
+          </>
         )}
       </div>
 
