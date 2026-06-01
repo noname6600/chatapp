@@ -10,9 +10,10 @@ import { useRooms } from "../store/room.store"
 export type InviteJoinLifecycle = "idle" | "joining" | "joined" | "failed"
 
 export type InviteJoinFailureReason =
-  | "invalid"      // room not found, forbidden, cannot join, private
+  | "invalid"        // room not found, cannot join, private, expired
   | "already-member" // user is already a member
-  | "transient"    // network/server error, retry is safe
+  | "banned"         // user is banned from the room
+  | "transient"      // network/server error, retry is safe
   | null
 
 interface InviteJoinState {
@@ -36,6 +37,9 @@ export function categorizeInviteJoinError(message: string): {
   const m = message.toLowerCase()
   if (m.includes("already") || m.includes("member")) {
     return { failureReason: "already-member", isRetryable: false }
+  }
+  if (m.includes("ban")) {
+    return { failureReason: "banned", isRetryable: false }
   }
   if (
     m.includes("not found") ||

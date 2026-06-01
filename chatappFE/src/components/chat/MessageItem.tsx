@@ -423,9 +423,7 @@ export default function MessageItem({
           }}
         />
 
-        {m.deleted ? (
-          <p className="text-sm italic text-gray-400">This message was deleted.</p>
-        ) : isEditing ? (
+        {m.deleted ? null : isEditing ? (
           editingBlocks !== null ? (
             <BlockMessageEditor
               blocks={editingBlocks}

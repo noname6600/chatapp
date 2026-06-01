@@ -231,11 +231,7 @@ export default function ProfileSettingsPage() {
               aboutTestId="settings-about-text"
               userId={currentUser?.accountId}
               avatarSize={80}
-            >
-              <button className="w-full rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-500">
-                Edit Profile
-              </button>
-            </ProfileIdentityCard>
+            />
 
             <div className="rounded-xl border border-gray-200 p-4 bg-white">
               <h2 className="text-sm font-semibold text-gray-700 mb-2">Quick Info</h2>

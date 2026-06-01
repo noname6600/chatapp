@@ -194,7 +194,7 @@ export default function MessageList({ roomId, pinnedMessageIds }: Props) {
     }
   }, [forwardSourceMessage]);
 
-  const groupedMessages = groupMessages(messages);
+  const groupedMessages = groupMessages(messages.filter((m) => !m.deleted));
 
   const messageById = new Map(messages.map((message) => [message.messageId, message]));
   const linkedHighlightMessageIds = new Set<string>();
