@@ -8,16 +8,12 @@ public enum PresenceEventType {
     USER_ONLINE("presence.user.online"),
     USER_OFFLINE("presence.user.offline"),
     USER_STATUS_CHANGED("presence.user.status-changed"),
-    USER_HEARTBEAT("presence.user.heartbeat"),
 
     ROOM_TYPING("presence.room.typing"),
     ROOM_STOP_TYPING("presence.room.stop-typing"),
 
     ROOM_JOIN("presence.room.join"),
-    ROOM_LEAVE("presence.room.leave"),
-
-    GLOBAL_ONLINE_USERS("presence.global.online-users"),
-    ROOM_ONLINE_USERS("presence.room.online-users");
+    ROOM_LEAVE("presence.room.leave");
 
     private final String value;
 

@@ -14,9 +14,7 @@ import com.chatweb.common.integration.friendship.FriendshipPayload;
 import com.chatweb.common.integration.notification.NotificationCreatedPayload;
 import com.chatweb.common.integration.notification.NotificationEventType;
 import com.chatweb.common.integration.notification.NotificationRequestedPayload;
-import com.chatweb.common.integration.presence.GlobalOnlineUsersPayload;
 import com.chatweb.common.integration.presence.PresenceEventType;
-import com.chatweb.common.integration.presence.PresenceHeartbeatPayload;
 import com.chatweb.common.integration.presence.PresenceRoomJoinPayload;
 import com.chatweb.common.integration.presence.PresenceRoomLeavePayload;
 import com.chatweb.common.integration.presence.PresenceStopTypingPayload;
@@ -24,7 +22,6 @@ import com.chatweb.common.integration.presence.PresenceTypingPayload;
 import com.chatweb.common.integration.presence.PresenceUserOfflinePayload;
 import com.chatweb.common.integration.presence.PresenceUserOnlinePayload;
 import com.chatweb.common.integration.presence.PresenceUserStatePayload;
-import com.chatweb.common.integration.presence.RoomOnlineUsersPayload;
 import com.chatweb.common.integration.user.UserEventType;
 
 import java.util.Set;
@@ -121,19 +118,15 @@ public final class SharedEventCatalog {
         registry.register(NotificationEventType.NOTIFICATION_CREATED.value(), NotificationCreatedPayload.class);
         // NOTIFICATION_SENT is payload-less (see PAYLOAD_LESS_EVENT_TYPES)
 
-        // Presence â€" online/offline/heartbeat
+        // Presence â€" online/offline/status
         registry.register(PresenceEventType.USER_ONLINE.value(), PresenceUserOnlinePayload.class);
         registry.register(PresenceEventType.USER_OFFLINE.value(), PresenceUserOfflinePayload.class);
         registry.register(PresenceEventType.USER_STATUS_CHANGED.value(), PresenceUserStatePayload.class);
-        registry.register(PresenceEventType.USER_HEARTBEAT.value(), PresenceHeartbeatPayload.class);
-        // (USER_STATUS_CHANGED is payload-bearing, see registration above)
 
         // Presence â€" room interaction
         registry.register(PresenceEventType.ROOM_TYPING.value(), PresenceTypingPayload.class);
         registry.register(PresenceEventType.ROOM_STOP_TYPING.value(), PresenceStopTypingPayload.class);
         registry.register(PresenceEventType.ROOM_JOIN.value(), PresenceRoomJoinPayload.class);
         registry.register(PresenceEventType.ROOM_LEAVE.value(), PresenceRoomLeavePayload.class);
-        registry.register(PresenceEventType.GLOBAL_ONLINE_USERS.value(), GlobalOnlineUsersPayload.class);
-        registry.register(PresenceEventType.ROOM_ONLINE_USERS.value(), RoomOnlineUsersPayload.class);
     }
 }

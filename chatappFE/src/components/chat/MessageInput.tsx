@@ -8,6 +8,7 @@ import {
   sendTyping,
   sendStopTyping,
 } from "../../websocket/presence.socket";
+import { TYPING_STOP_DEBOUNCE_MS } from "../../config/presence.config";
 import { getRoomMembers } from "../../api/room.service";
 import { Button } from "../ui/Button";
 import { useReply } from "../../hooks/useReply";
@@ -218,7 +219,7 @@ export default function MessageInput({ roomId }: Props) {
 
       typingTimeoutRef.current = window.setTimeout(() => {
         stopTyping();
-      }, 1500);
+      }, TYPING_STOP_DEBOUNCE_MS);
     } else {
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);

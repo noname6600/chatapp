@@ -4,15 +4,6 @@ import com.chatweb.common.event.EventEnvelope;
 import com.chatweb.common.event.EventMetadata;
 import com.chatweb.common.event.TraceContext;
 import com.chatweb.common.integration.presence.PresenceEventType;
-import com.chatweb.common.integration.presence.PresenceRoomJoinPayload;
-import com.chatweb.common.integration.presence.PresenceRoomLeavePayload;
-import com.chatweb.common.integration.presence.PresenceStatus;
-import com.chatweb.common.integration.presence.PresenceStopTypingPayload;
-import com.chatweb.common.integration.presence.PresenceTypingPayload;
-import com.chatweb.common.integration.presence.PresenceUserOfflinePayload;
-import com.chatweb.common.integration.presence.PresenceUserOnlinePayload;
-import com.chatweb.common.integration.presence.PresenceUserStatePayload;
-import com.chatweb.common.integration.presence.RoomOnlineUsersPayload;
 import com.chatweb.common.realtime.policy.RealtimeFlowClassificationPolicy;
 import com.chatweb.common.realtime.policy.RealtimeFlowId;
 import com.chatweb.common.realtime.policy.RealtimeFlowType;
@@ -25,7 +16,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
-import java.util.List;
 import java.util.UUID;
 
 @Slf4j
@@ -98,90 +88,4 @@ public class PresenceRedisPublisher implements PresenceRealtimePort {
         return RedisChannels.presenceRoom(roomId);
     }
 
-    public void online(UUID userId, PresenceStatus status) {
-        publishUserEvent(
-                PresenceEventType.USER_ONLINE.value(),
-                PresenceUserOnlinePayload.builder()
-                        .userId(userId)
-                        .roomId(null)
-                        .status(status)
-                        .build()
-        );
-    }
-
-    public void offline(UUID userId) {
-        publishUserEvent(
-                PresenceEventType.USER_OFFLINE.value(),
-                PresenceUserOfflinePayload.builder()
-                        .userId(userId)
-                        .roomId(null)
-                        .status(PresenceStatus.OFFLINE)
-                        .build()
-        );
-    }
-
-    public void statusChanged(UUID userId, PresenceStatus status) {
-        publishUserEvent(
-                PresenceEventType.USER_STATUS_CHANGED.value(),
-                PresenceUserStatePayload.builder()
-                        .userId(userId)
-                        .status(status)
-                        .build()
-        );
-    }
-
-    public void typing(UUID userId, UUID roomId) {
-        publishRoomEvent(
-                roomId,
-                PresenceEventType.ROOM_TYPING.value(),
-                PresenceTypingPayload.builder()
-                        .userId(userId)
-                        .roomId(roomId)
-                        .build()
-        );
-    }
-
-    public void stopTyping(UUID userId, UUID roomId) {
-        publishRoomEvent(
-                roomId,
-                PresenceEventType.ROOM_STOP_TYPING.value(),
-                PresenceStopTypingPayload.builder()
-                        .userId(userId)
-                        .roomId(roomId)
-                        .build()
-        );
-    }
-
-    public void roomJoin(UUID userId, UUID roomId) {
-        publishRoomEvent(
-                roomId,
-                PresenceEventType.ROOM_JOIN.value(),
-                PresenceRoomJoinPayload.builder()
-                        .userId(userId)
-                        .roomId(roomId)
-                        .build()
-        );
-    }
-
-    public void roomLeave(UUID userId, UUID roomId) {
-        publishRoomEvent(
-                roomId,
-                PresenceEventType.ROOM_LEAVE.value(),
-                PresenceRoomLeavePayload.builder()
-                        .userId(userId)
-                        .roomId(roomId)
-                        .build()
-        );
-    }
-
-    public void roomOnlineUsers(UUID roomId, List<PresenceUserStatePayload> users) {
-        publishRoomEvent(
-                roomId,
-                PresenceEventType.ROOM_ONLINE_USERS.value(),
-                RoomOnlineUsersPayload.builder()
-                        .roomId(roomId)
-                        .users(users)
-                        .build()
-        );
-    }
 }

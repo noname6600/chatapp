@@ -8,7 +8,6 @@ import com.chatweb.common.integration.presence.PresenceRoomLeavePayload;
 import com.chatweb.common.integration.presence.PresenceUserOfflinePayload;
 import com.chatweb.common.integration.presence.PresenceUserOnlinePayload;
 import com.chatweb.common.integration.presence.PresenceUserStatePayload;
-import com.chatweb.common.integration.presence.RoomOnlineUsersPayload;
 import com.chatweb.common.realtime.policy.RealtimeFlowId;
 import com.chatweb.presence.dto.PresenceSelfResponse;
 import com.chatweb.presence.realtime.port.PresenceRealtimePort;
@@ -282,18 +281,4 @@ public class PresenceService implements IPresenceService {
                 .toList();
     }
 
-    // ================= NOTIFY =================
-
-    public void notifyRoomOnlineUsers(UUID roomId) {
-        presenceRealtimePort.publishRoomEvent(
-                roomId,
-                PresenceEventType.ROOM_ONLINE_USERS.value(),
-                RoomOnlineUsersPayload.builder()
-                        .roomId(roomId)
-                        .users(getRoomPresence(roomId))
-                        .build()
-            ,
-            RealtimeFlowId.PRESENCE_ROOM_ACTIVITY
-        );
-    }
 }

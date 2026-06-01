@@ -42,13 +42,3 @@ export const getGlobalPresenceApi = async (): Promise<PresenceUserState[]> => {
   }
 }
 
-export const getRoomPresenceApi = async (roomId: string): Promise<PresenceUserState[]> => {
-  try {
-    const res = await presenceApi.get<ApiResponse<PresenceUserState[]>>(
-      `/room/${roomId}`
-    )
-    return unwrap(res)
-  } catch (error) {
-    throw new Error(extractErrorMessage(error))
-  }
-}

@@ -3,8 +3,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest"
 
 import {
-  selectMemberStatusForRoom,
-  selectTypingUsersForRoom,
   usePresenceStore,
 } from "./presence.store"
 
@@ -79,7 +77,7 @@ describe("presence.store", () => {
 
     const state = usePresenceStore.getState()
 
-    expect(selectMemberStatusForRoom(state, "room-s", "u1")).toBe("ONLINE")
-    expect(selectTypingUsersForRoom(state, "room-s")).toEqual(["u1"])
+    expect(state.roomUserStatuses["room-s"]?.["u1"] ?? state.userStatuses["u1"] ?? "OFFLINE").toBe("ONLINE")
+    expect(Object.keys(state.typingByRoom["room-s"] ?? {})).toEqual(["u1"])
   })
 })

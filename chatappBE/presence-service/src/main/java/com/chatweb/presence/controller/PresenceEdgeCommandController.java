@@ -130,7 +130,11 @@ public class PresenceEdgeCommandController {
 
     /**
      * Publishes a typing event for the user in the specified room.
-     * Edge is trusted to only forward this when the user is subscribed to the room channel.
+     * Authorization is enforced by the realtime-edge-service: it only forwards this
+     * command when the session is already subscribed to the room's presence channel,
+     * which was set during the authorized presence.room.join handshake.
+     * A redundant ensureRoomMember HTTP call here would add latency and a silent
+     * failure point (typing dropped whenever the chat service is momentarily unreachable).
      */
     @PostMapping("/rooms/{roomId}/typing")
     public ResponseEntity<Void> typing(
@@ -140,7 +144,6 @@ public class PresenceEdgeCommandController {
         if (userId == null) {
             return ResponseEntity.badRequest().build();
         }
-        roomAuthorizationService.ensureRoomMember(roomId, jwt.getTokenValue());
         presenceRealtimePort.publishRoomEvent(
                 roomId,
                 PresenceEventType.ROOM_TYPING.value(),
@@ -156,6 +159,7 @@ public class PresenceEdgeCommandController {
 
     /**
      * Publishes a stop-typing event for the user in the specified room.
+     * Same trust model as typing() — no redundant auth call.
      */
     @PostMapping("/rooms/{roomId}/stop-typing")
     public ResponseEntity<Void> stopTyping(
@@ -165,7 +169,6 @@ public class PresenceEdgeCommandController {
         if (userId == null) {
             return ResponseEntity.badRequest().build();
         }
-        roomAuthorizationService.ensureRoomMember(roomId, jwt.getTokenValue());
         presenceRealtimePort.publishRoomEvent(
                 roomId,
                 PresenceEventType.ROOM_STOP_TYPING.value(),

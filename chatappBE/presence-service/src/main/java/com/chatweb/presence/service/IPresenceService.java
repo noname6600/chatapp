@@ -6,7 +6,6 @@ import com.chatweb.common.integration.presence.PresenceUserStatePayload;
 import com.chatweb.presence.dto.PresenceSelfResponse;
 
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 public interface IPresenceService {
@@ -20,5 +19,4 @@ public interface IPresenceService {
     void leaveRoom(UUID roomId, UUID userId);
     List<PresenceUserStatePayload> getAllPresenceUsers();
     List<PresenceUserStatePayload> getRoomPresence(UUID roomId);
-    void notifyRoomOnlineUsers(UUID roomId);
 }

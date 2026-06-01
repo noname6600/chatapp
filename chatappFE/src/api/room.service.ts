@@ -247,41 +247,6 @@ export const removeMemberApi = async (
   }
 }
 
-// =========================
-// MEMBER COUNT
-// =========================
-
-export const getRoomMemberCount = async (
-  roomId: string
-): Promise<number> => {
-  try {
-    const res = await chatApi.get<ApiResponse<number>>(
-      `/rooms/${roomId}/member-count`
-    )
-    return unwrap(res)
-  } catch (error) {
-    throw new Error(extractErrorMessage(error))
-  }
-}
-// =========================
-// INVITE MEMBER
-// =========================
-
-export const inviteMemberApi = async (
-  roomId: string,
-  userId: string
-): Promise<void> => {
-  try {
-    const res = await chatApi.post<ApiResponse<void>>(
-      `/rooms/${roomId}/invite`,
-      null,
-      { params: { userId } }
-    )
-    unwrap(res)
-  } catch (error) {
-    throw new Error(extractErrorMessage(error))
-  }
-}
 
 export const getRoomMembersPaged = async (
   roomId: string,

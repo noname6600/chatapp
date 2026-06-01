@@ -25,7 +25,6 @@ let reconnectSnapshotInFlight: Promise<void> | null = null
 let lastReconnectSnapshotAt = 0
 
 const joinedRooms = new Set<string>()
-const pendingCommands: unknown[] = []
 
 const openHandlers = new Set<() => void>()
 const eventHandlers = new Set<(event: PresenceWsEvent) => void>()
@@ -146,10 +145,7 @@ type PresenceCommand =
   | { type: PresenceEventType.ROOM_LEAVE; roomId: string }
 
 const sendPresenceCommand = (data: PresenceCommand) => {
-  if (!isRealtimeSocketOpen()) {
-    pendingCommands.push(data)
-    return
-  }
+  if (!isRealtimeSocketOpen()) return
   sendRealtimeMessage(data)
 }
 
@@ -165,7 +161,7 @@ onRealtimeEvent((msg) => {
   }
 })
 
-// On reconnect: restart heartbeat, re-join rooms, drain pending commands
+// On reconnect: restart heartbeat, re-join rooms
 onRealtimeOpen(() => {
   reconnectSnapshotInFlight = null
   startHeartbeat()
@@ -191,9 +187,6 @@ onRealtimeOpen(() => {
   joinedRooms.forEach((roomId) => {
     sendRealtimeMessage({ type: PresenceEventType.ROOM_JOIN, roomId })
   })
-  while (pendingCommands.length) {
-    sendRealtimeMessage(pendingCommands.shift())
-  }
   sendHeartbeat()
   openHandlers.forEach((h) => h())
 })
@@ -209,7 +202,6 @@ export const resetPresenceState = () => {
   unbindActivityTracking()
   clearPendingOfflines()
   joinedRooms.clear()
-  pendingCommands.length = 0
   reconnectSnapshotInFlight = null
 }
 
@@ -289,19 +281,19 @@ function handlePresenceEvent(event: PresenceWsEvent) {
       break
     }
 
-    case PresenceEventType.ROOM_ONLINE_USERS: {
-      const { roomId } = event.payload as { roomId: string }
-      const users = getSnapshotUsers(event.payload)
-      if (roomId) state.setRoomPresence(roomId, users)
-      break
-    }
-
     case PresenceEventType.GLOBAL_SNAPSHOT: {
       const users = getSnapshotUsers(event.payload)
       users.forEach((user) => {
         if (user.status !== "OFFLINE") cancelPendingOffline(user.userId)
       })
       state.setGlobalPresence(users)
+      break
+    }
+
+    case PresenceEventType.ROOM_ONLINE_USERS: {
+      const { roomId } = event.payload as { roomId: string }
+      const users = getSnapshotUsers(event.payload)
+      if (roomId) state.setRoomPresence(roomId, users)
       break
     }
 

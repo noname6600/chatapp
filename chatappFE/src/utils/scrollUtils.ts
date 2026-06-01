@@ -63,10 +63,3 @@ export function batchScrollToBottom(scrollContainer: HTMLElement | null): void {
   }, SCROLL_BATCH_WINDOW);
 }
 
-/**
- * Get the scroll threshold value
- * @returns The pixel threshold from bottom for "at bottom" detection
- */
-export function getScrollThreshold(): number {
-  return SCROLL_THRESHOLD;
-}

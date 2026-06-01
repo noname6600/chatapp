@@ -5,3 +5,7 @@ export const PRESENCE_AWAY_THRESHOLD_MS = 5 * 60_000
 
 // Short grace period to avoid OFFLINE flicker during refresh/reconnect.
 export const PRESENCE_OFFLINE_GRACE_MS = 5_000
+
+// How long after the last keystroke before stop-typing is sent.
+// Longer = indicator lingers on the receiver's side; 3 s feels natural.
+export const TYPING_STOP_DEBOUNCE_MS = 3_000
