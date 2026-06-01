@@ -81,11 +81,23 @@ export const usePresenceStore = create<PresenceState>((set, get) => ({
     }
     const myId = localStorage.getItem("my_user_id")
     set((state) => {
-      // Prefer the already-known live status (from WS events) over possibly stale REST self snapshot.
+      // The REST /my-presence call is made before the WS connects, so
+      // effectiveStatus is always OFFLINE at that point. Derive an optimistic
+      // status from mode/manualStatus instead so the UI doesn't flicker OFFLINE
+      // during the bootstrap → WS-open gap.
+      const optimisticStatus = (): PresenceStatus => {
+        if (presence.mode === "AUTO") return "ONLINE"
+        if (presence.mode === "MANUAL" && presence.manualStatus && presence.manualStatus !== "OFFLINE") {
+          return presence.manualStatus as PresenceStatus
+        }
+        return presence.effectiveStatus
+      }
+
+      // Prefer the already-known live status (from WS events) over the REST snapshot.
       const resolvedSelfStatus =
         myId && state.userStatuses[myId]
           ? state.userStatuses[myId]
-          : presence.effectiveStatus
+          : optimisticStatus()
 
       const userStatuses = myId
         ? { ...state.userStatuses, [myId]: resolvedSelfStatus }
@@ -101,18 +113,27 @@ export const usePresenceStore = create<PresenceState>((set, get) => ({
   setGlobalPresence: (users) =>
     set((state) => {
       const myId = localStorage.getItem("my_user_id")
-      const nextStatuses: Record<UserId, PresenceStatus> = {
-        ...state.userStatuses,
-      }
+      // Start fresh — do NOT spread existing statuses. If we carry over the old
+      // map, users who went offline between snapshots remain ONLINE forever because
+      // the backend omits offline users from the snapshot payload.
+      const nextStatuses: Record<UserId, PresenceStatus> = {}
 
       users.forEach((user) => {
         nextStatuses[user.userId] = user.status
       })
 
-      // Some snapshots may not include the current user; keep last known self status.
-      if (myId && !nextStatuses[myId]) {
-        nextStatuses[myId] =
-          state.userStatuses[myId] ?? state.selfPresence?.effectiveStatus ?? "ONLINE"
+      // Always preserve own status — global snapshots are fetched before/during
+      // the WS connection so they may show the current user as OFFLINE even
+      // though they are about to (or already did) connect. Self status is
+      // authoritatively managed by setSelfPresence and the WS onRealtimeOpen
+      // handler, never by a global snapshot.
+      if (myId) {
+        const ownStatus = state.userStatuses[myId] ?? state.selfPresence?.effectiveStatus
+        if (ownStatus) {
+          nextStatuses[myId] = ownStatus
+        } else if (!nextStatuses[myId]) {
+          nextStatuses[myId] = "ONLINE"
+        }
       }
 
       const myStatus = myId ? nextStatuses[myId] : undefined

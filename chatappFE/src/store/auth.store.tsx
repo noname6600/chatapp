@@ -9,6 +9,7 @@ import { getNotificationsApi } from "../api/notification.service"
 import { getUnreadFriendRequestCountApi } from "../api/friend.service"
 import { usePresenceStore } from "./presence.store"
 import { useFriendStore } from "./friend.store"
+import { saveRecentLogin } from "../utils/recentLogins"
 
 interface AuthContextType {
   accessToken: string | null
@@ -78,6 +79,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ])
 
         localStorage.setItem("my_user_id", me.accountId)
+        saveRecentLogin({ email: me.username, displayName: me.displayName, avatarUrl: me.avatarUrl })
 
         setUserId(me.accountId)
         setCurrentUser(me)

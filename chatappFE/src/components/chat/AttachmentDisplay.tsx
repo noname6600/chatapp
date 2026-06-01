@@ -81,8 +81,8 @@ export default function AttachmentDisplay({
       </div>
 
       {previewImageUrl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-          <div className="w-full max-w-xl rounded-xl bg-white p-4 shadow-lg">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={() => setPreviewImageUrl(null)}>
+          <div className="w-full max-w-xl rounded-xl bg-white p-4 shadow-lg" onClick={(e) => e.stopPropagation()}>
             <img src={previewImageUrl} alt="Preview" className="max-h-[70vh] w-full rounded-lg object-contain" />
             <div className="mt-3 flex justify-end gap-2">
               <button
