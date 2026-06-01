@@ -29,6 +29,7 @@ import { isFeatureEnabled } from "../config/featureFlags";
 import { setTrackedActiveRoom } from "../utils/activeRoomTracker";
 import { isAtBottom, batchScrollToBottom } from "../utils/scrollUtils";
 import { mergeTimelineMessages } from "./chatTimeline";
+import { applyReactionEvent } from "../utils/reactionState";
 
 const MAX_WINDOW = 500;
 const OPTIMISTIC_CONFIRM_TIMEOUT_MS = 15_000;
@@ -435,6 +436,27 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   // current setActiveRoom and upsertMessage without re-registering on their changes.
   useEffect(() => {
     return onChatEvent((event) => {
+      if (event.type === ChatEventType.REACTION_UPDATED) {
+        const payload = event.payload;
+        const currentUserId = localStorage.getItem("my_user_id");
+        setMessagesByRoom((prev) => {
+          const current = prev[payload.roomId];
+          if (!current) return prev;
+          let changed = false;
+          const next = current.map((message) => {
+            if (message.messageId !== payload.messageId) return message;
+            changed = true;
+            return {
+              ...message,
+              reactions: applyReactionEvent(message.reactions ?? [], payload, currentUserId),
+            };
+          });
+          if (!changed) return prev;
+          return { ...prev, [payload.roomId]: next };
+        });
+        return;
+      }
+
       if (event.type === ChatEventType.MESSAGE_EDITED) {
         const payload = event.payload;
         setMessagesByRoom((prev) => {
@@ -444,10 +466,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           const next = current.map((message) => {
             if (message.messageId !== payload.messageId) return message;
             changed = true;
+            // Also update the text in any TEXT blocks so rendered content changes.
+            // The backend edit payload only carries `content` (no blocks), so we
+            // derive the updated block text from it.
+            const updatedBlocks =
+              payload.content != null && message.blocks?.length
+                ? message.blocks.map((block) =>
+                    block.type === "TEXT" ? { ...block, text: payload.content as string } : block
+                  )
+                : message.blocks;
             return {
               ...message,
               content: payload.content,
               editedAt: payload.editedAt,
+              blocks: updatedBlocks,
             };
           });
 

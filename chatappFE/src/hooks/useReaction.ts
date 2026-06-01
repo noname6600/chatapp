@@ -58,10 +58,12 @@ export function useReaction({ messageId, roomId }: UseReactionParams) {
             (r) => r.emoji === emoji
           );
           const action = currentReaction?.reactedByMe ? "remove" : "add";
-          // If reaction exists but reactedByMe is unknown (undefined/false from aggregate API),
-          // optimistic toggle can be wrong. In that case wait for authoritative WS event.
+          // Skip optimistic update only when reactedByMe is undefined — that means the
+          // aggregate API returned a reaction without per-user ownership info, so we don't
+          // know whether we've reacted. When reactedByMe is explicitly true or false we
+          // DO know our state and can toggle safely.
           const canApplyOptimistic =
-            !currentReaction || currentReaction.reactedByMe === true;
+            !currentReaction || currentReaction.reactedByMe !== undefined;
 
           // Save previous state for rollback
           previousStateRef.current = {
