@@ -32,8 +32,8 @@ spring:
             - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials, RETAIN_FIRST
             - name: RequestRateLimiter
               args:
-                redis-rate-limiter.replenishRate: 20
-                redis-rate-limiter.burstCapacity: 40
+                redis-rate-limiter.replenishRate: 200
+                redis-rate-limiter.burstCapacity: 400
                 redis-rate-limiter.requestedTokens: 1
                 deny-empty-key: false
                 key-resolver: "#{@ipKeyResolver}"
