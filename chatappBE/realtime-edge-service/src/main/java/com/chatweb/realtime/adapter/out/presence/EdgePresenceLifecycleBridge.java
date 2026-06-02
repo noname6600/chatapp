@@ -2,12 +2,12 @@ package com.chatweb.realtime.adapter.out.presence;
 
 import com.chatweb.realtime.connection.RealtimeSession;
 import com.chatweb.realtime.connection.RealtimeSessionRegistry;
+import com.chatweb.realtime.delivery.WebSocketOutboundDeliveryQueue;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.util.LinkedHashMap;
@@ -39,6 +39,7 @@ public class EdgePresenceLifecycleBridge {
     private final PresenceDomainClient presenceDomainClient;
     private final RealtimeSessionRegistry sessionRegistry;
     private final ObjectMapper objectMapper;
+    private final WebSocketOutboundDeliveryQueue deliveryQueue;
 
     /**
      * Called immediately after a client connects on {@code /ws/presence}.
@@ -59,14 +60,14 @@ public class EdgePresenceLifecycleBridge {
 
         try {
             JsonNode users = presenceDomainClient.globalSnapshot(accessToken);
-            sendGlobalSnapshot(wsSession, users);
+            sendGlobalSnapshot(realtimeSession.getSessionId(), wsSession, users);
             log.debug("[PRESENCE-BRIDGE] Global snapshot sent on connect: userId={}", userId);
         } catch (Exception ex) {
             log.warn("[PRESENCE-BRIDGE] Failed to send global snapshot on connect: userId={}", userId, ex);
         }
     }
 
-    private void sendGlobalSnapshot(WebSocketSession wsSession, JsonNode users) throws Exception {
+    private void sendGlobalSnapshot(String sessionId, WebSocketSession wsSession, JsonNode users) throws Exception {
         Map<String, Object> snapshotPayload = new LinkedHashMap<>();
         snapshotPayload.put("users", users);
 
@@ -74,7 +75,7 @@ public class EdgePresenceLifecycleBridge {
         snapshotMessage.put("type", "presence.global.snapshot");
         snapshotMessage.put("payload", snapshotPayload);
 
-        wsSession.sendMessage(new TextMessage(objectMapper.writeValueAsString(snapshotMessage)));
+        deliveryQueue.enqueue(sessionId, wsSession, objectMapper.writeValueAsString(snapshotMessage), "presence");
     }
 
     /**
