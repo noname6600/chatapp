@@ -592,6 +592,25 @@ services:
       - chatapp-net
     restart: "no"
 
+  kafka-setup:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: chatapp-kafka-setup
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - chatapp-net
+    restart: "no"
+    command: >
+      bash -c "
+        echo 'Creating/updating Kafka topics...' &&
+        for topic in chat.message.sent chat.message.events chat.reaction.updated friendship.events friendship.request.events notification.realtime account.created system.dead-letter system.retry; do
+          kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic $$topic --partitions 2 --replication-factor 1 &&
+          kafka-topics --bootstrap-server kafka:9092 --alter --topic $$topic --partitions 2 2>/dev/null || true;
+        done &&
+        echo 'Kafka topics ready.'
+      "
+
   kafka-exporter:
     image: danielqsj/kafka-exporter:latest
     container_name: chatapp-kafka-exporter
