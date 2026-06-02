@@ -1,7 +1,7 @@
 {
   "__inputs": [
     {
-      "name": "chatapp-prometheus",
+      "name": "",
       "label": "Prometheus",
       "description": "",
       "type": "datasource",
@@ -38,7 +38,7 @@
   "links": [],
   "panels": [
     {
-      "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
+      "datasource": null,
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -66,7 +66,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
+          "datasource": null,
           "expr": "kafka_brokers",
           "legendFormat": "",
           "refId": "A"
@@ -76,7 +76,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
+      "datasource": null,
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -99,7 +99,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
+          "datasource": null,
           "expr": "count(kafka_topic_partitions)",
           "legendFormat": "",
           "refId": "A"
@@ -109,7 +109,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
+      "datasource": null,
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -136,7 +136,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
+          "datasource": null,
           "expr": "sum(kafka_consumergroup_lag)",
           "legendFormat": "",
           "refId": "A"
@@ -146,7 +146,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
+      "datasource": null,
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -169,7 +169,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
+          "datasource": null,
           "expr": "count(kafka_consumergroup_members)",
           "legendFormat": "",
           "refId": "A"
@@ -186,7 +186,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
+      "datasource": null,
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -203,7 +203,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
+          "datasource": null,
           "expr": "sum(kafka_consumergroup_lag{consumergroup=~\"$consumergroup\"}) by (consumergroup)",
           "legendFormat": "{{consumergroup}}",
           "refId": "A"
@@ -213,7 +213,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
+      "datasource": null,
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -230,7 +230,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
+          "datasource": null,
           "expr": "kafka_consumergroup_lag{consumergroup=~\"$consumergroup\", topic=~\"$topic\"}",
           "legendFormat": "{{consumergroup}} | {{topic}} | p{{partition}}",
           "refId": "A"
@@ -240,7 +240,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
+      "datasource": null,
       "fieldConfig": {
         "defaults": { "unit": "short" },
         "overrides": [
@@ -272,7 +272,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
+          "datasource": null,
           "expr": "kafka_consumergroup_lag",
           "format": "table",
           "instant": true,
@@ -305,7 +305,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
+      "datasource": null,
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -322,7 +322,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
+          "datasource": null,
           "expr": "rate(kafka_topic_partition_current_offset{topic=~\"$topic\"}[1m])",
           "legendFormat": "{{topic}} p{{partition}}",
           "refId": "A"
@@ -332,7 +332,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
+      "datasource": null,
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -349,7 +349,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
+          "datasource": null,
           "expr": "kafka_topic_partitions",
           "format": "table",
           "instant": true,
@@ -377,7 +377,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
+      "datasource": null,
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -401,7 +401,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
+          "datasource": null,
           "expr": "sum(kafka_topic_partition_under_replicated_partition) by (topic)",
           "legendFormat": "{{topic}}",
           "refId": "A"
@@ -411,7 +411,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
+      "datasource": null,
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -428,13 +428,13 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
+          "datasource": null,
           "expr": "sum(kafka_topic_partition_in_sync_replica) by (topic)",
           "legendFormat": "{{topic}} in-sync",
           "refId": "A"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
+          "datasource": null,
           "expr": "sum(kafka_topic_partition_replicas) by (topic)",
           "legendFormat": "{{topic}} total replicas",
           "refId": "B"
@@ -451,7 +451,7 @@
     "list": [
       {
         "current": {},
-        "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
+        "datasource": null,
         "definition": "label_values(kafka_consumergroup_lag, consumergroup)",
         "hide": 0,
         "includeAll": true,
@@ -471,7 +471,7 @@
       },
       {
         "current": {},
-        "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
+        "datasource": null,
         "definition": "label_values(kafka_topic_partitions, topic)",
         "hide": 0,
         "includeAll": true,
