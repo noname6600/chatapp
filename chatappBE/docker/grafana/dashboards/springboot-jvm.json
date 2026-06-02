@@ -1,7 +1,7 @@
 {
   "__inputs": [
     {
-      "name": "DS_PROMETHEUS",
+      "name": "chatapp-prometheus",
       "label": "Prometheus",
       "description": "",
       "type": "datasource",
@@ -45,7 +45,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -62,7 +62,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
           "expr": "sum(rate(http_server_requests_seconds_count{job=~\"$job\", instance=~\"$instance\"}[1m])) by (instance)",
           "legendFormat": "{{instance}}",
           "refId": "A"
@@ -72,7 +72,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -96,13 +96,13 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
           "expr": "sum(rate(http_server_requests_seconds_count{job=~\"$job\", instance=~\"$instance\", status=~\"5..\"}[1m])) by (instance)",
           "legendFormat": "{{instance}} 5xx",
           "refId": "A"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
           "expr": "sum(rate(http_server_requests_seconds_count{job=~\"$job\", instance=~\"$instance\", status=~\"4..\"}[1m])) by (instance)",
           "legendFormat": "{{instance}} 4xx",
           "refId": "B"
@@ -112,7 +112,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -129,13 +129,13 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
           "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{job=~\"$job\", instance=~\"$instance\"}[5m])) by (le, instance))",
           "legendFormat": "{{instance}} p99",
           "refId": "A"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
           "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{job=~\"$job\", instance=~\"$instance\"}[5m])) by (le, instance))",
           "legendFormat": "{{instance}} p95",
           "refId": "B"
@@ -152,7 +152,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -171,7 +171,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
           "expr": "sum(jvm_memory_used_bytes{job=~\"$job\", instance=~\"$instance\", area=\"heap\"}) by (instance) / sum(jvm_memory_max_bytes{job=~\"$job\", instance=~\"$instance\", area=\"heap\"}) by (instance)",
           "legendFormat": "{{instance}}",
           "refId": "A"
@@ -181,7 +181,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -198,13 +198,13 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
           "expr": "sum(jvm_memory_used_bytes{job=~\"$job\", instance=~\"$instance\", area=\"nonheap\"}) by (instance)",
           "legendFormat": "{{instance}} used",
           "refId": "A"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
           "expr": "sum(jvm_memory_committed_bytes{job=~\"$job\", instance=~\"$instance\", area=\"nonheap\"}) by (instance)",
           "legendFormat": "{{instance}} committed",
           "refId": "B"
@@ -221,7 +221,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -240,13 +240,13 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
           "expr": "process_cpu_usage{job=~\"$job\", instance=~\"$instance\"}",
           "legendFormat": "{{instance}} process",
           "refId": "A"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
           "expr": "system_cpu_usage{job=~\"$job\", instance=~\"$instance\"}",
           "legendFormat": "{{instance}} system",
           "refId": "B"
@@ -256,7 +256,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -273,13 +273,13 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
           "expr": "jvm_threads_live_threads{job=~\"$job\", instance=~\"$instance\"}",
           "legendFormat": "{{instance}} live",
           "refId": "A"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
           "expr": "jvm_threads_daemon_threads{job=~\"$job\", instance=~\"$instance\"}",
           "legendFormat": "{{instance}} daemon",
           "refId": "B"
@@ -289,7 +289,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -306,7 +306,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
           "expr": "rate(jvm_gc_pause_seconds_sum{job=~\"$job\", instance=~\"$instance\"}[1m])",
           "legendFormat": "{{instance}} {{action}} {{cause}}",
           "refId": "A"
@@ -323,7 +323,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -340,19 +340,19 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
           "expr": "hikaricp_connections_active{job=~\"$job\", instance=~\"$instance\"}",
           "legendFormat": "{{instance}} active",
           "refId": "A"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
           "expr": "hikaricp_connections_idle{job=~\"$job\", instance=~\"$instance\"}",
           "legendFormat": "{{instance}} idle",
           "refId": "B"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
           "expr": "hikaricp_connections_pending{job=~\"$job\", instance=~\"$instance\"}",
           "legendFormat": "{{instance}} pending",
           "refId": "C"
@@ -362,7 +362,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -381,7 +381,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
           "expr": "hikaricp_connections_active{job=~\"$job\", instance=~\"$instance\"} / hikaricp_connections_max{job=~\"$job\", instance=~\"$instance\"}",
           "legendFormat": "{{instance}}",
           "refId": "A"
@@ -398,7 +398,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -415,7 +415,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
           "expr": "rate(spring_kafka_listener_seconds_count{job=~\"$job\", instance=~\"$instance\"}[1m])",
           "legendFormat": "{{instance}} {{name}}",
           "refId": "A"
@@ -425,7 +425,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -442,7 +442,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
           "expr": "histogram_quantile(0.99, rate(spring_kafka_listener_seconds_bucket{job=~\"$job\", instance=~\"$instance\"}[5m]))",
           "legendFormat": "{{instance}} {{name}} p99",
           "refId": "A"
@@ -459,7 +459,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -477,7 +477,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
           "expr": "realtime_sessions_local_active{job=\"realtime-edge-service\"}",
           "legendFormat": "{{instance}} local sessions",
           "refId": "A"
@@ -487,7 +487,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -505,7 +505,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
           "expr": "realtime_sessions_global_active{job=\"realtime-edge-service\"}",
           "legendFormat": "{{instance}} global total",
           "refId": "A"
@@ -522,7 +522,7 @@
     "list": [
       {
         "current": {},
-        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
         "definition": "label_values(jvm_memory_used_bytes, job)",
         "hide": 0,
         "includeAll": true,
@@ -542,7 +542,7 @@
       },
       {
         "current": {},
-        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "datasource": { "type": "prometheus", "uid": "${chatapp-prometheus}" },
         "definition": "label_values(jvm_memory_used_bytes{job=~\"$job\"}, instance)",
         "hide": 0,
         "includeAll": true,
