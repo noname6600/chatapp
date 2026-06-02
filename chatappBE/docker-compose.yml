@@ -590,6 +590,21 @@ services:
       - chatapp-net
     restart: "no"
 
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: chatapp-kafka-exporter
+    command:
+      - "--kafka.server=kafka:9092"
+      - "--topic.filter=.*"
+      - "--group.filter=.*"
+      - "--web.listen-address=:9308"
+    networks:
+      - chatapp-net
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:v2.55.0
     container_name: chatapp-prometheus

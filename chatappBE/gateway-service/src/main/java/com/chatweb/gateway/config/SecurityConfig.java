@@ -40,7 +40,10 @@ public class SecurityConfig {
         private static final String[] PUBLIC_ACTUATOR_PATHS = {
             "/actuator/health",
             "/actuator/health/**",
-            "/actuator/info"
+            "/actuator/info",
+            "/actuator/prometheus",
+            "/actuator/metrics",
+            "/actuator/metrics/**"
         };
 
     @Value("${spring.security.oauth2.resourceserver.jwt.jwk-set-uri}")

@@ -74,3 +74,8 @@ scrape_configs:
         labels: {instance: gateway-service-1}
       - targets: ['gateway-service-2:8080']
         labels: {instance: gateway-service-2}
+
+  - job_name: kafka-exporter
+    static_configs:
+      - targets: ['kafka-exporter:9308']
+        labels: {instance: kafka}

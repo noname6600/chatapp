@@ -10,7 +10,11 @@ import com.chatweb.common.kafka.producer.DefaultKafkaEventPublisher;
 import com.chatweb.common.kafka.producer.KafkaEventPublisher;
 import com.chatweb.common.kafka.retry.KafkaRetryDlqPolicy;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.serialization.ByteArraySerializer;
+import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -19,6 +23,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
+import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.CommonErrorHandler;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
@@ -26,7 +31,9 @@ import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.util.backoff.ExponentialBackOff;
 
 import org.apache.kafka.common.TopicPartition;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @AutoConfiguration
 @ConditionalOnClass(KafkaTemplate.class)
@@ -82,8 +89,19 @@ public class KafkaAutoConfiguration {
             KafkaTemplate<String, Object> kafkaTemplate,
             KafkaRetryDlqPolicy policy
     ) {
+        // Dedicated byte-array template for DLT so raw bytes from failed
+        // deserialization (ErrorHandlingDeserializer) can be forwarded without
+        // StringSerializer throwing ClassCastException on byte[].
+        Map<String, Object> dltProps = new HashMap<>();
+        dltProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG,
+                consumerFactory.getConfigurationProperties().get(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG));
+        dltProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        dltProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class);
+        KafkaTemplate<String, byte[]> dltTemplate = new KafkaTemplate<>(
+                new DefaultKafkaProducerFactory<>(dltProps));
+
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(
-                kafkaTemplate,
+                dltTemplate,
                 (ConsumerRecord<?, ?> record, Exception ex) ->
                         new TopicPartition(policy.deadLetterTopic(record.topic()), 0)
         );
