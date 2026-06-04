@@ -16,6 +16,9 @@ x-realtime-edge-env: &realtime-edge-env
   NOTIFICATION_SERVICE_URL: ${NOTIFICATION_SERVICE_URL:-http://notification-service:8086}
   FRIENDSHIP_SERVICE_URL: ${FRIENDSHIP_SERVICE_URL:-http://friendship-service:8085}
   INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-}
+  REALTIME_DELIVERY_QUEUE_WORKERS: 16
+  REALTIME_WS_SIDE_EFFECTS_WORKERS: 16
+  REALTIME_WS_SIDE_EFFECTS_QUEUE_CAPACITY: 2000
 
 services:
 
@@ -25,6 +28,7 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: chatapp-postgres
+    command: postgres -c max_connections=300 -c shared_buffers=256MB
     environment:
       POSTGRES_DB: postgres
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -101,6 +105,7 @@ services:
   # ─────────────────────────────────────────────────────────
   auth-service: &auth-service-base
     container_name: chatappbe-auth-service
+    mem_limit: 768m
     build:
       context: .
       dockerfile: auth-service/Dockerfile
@@ -147,6 +152,7 @@ services:
 
   user-service: &user-service-base
     container_name: chatappbe-user-service
+    mem_limit: 640m
     build:
       context: .
       dockerfile: user-service/Dockerfile
@@ -187,6 +193,7 @@ services:
 
   chat-service: &chat-service-base
     container_name: chatappbe-chat-service
+    mem_limit: 768m
     build:
       context: .
       dockerfile: chat-service/Dockerfile
@@ -243,6 +250,7 @@ services:
 
   presence-service: &presence-service-base
     container_name: chatappbe-presence-service
+    mem_limit: 512m
     build:
       context: .
       dockerfile: presence-service/Dockerfile
@@ -291,6 +299,7 @@ services:
 
   friendship-service: &friendship-service-base
     container_name: chatappbe-friendship-service
+    mem_limit: 640m
     build:
       context: .
       dockerfile: friendship-service/Dockerfile
@@ -346,6 +355,7 @@ services:
 
   notification-service: &notification-service-base
     container_name: chatappbe-notification-service
+    mem_limit: 640m
     build:
       context: .
       dockerfile: notification-service/Dockerfile
@@ -399,6 +409,7 @@ services:
 
   realtime-edge-service: &realtime-edge-service-base
     container_name: chatappbe-realtime-edge-service
+    mem_limit: 640m
     build:
       context: .
       dockerfile: realtime-edge-service/Dockerfile
@@ -441,6 +452,7 @@ services:
 
   upload-service: &upload-service-base
     container_name: chatappbe-upload-service
+    mem_limit: 384m
     build:
       context: .
       dockerfile: upload-service/Dockerfile
@@ -478,6 +490,7 @@ services:
   # ─────────────────────────────────────────────────────────
   gateway-service: &gateway-service-base
     container_name: chatappbe-gateway-service
+    mem_limit: 640m
     build:
       context: .
       dockerfile: gateway-service/Dockerfile
