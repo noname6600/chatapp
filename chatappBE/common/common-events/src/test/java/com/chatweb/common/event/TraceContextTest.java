@@ -15,7 +15,7 @@ class TraceContextTest {
 
     @Test
     void correlationIdOrEventId_prefersTraceIdWhenPresent() {
-        MDC.put("traceId", "trace-123");
+        MDC.put("trace_id", "trace-123");
 
         assertThat(TraceContext.correlationIdOrEventId("evt-1")).isEqualTo("trace-123");
     }

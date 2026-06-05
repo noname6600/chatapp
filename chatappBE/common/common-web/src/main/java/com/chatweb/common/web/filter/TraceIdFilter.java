@@ -9,12 +9,14 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.UUID;
 
+// Puts the container hostname into MDC so every log line shows which instance
+// handled the request. Trace ID is injected automatically by the OTel Java agent.
 @Component
 public class TraceIdFilter extends OncePerRequestFilter {
 
-    private static final String TRACE_ID = "traceId";
+    private static final String INSTANCE_ID_KEY = "instanceId";
+    private static final String INSTANCE_ID = System.getenv().getOrDefault("HOSTNAME", "unknown");
 
     @Override
     protected void doFilterInternal(
@@ -22,20 +24,11 @@ public class TraceIdFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain
     ) throws ServletException, IOException {
-
-        String traceId = request.getHeader("X-Trace-Id");
-
-        if (traceId == null || traceId.isBlank()) {
-            traceId = UUID.randomUUID().toString();
-        }
-
-        MDC.put(TRACE_ID, traceId);
-        response.setHeader("X-Trace-Id", traceId);
-
+        MDC.put(INSTANCE_ID_KEY, INSTANCE_ID);
         try {
             filterChain.doFilter(request, response);
         } finally {
-            MDC.remove(TRACE_ID);
+            MDC.remove(INSTANCE_ID_KEY);
         }
     }
 }

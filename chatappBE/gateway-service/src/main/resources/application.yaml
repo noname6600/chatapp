@@ -251,3 +251,7 @@ common:
         - HEAD
       allowed-headers:
         - "*"
+
+logging:
+  pattern:
+    level: "%5p [${spring.application.name:},%X{instanceId:-},%X{trace_id:-}]"

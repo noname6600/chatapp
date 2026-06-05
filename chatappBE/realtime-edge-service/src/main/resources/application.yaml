@@ -80,6 +80,8 @@ services:
       read-timeout-ms: ${NOTIFICATION_HTTP_READ_TIMEOUT_MS:2000}
 
 logging:
+  pattern:
+    level: "%5p [${spring.application.name:},%X{instanceId:-},%X{trace_id:-}]"
   level:
     root: INFO
     com.chatweb.realtime: DEBUG

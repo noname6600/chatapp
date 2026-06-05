@@ -57,6 +57,6 @@ upload:
 
 logging:
   pattern:
-    level: "%5p [${spring.application.name:},%X{traceId}]"
+    level: "%5p [${spring.application.name:},%X{instanceId:-},%X{trace_id:-}]"
 
 

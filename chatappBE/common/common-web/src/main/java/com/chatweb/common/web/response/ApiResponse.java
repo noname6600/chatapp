@@ -28,7 +28,7 @@ public class ApiResponse<T> {
                 .success(true)
                 .timestamp(Instant.now())
                 .data(data)
-                .traceId(MDC.get("traceId"))
+                .traceId(MDC.get("trace_id"))
                 .build();
     }
 
@@ -36,7 +36,7 @@ public class ApiResponse<T> {
         return ApiResponse.<Void>builder()
                 .success(true)
                 .timestamp(Instant.now())
-                .traceId(MDC.get("traceId"))
+                .traceId(MDC.get("trace_id"))
                 .build();
     }
 
@@ -45,7 +45,7 @@ public class ApiResponse<T> {
                 .success(false)
                 .timestamp(Instant.now())
                 .error(error)
-                .traceId(MDC.get("traceId"))
+                .traceId(MDC.get("trace_id"))
                 .build();
     }
 }

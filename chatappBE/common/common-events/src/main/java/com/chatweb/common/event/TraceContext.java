@@ -4,7 +4,7 @@ import org.slf4j.MDC;
 
 public final class TraceContext {
 
-    private static final String TRACE_ID_KEY = "traceId";
+    private static final String TRACE_ID_KEY = "trace_id";
 
     private TraceContext() {
     }
