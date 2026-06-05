@@ -1,7 +1,7 @@
 package com.chatweb.common.web.response;
 
+import io.opentelemetry.api.trace.Span;
 import lombok.Getter;
-import org.slf4j.MDC;
 
 import java.time.Instant;
 
@@ -28,7 +28,7 @@ public class ApiResponse<T> {
                 .success(true)
                 .timestamp(Instant.now())
                 .data(data)
-                .traceId(MDC.get("trace_id"))
+                .traceId(currentTraceId())
                 .build();
     }
 
@@ -36,7 +36,7 @@ public class ApiResponse<T> {
         return ApiResponse.<Void>builder()
                 .success(true)
                 .timestamp(Instant.now())
-                .traceId(MDC.get("trace_id"))
+                .traceId(currentTraceId())
                 .build();
     }
 
@@ -45,7 +45,12 @@ public class ApiResponse<T> {
                 .success(false)
                 .timestamp(Instant.now())
                 .error(error)
-                .traceId(MDC.get("trace_id"))
+                .traceId(currentTraceId())
                 .build();
+    }
+
+    private static String currentTraceId() {
+        var ctx = Span.current().getSpanContext();
+        return ctx.isValid() ? ctx.getTraceId() : null;
     }
 }
