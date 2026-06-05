@@ -173,6 +173,7 @@ services:
   # ─────────────────────────────────────────────────────────
   auth-service: &auth-service-base
     container_name: chatappbe-auth-service
+    hostname: chatappbe-auth-service
     mem_limit: 768m
     build:
       context: .
@@ -219,6 +220,7 @@ services:
   auth-service-2:
     <<: *auth-service-base
     container_name: chatappbe-auth-service-2
+    hostname: chatappbe-auth-service-2
     networks:
       chatapp-net:
         aliases:
@@ -226,6 +228,7 @@ services:
 
   user-service: &user-service-base
     container_name: chatappbe-user-service
+    hostname: chatappbe-user-service
     mem_limit: 640m
     build:
       context: .
@@ -266,6 +269,7 @@ services:
   user-service-2:
     <<: *user-service-base
     container_name: chatappbe-user-service-2
+    hostname: chatappbe-user-service-2
     networks:
       chatapp-net:
         aliases:
@@ -273,6 +277,7 @@ services:
 
   chat-service: &chat-service-base
     container_name: chatappbe-chat-service
+    hostname: chatappbe-chat-service
     mem_limit: 768m
     build:
       context: .
@@ -318,6 +323,7 @@ services:
   chat-service-2:
     <<: *chat-service-base
     container_name: chatappbe-chat-service-2
+    hostname: chatappbe-chat-service-2
     depends_on:
       postgres:
         condition: service_healthy
@@ -338,6 +344,7 @@ services:
 
   presence-service: &presence-service-base
     container_name: chatappbe-presence-service
+    hostname: chatappbe-presence-service
     mem_limit: 512m
     build:
       context: .
@@ -377,6 +384,7 @@ services:
   presence-service-2:
     <<: *presence-service-base
     container_name: chatappbe-presence-service-2
+    hostname: chatappbe-presence-service-2
     depends_on:
       redis:
         condition: service_healthy
@@ -395,6 +403,7 @@ services:
 
   friendship-service: &friendship-service-base
     container_name: chatappbe-friendship-service
+    hostname: chatappbe-friendship-service
     mem_limit: 640m
     build:
       context: .
@@ -439,6 +448,7 @@ services:
   friendship-service-2:
     <<: *friendship-service-base
     container_name: chatappbe-friendship-service-2
+    hostname: chatappbe-friendship-service-2
     depends_on:
       postgres:
         condition: service_healthy
@@ -459,6 +469,7 @@ services:
 
   notification-service: &notification-service-base
     container_name: chatappbe-notification-service
+    hostname: chatappbe-notification-service
     mem_limit: 640m
     build:
       context: .
@@ -501,6 +512,7 @@ services:
   notification-service-2:
     <<: *notification-service-base
     container_name: chatappbe-notification-service-2
+    hostname: chatappbe-notification-service-2
     depends_on:
       postgres:
         condition: service_healthy
@@ -521,6 +533,7 @@ services:
 
   realtime-edge-service: &realtime-edge-service-base
     container_name: chatappbe-realtime-edge-service
+    hostname: chatappbe-realtime-edge-service
     mem_limit: 640m
     build:
       context: .
@@ -559,6 +572,7 @@ services:
   realtime-edge-service-2:
     <<: *realtime-edge-service-base
     container_name: chatappbe-realtime-edge-service-2
+    hostname: chatappbe-realtime-edge-service-2
     environment:
       <<: [*otel-env, *realtime-edge-env]
       OTEL_SERVICE_NAME: "realtime-edge-service"
@@ -570,6 +584,7 @@ services:
 
   upload-service: &upload-service-base
     container_name: chatappbe-upload-service
+    hostname: chatappbe-upload-service
     mem_limit: 384m
     build:
       context: .
@@ -604,6 +619,7 @@ services:
   upload-service-2:
     <<: *upload-service-base
     container_name: chatappbe-upload-service-2
+    hostname: chatappbe-upload-service-2
     networks:
       chatapp-net:
         aliases:
@@ -614,6 +630,7 @@ services:
   # ─────────────────────────────────────────────────────────
   gateway-service: &gateway-service-base
     container_name: chatappbe-gateway-service
+    hostname: chatappbe-gateway-service
     mem_limit: 640m
     build:
       context: .
@@ -678,6 +695,7 @@ services:
   gateway-service-2:
     <<: *gateway-service-base
     container_name: chatappbe-gateway-service-2
+    hostname: chatappbe-gateway-service-2
 
   # ─────────────────────────────────────────────────────────
   # FRONTEND
