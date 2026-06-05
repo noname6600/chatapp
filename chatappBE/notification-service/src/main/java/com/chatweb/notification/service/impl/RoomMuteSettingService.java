@@ -33,6 +33,7 @@ public class RoomMuteSettingService {
 
     public RoomNotificationMode getMode(UUID userId, UUID roomId) {
         return repository.findByIdUserIdAndIdRoomId(userId, roomId)
+                .stream().findFirst()
                 .map(this::resolveMode)
                 .orElse(RoomNotificationMode.NO_RESTRICT);
     }

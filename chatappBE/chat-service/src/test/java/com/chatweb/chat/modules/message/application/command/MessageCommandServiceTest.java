@@ -90,7 +90,7 @@ class MessageCommandServiceTest {
                 .build();
 
         when(messageRepository.findByRoomIdAndClientMessageId(roomId, clientMessageId))
-                .thenReturn(Optional.of(existingMessage));
+                .thenReturn(List.of(existingMessage));
         when(attachmentRepository.findByMessageId(existingMessage.getId()))
                 .thenReturn(Collections.emptyList()); // Keep this for idempotency check path
         when(mapper.toResponse(eq(existingMessage), any(), any()))
@@ -141,7 +141,7 @@ class MessageCommandServiceTest {
     @Test
     void sendMessage_withNewClientMessageId_proceedsThroughPipeline() {
         when(messageRepository.findByRoomIdAndClientMessageId(eq(roomId), eq(clientMessageId)))
-                .thenReturn(Optional.empty());
+                .thenReturn(List.of());
 
         ChatMessage savedMessage = ChatMessage.builder()
                 .id(UUID.randomUUID())
@@ -182,7 +182,7 @@ class MessageCommandServiceTest {
         when(roomMemberRepository.existsByRoomIdAndUserId(roomId, invalidMention))
                 .thenReturn(false);
         when(messageRepository.findByRoomIdAndClientMessageId(eq(roomId), eq(clientMessageId)))
-                .thenReturn(Optional.empty());
+                .thenReturn(List.of());
 
         ChatMessage savedMessage = ChatMessage.builder()
                 .id(UUID.randomUUID())
@@ -282,7 +282,7 @@ class MessageCommandServiceTest {
                 .build();
 
         when(messageRepository.findByRoomIdAndClientMessageId(eq(roomId), eq(clientMessageId)))
-                .thenReturn(Optional.empty());
+                .thenReturn(List.of());
         when(roomRepository.findById(inviteRoomId)).thenReturn(Optional.of(inviteRoom));
         when(roomMemberRepository.existsByRoomIdAndUserId(inviteRoomId, senderId)).thenReturn(true);
         when(roomMemberRepository.countByRoomId(inviteRoomId)).thenReturn(7L);

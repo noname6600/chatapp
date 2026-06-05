@@ -6,9 +6,12 @@ import com.chatweb.chat.modules.room.dto.RoomResponse;
 import com.chatweb.common.redis.cache.api.ITimeRedisCacheManager;
 import com.chatweb.common.redis.cache.exception.CreateCacheException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -18,6 +21,10 @@ import java.util.stream.Collectors;
 public class RedisRoomListCacheAdapter implements RoomListCachePort {
 
     private final ITimeRedisCacheManager cacheManager;
+    private final StringRedisTemplate stringRedisTemplate;
+
+    @Value("${spring.application.name}")
+    private String serviceName;
 
     @Override
     public List<RoomResponse> getRooms(UUID userId) {
@@ -51,6 +58,15 @@ public class RedisRoomListCacheAdapter implements RoomListCachePort {
             cacheManager.evict(CacheNames.ROOMS, roomsKey(userId));
         } catch (CreateCacheException ignored) {
         }
+    }
+
+    @Override
+    public void evictRoomsBulk(Collection<UUID> userIds) {
+        if (userIds == null || userIds.isEmpty()) return;
+        List<String> keys = userIds.stream()
+                .map(id -> serviceName + "::" + CacheNames.ROOMS + "::" + roomsKey(id))
+                .collect(Collectors.toList());
+        stringRedisTemplate.delete(keys);
     }
 
     private String roomsKey(UUID userId) {

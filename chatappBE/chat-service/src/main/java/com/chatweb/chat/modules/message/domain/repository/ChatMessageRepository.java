@@ -90,7 +90,7 @@ public interface ChatMessageRepository
             @Param("roomIds") Collection<UUID> roomIds
     );
 
-    Optional<ChatMessage> findByRoomIdAndClientMessageId(
+    List<ChatMessage> findByRoomIdAndClientMessageId(
             UUID roomId,
             String clientMessageId
     );

@@ -2,6 +2,7 @@ package com.chatweb.notification.application;
 
 import com.chatweb.common.integration.chat.ChatMessagePayload;
 import com.chatweb.notification.entity.NotificationType;
+import com.chatweb.notification.entity.RoomMuteSetting;
 import com.chatweb.notification.entity.RoomNotificationMode;
 import com.chatweb.notification.repository.NotificationRepository;
 import com.chatweb.notification.repository.RoomMuteSettingRepository;
@@ -13,7 +14,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -55,9 +59,13 @@ public class NotificationMessageEventApplicationService {
         log.info("[NOTI] Processing message {} | sender={} replyToAuthorId={} mentionedUsers={} recipients={}",
                 payload.getMessageId(), senderId, replyToAuthorId, mentionedUserIds, recipientUserIds);
 
+        Map<UUID, RoomMuteSetting> muteSettings = roomMuteSettingRepository.findAllByIdRoomId(roomId)
+                .stream()
+                .collect(Collectors.toMap(s -> s.getId().getUserId(), s -> s));
+
         for (UUID recipientUserId : recipientUserIds) {
             try {
-                RoomNotificationMode mode = roomMuteSettingRepository.findByIdUserIdAndIdRoomId(recipientUserId, roomId)
+                RoomNotificationMode mode = Optional.ofNullable(muteSettings.get(recipientUserId))
                         .map(roomMuteSettingService::resolveMode)
                         .orElse(RoomNotificationMode.NO_RESTRICT);
 

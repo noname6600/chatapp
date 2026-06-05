@@ -20,9 +20,7 @@ public class RoomCacheInvalidationPolicy {
     }
 
     public void evictRoomsForUsers(Collection<UUID> userIds) {
-        for (UUID userId : userIds) {
-            roomListCachePort.evictRooms(userId);
-        }
+        roomListCachePort.evictRoomsBulk(userIds);
     }
 
     public void evictRoomsForRoomMembers(UUID roomId) {

@@ -65,7 +65,7 @@ public class MessageCommandService
         if (clientMessageId != null) {
             ChatMessage existing = messageRepository
                     .findByRoomIdAndClientMessageId(request.getRoomId(), clientMessageId)
-                    .orElse(null);
+                    .stream().findFirst().orElse(null);
             if (existing != null) {
                 List<ChatAttachment> attachments =
                         attachmentRepository.findByMessageId(existing.getId());
