@@ -30,6 +30,9 @@ x-otel-env: &otel-env
   OTEL_METRICS_EXPORTER: "none"
   OTEL_LOGS_EXPORTER: "none"
   JAVA_TOOL_OPTIONS: "-javaagent:/otel/opentelemetry-javaagent.jar"
+  # Keep 20% of successful traces; errors are always kept via parentbased sampler.
+  OTEL_TRACES_SAMPLER: "parentbased_traceidratio"
+  OTEL_TRACES_SAMPLER_ARG: "0.2"
 
 services:
 
@@ -787,11 +790,44 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: chatapp-node-exporter
+    command:
+      - '--path.rootfs=/host'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host:ro,rslave
+    pid: host
+    networks:
+      - chatapp-net
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: chatapp-alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--config.expand-env=true'
+    environment:
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM: ${RESEND_FROM:-}
+    volumes:
+      - ./docker/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    networks:
+      - chatapp-net
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:v2.55.0
     container_name: chatapp-prometheus
     volumes:
       - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/prometheus/rules:/etc/prometheus/rules:ro
       - prometheus-data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -850,6 +886,7 @@ volumes:
   postgres-data:
   prometheus-data:
   grafana-data:
+  alertmanager-data:
   otel-agent:
   tempo-data:
   loki-data:

@@ -1,0 +1,153 @@
+groups:
+
+  # ── Service availability ───────────────────────────────────────────────────
+  - name: services
+    rules:
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} ({{ $labels.instance }}) is down"
+          description: "Scrape target has been unreachable for more than 1 minute."
+
+      - alert: HighHttpErrorRate
+        expr: |
+          sum(rate(http_server_requests_seconds_count{outcome="SERVER_ERROR"}[5m])) by (job)
+          /
+          sum(rate(http_server_requests_seconds_count[5m])) by (job)
+          > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High HTTP 5xx error rate on {{ $labels.job }}"
+          description: "More than 5% of requests are returning 5xx errors."
+
+      - alert: HighHttpLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_server_requests_seconds_bucket[5m])) by (job, le)
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High p95 latency on {{ $labels.job }}"
+          description: "p95 response time is above 2 seconds."
+
+  # ── JVM health ────────────────────────────────────────────────────────────
+  - name: jvm
+    rules:
+      - alert: HighJvmHeapUsage
+        expr: |
+          jvm_memory_used_bytes{area="heap"}
+          / jvm_memory_max_bytes{area="heap"}
+          > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High JVM heap usage on {{ $labels.job }} ({{ $labels.instance }})"
+          description: "JVM heap is above 85% for 5 minutes — risk of OOM."
+
+      - alert: JvmGcPressure
+        expr: |
+          sum(rate(jvm_gc_pause_seconds_sum[5m])) by (job, instance)
+          / sum(rate(jvm_gc_pause_seconds_count[5m])) by (job, instance)
+          > 0.3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High GC pause time on {{ $labels.job }} ({{ $labels.instance }})"
+          description: "Average GC pause is above 300ms."
+
+  # ── Kafka ─────────────────────────────────────────────────────────────────
+  - name: kafka
+    rules:
+      - alert: HighKafkaConsumerLag
+        expr: kafka_consumergroup_lag > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Kafka consumer lag is high ({{ $labels.consumergroup }} / {{ $labels.topic }})"
+          description: "Consumer lag is above 1000 messages for 5 minutes."
+
+      - alert: KafkaPublishErrors
+        expr: rate(kafka_publish_error_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Kafka publish errors on {{ $labels.job }}"
+          description: "Kafka publish error rate is above 0.1/s for 5 minutes."
+
+  # ── Realtime / WebSocket ──────────────────────────────────────────────────
+  - name: realtime
+    rules:
+      - alert: WebSocketDeliveryDrops
+        expr: rate(realtime_delivery_queue_drop_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "WebSocket delivery queue is dropping messages on {{ $labels.instance }}"
+          description: "Messages are being dropped because the outbound queue is full."
+
+      - alert: HandoffPublishFailures
+        expr: rate(realtime_dispatch_remote_handoff_publish_failure_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Cross-instance handoff failures on {{ $labels.instance }}"
+          description: "Messages destined for another edge instance are failing to publish."
+
+  # ── Host (Node Exporter) ──────────────────────────────────────────────────
+  - name: node
+    rules:
+      - alert: HighCpuUsage
+        expr: |
+          100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage has been above 80% for 10 minutes."
+
+      - alert: LowDiskSpace
+        expr: |
+          (
+            node_filesystem_avail_bytes{mountpoint="/", fstype!="rootfs"}
+            / node_filesystem_size_bytes{mountpoint="/", fstype!="rootfs"}
+          ) * 100 < 10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Low disk space on {{ $labels.instance }}"
+          description: "Less than 10% disk space remaining on /."
+
+      - alert: HighMemoryUsage
+        expr: |
+          (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 90
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is above 90% — risk of OOM kill."
+
+      - alert: DiskWillFillIn24h
+        expr: |
+          predict_linear(node_filesystem_avail_bytes{mountpoint="/"}[6h], 24 * 3600) < 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk will fill within 24 hours on {{ $labels.instance }}"
+          description: "Based on current write rate, disk will be full in less than 24 hours."
