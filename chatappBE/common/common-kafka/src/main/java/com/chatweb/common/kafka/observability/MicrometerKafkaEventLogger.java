@@ -36,7 +36,8 @@ public class MicrometerKafkaEventLogger implements KafkaEventObserver {
     public void logError(KafkaEventRoutingContext context, EventEnvelope<?> event, Throwable ex) {
         registry.counter("kafka.publish.error",
                 "topic", tag(context.topic()),
-                "event_type", tag(context.eventType())
+                "event_type", tag(context.eventType()),
+                "exception", ex != null ? ex.getClass().getSimpleName() : "unknown"
         ).increment();
     }
 

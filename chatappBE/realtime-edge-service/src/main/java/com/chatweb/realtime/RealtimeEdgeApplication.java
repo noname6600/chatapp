@@ -1,10 +1,8 @@
 package com.chatweb.realtime;
 
-import com.chatweb.common.web.filter.TraceIdFilter;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.ComponentScan;
-import org.springframework.context.annotation.Import;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
@@ -21,7 +19,6 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @SpringBootApplication
 @EnableScheduling
 @ComponentScan(basePackages = {"com.chatweb.common", "com.chatweb.realtime"})
-@Import(TraceIdFilter.class)
 public class RealtimeEdgeApplication {
 
     public static void main(String[] args) {

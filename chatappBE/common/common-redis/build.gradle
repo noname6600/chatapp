@@ -33,6 +33,7 @@ dependencyManagement {
 dependencies {
     api project(':common:common-events')
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+    implementation 'io.opentelemetry:opentelemetry-api:1.44.1'
     compileOnly 'io.micrometer:micrometer-core'
     implementation 'com.fasterxml.jackson.core:jackson-databind'
     implementation "com.fasterxml.jackson.datatype:jackson-datatype-jsr310"

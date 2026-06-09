@@ -3,6 +3,7 @@ package com.chatweb.common.kafka.config;
 import com.chatweb.common.kafka.consumer.KafkaEventDispatcher;
 import com.chatweb.common.kafka.consumer.KafkaEventHandler;
 import com.chatweb.common.kafka.consumer.UnknownKafkaEventPolicy;
+import com.chatweb.common.kafka.observability.CompositeKafkaEventObserver;
 import com.chatweb.common.kafka.observability.KafkaEventObserver;
 import com.chatweb.common.kafka.observability.MicrometerKafkaEventLogger;
 import com.chatweb.common.kafka.observability.Slf4jKafkaEventLogger;
@@ -40,13 +41,17 @@ import java.util.Map;
 @EnableConfigurationProperties(KafkaRetryDlqPolicy.class)
 public class KafkaAutoConfiguration {
 
-    // ── Observer: prefer Micrometer when available, fall back to SLF4J ──────
+    // ── Observer: composite (Micrometer + SLF4J) when MeterRegistry is available,
+    //             fall back to SLF4J-only ──────────────────────────────────────
 
     @Bean
     @ConditionalOnMissingBean(KafkaEventObserver.class)
     @ConditionalOnClass(MeterRegistry.class)
     public KafkaEventObserver micrometerKafkaEventObserver(MeterRegistry registry) {
-        return new MicrometerKafkaEventLogger(registry);
+        return new CompositeKafkaEventObserver(
+                new MicrometerKafkaEventLogger(registry),
+                new Slf4jKafkaEventLogger()
+        );
     }
 
     @Bean

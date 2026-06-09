@@ -12,9 +12,9 @@ datasources:
     jsonData:
       derivedFields:
         # Extracts the 32-char hex trace ID from log pattern:
-        # "%5p [service-name,instance-id,<trace_id>]"
+        # "%5p [service-name,hostname,<trace_id>,<span_id>]"
         - datasourceUid: tempo
-          matcherRegex: ',([0-9a-f]{32})\]'
+          matcherRegex: ',([0-9a-f]{32}),'
           name: TraceID
           url: '${__value.raw}'
           urlDisplayLabel: Open in Tempo

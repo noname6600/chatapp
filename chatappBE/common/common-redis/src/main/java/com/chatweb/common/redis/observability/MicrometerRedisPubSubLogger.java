@@ -38,7 +38,11 @@ public class MicrometerRedisPubSubLogger implements RedisPubSubObserver {
         registry.counter("redis.deserialize.error", "channel", tag(channel)).increment();
     }
 
-    private String tag(String value) {
-        return value != null ? value : "unknown";
+    // Normalize dynamic IDs out of channel names to prevent cardinality explosion.
+    // e.g. "realtime.chat.room.550e8400-e29b-41d4-a716-446655440000" → "realtime.chat.room.{id}"
+    private String tag(String channel) {
+        if (channel == null) return "unknown";
+        return channel.replaceAll(
+                "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "{id}");
     }
 }

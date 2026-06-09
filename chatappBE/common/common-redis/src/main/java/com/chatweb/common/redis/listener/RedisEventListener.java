@@ -4,11 +4,15 @@ import com.chatweb.common.event.EventEnvelope;
 import com.chatweb.common.redis.dispatcher.RedisEventDispatcher;
 import com.chatweb.common.redis.observability.RedisPubSubObserver;
 import com.chatweb.common.redis.serialization.RedisEventSerializer;
+import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.connection.Message;
 import org.springframework.data.redis.connection.MessageListener;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 /**
  * Canonical Redis event listener.
@@ -33,7 +37,15 @@ public class RedisEventListener implements MessageListener {
             return;
         }
 
-        try {
+        // Restore the publisher's trace context so this dispatch is a child span
+        // of the original request that published the event.
+        String traceparent = envelope.metadata().getTraceparent();
+        Context parent = traceparent != null
+                ? GlobalOpenTelemetry.getPropagators().getTextMapPropagator()
+                        .extract(Context.current(), Map.of("traceparent", traceparent), Map::get)
+                : Context.current();
+
+        try (Scope ignored = parent.makeCurrent()) {
             logger.logReceive(channel, envelope);
             dispatcher.dispatch(channel, envelope);
         } catch (Exception ex) {

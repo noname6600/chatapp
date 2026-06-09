@@ -47,7 +47,7 @@ common:
 
 logging:
   pattern:
-    level: "%5p [${spring.application.name:},%X{instanceId:-},%X{trace_id:-}]"
+    level: "%5p [${spring.application.name:},${HOSTNAME:unknown},%X{trace_id:-},%X{span_id:-}]"
 
 presence:
   auto-away-threshold-seconds: 60

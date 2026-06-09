@@ -24,3 +24,10 @@ scrape_configs:
       # Docker Compose project → "project" label
       - source_labels: ['__meta_docker_container_label_com_docker_compose_project']
         target_label: compose_project
+    pipeline_stages:
+      # Extract fields from Spring Boot log pattern:
+      # "<timestamp>  INFO [<app>,<instance_id>,<trace_id>,<span_id>] ..."
+      - regex:
+          expression: '^\S+\s+\w+\s+\[(?P<app>[^,]+),(?P<instance_id>[^,]*),(?P<trace_id>[^,\]]*),(?P<span_id>[^\]]*)\]'
+      - labels:
+          instance_id:

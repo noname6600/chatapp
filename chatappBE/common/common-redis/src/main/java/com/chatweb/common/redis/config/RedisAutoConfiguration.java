@@ -2,6 +2,7 @@ package com.chatweb.common.redis.config;
 
 import com.chatweb.common.redis.dispatcher.RedisEventDispatcher;
 import com.chatweb.common.redis.listener.RedisEventListener;
+import com.chatweb.common.redis.observability.CompositeRedisPubSubObserver;
 import com.chatweb.common.redis.observability.MicrometerRedisPubSubLogger;
 import com.chatweb.common.redis.observability.RedisPubSubObserver;
 import com.chatweb.common.redis.observability.Slf4jRedisPubSubLogger;
@@ -31,7 +32,10 @@ public class RedisAutoConfiguration {
     @ConditionalOnMissingBean(RedisPubSubObserver.class)
     @ConditionalOnClass(MeterRegistry.class)
     public RedisPubSubObserver micrometerRedisPubSubObserver(MeterRegistry registry) {
-        return new MicrometerRedisPubSubLogger(registry);
+        return new CompositeRedisPubSubObserver(
+                new MicrometerRedisPubSubLogger(registry),
+                new Slf4jRedisPubSubLogger()
+        );
     }
 
     @Bean

@@ -15,7 +15,7 @@ ingester:
 
 compactor:
   compaction:
-    block_retention: 48h
+    block_retention: 168h
 
 storage:
   trace:
@@ -33,6 +33,9 @@ metrics_generator:
     path: /var/tempo/generator/wal
   traces_storage:
     path: /var/tempo/generator/traces
+  remote_write:
+    - url: http://prometheus:9090/api/v1/write
+      send_exemplars: true
 
 overrides:
   defaults:

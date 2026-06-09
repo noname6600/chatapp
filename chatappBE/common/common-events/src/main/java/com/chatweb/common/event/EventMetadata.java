@@ -29,6 +29,9 @@ public final class EventMetadata {
     private final String sourceService;
     private final Instant createdAt;
     private final String correlationId;
+    // W3C traceparent for propagating trace context through Redis pub/sub.
+    // Nullable — absent on events created before this field was added.
+    private final String traceparent;
     
     /**
      * Creates event metadata with all required fields.
@@ -39,13 +42,24 @@ public final class EventMetadata {
      * @param createdAt creation timestamp
      * @param correlationId correlation ID for tracing
      */
+    // Convenience constructor — no traceparent (used by all existing call sites).
+    public EventMetadata(
+            String eventId,
+            String eventType,
+            String sourceService,
+            Instant createdAt,
+            String correlationId) {
+        this(eventId, eventType, sourceService, createdAt, correlationId, null);
+    }
+
     @JsonCreator
     public EventMetadata(
             @JsonProperty("eventId") String eventId,
             @JsonProperty("eventType") String eventType,
             @JsonProperty("sourceService") String sourceService,
             @JsonProperty("createdAt") Instant createdAt,
-            @JsonProperty("correlationId") String correlationId) {
+            @JsonProperty("correlationId") String correlationId,
+            @JsonProperty("traceparent") String traceparent) {
         if (eventId == null || eventId.isBlank()) {
             throw new IllegalArgumentException("eventId must not be null or blank");
         }
@@ -66,6 +80,7 @@ public final class EventMetadata {
         this.sourceService = sourceService;
         this.createdAt = createdAt;
         this.correlationId = correlationId;
+        this.traceparent = traceparent;
     }
     
     /**
@@ -97,6 +112,7 @@ public final class EventMetadata {
                 ", sourceService='" + sourceService + '\'' +
                 ", createdAt=" + createdAt +
                 ", correlationId='" + correlationId + '\'' +
+                ", traceparent='" + traceparent + '\'' +
                 '}';
     }
 }

@@ -7,8 +7,12 @@ import com.chatweb.common.redis.exception.RedisPubSubException;
 import com.chatweb.common.redis.flow.RedisEventRoutingContext;
 import com.chatweb.common.redis.observability.RedisPubSubObserver;
 import com.chatweb.common.redis.serialization.RedisEventSerializer;
+import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.context.Context;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
+
+import java.util.HashMap;
 
 @RequiredArgsConstructor
 public class DefaultRedisEventPublisher implements RedisEventPublisher {
@@ -25,6 +29,10 @@ public class DefaultRedisEventPublisher implements RedisEventPublisher {
         if (eventEnvelope == null) {
             throw new IllegalArgumentException("Redis envelope must not be null");
         }
+        // Inject current W3C traceparent into the envelope so the subscriber can
+        // restore the trace context and continue the same trace across the channel.
+        eventEnvelope = injectTraceparent(eventEnvelope);
+
         RedisEventRoutingContext context = RedisEventRoutingContext.of(channel, eventEnvelope);
         EventMetadata metadata = eventEnvelope.metadata();
 
@@ -50,5 +58,20 @@ public class DefaultRedisEventPublisher implements RedisEventPublisher {
             logger.logError(context, eventEnvelope, ex);
             throw new RedisPubSubException(channel, "Failed at Redis lifecycle stage PUBLISH", ex);
         }
+    }
+
+    private <T> EventEnvelope<T> injectTraceparent(EventEnvelope<T> envelope) {
+        var carrier = new HashMap<String, String>();
+        GlobalOpenTelemetry.getPropagators().getTextMapPropagator()
+                .inject(Context.current(), carrier, HashMap::put);
+        String traceparent = carrier.get("traceparent");
+        if (traceparent == null) {
+            return envelope;
+        }
+        EventMetadata original = envelope.metadata();
+        EventMetadata enriched = new EventMetadata(
+                original.getEventId(), original.getEventType(), original.getSourceService(),
+                original.getCreatedAt(), original.getCorrelationId(), traceparent);
+        return new EventEnvelope<>(enriched, envelope.payload());
     }
 }
