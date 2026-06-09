@@ -7,6 +7,7 @@ import com.chatweb.common.redis.serialization.RedisEventSerializer;
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.context.Scope;
+import io.opentelemetry.context.propagation.TextMapGetter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.connection.Message;
 import org.springframework.data.redis.connection.MessageListener;
@@ -19,6 +20,18 @@ import java.util.Map;
  */
 @RequiredArgsConstructor
 public class RedisEventListener implements MessageListener {
+
+    private static final TextMapGetter<Map<String, String>> MAP_GETTER = new TextMapGetter<>() {
+        @Override
+        public Iterable<String> keys(Map<String, String> carrier) {
+            return carrier.keySet();
+        }
+
+        @Override
+        public String get(Map<String, String> carrier, String key) {
+            return carrier.get(key);
+        }
+    };
 
     private final RedisEventSerializer serializer;
     private final RedisEventDispatcher dispatcher;
@@ -42,7 +55,7 @@ public class RedisEventListener implements MessageListener {
         String traceparent = envelope.metadata().getTraceparent();
         Context parent = traceparent != null
                 ? GlobalOpenTelemetry.getPropagators().getTextMapPropagator()
-                        .extract(Context.current(), Map.of("traceparent", traceparent), Map::get)
+                        .extract(Context.current(), Map.of("traceparent", traceparent), MAP_GETTER)
                 : Context.current();
 
         try (Scope ignored = parent.makeCurrent()) {
