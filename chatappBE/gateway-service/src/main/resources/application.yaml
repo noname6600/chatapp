@@ -162,6 +162,22 @@ spring:
                     name: upload-cb
                     fallbackUri: forward:/fallback/service-unavailable
 
+            - id: voice-service
+              uri: http://${VOICE_SERVICE_HOST:localhost}:${VOICE_SERVICE_PORT:8091}
+              predicates:
+                - Path=/api/v1/voice/**,/api/voice/**
+              filters:
+                - RewritePath=/api(?:/v1)?/voice(?<segment>.*), /api/v1/voice${segment}
+                - JwtAuthFilter
+                - name: Retry
+                  args:
+                    retries: 2
+                    statuses: BAD_GATEWAY, SERVICE_UNAVAILABLE
+                - name: CircuitBreaker
+                  args:
+                    name: voice-cb
+                    fallbackUri: forward:/fallback/service-unavailable
+
 resilience4j:
   circuitbreaker:
     configs:
@@ -184,6 +200,8 @@ resilience4j:
         baseConfig: default
       upload-cb:
         baseConfig: default
+      voice-cb:
+        baseConfig: default
 
   timelimiter:
     configs:
@@ -201,6 +219,8 @@ resilience4j:
       notification-cb:
         baseConfig: default
       upload-cb:
+        baseConfig: default
+      voice-cb:
         baseConfig: default
 
 management:
@@ -231,6 +251,7 @@ gateway:
       - http://${NOTIFICATION_SERVICE_HOST:localhost}:${NOTIFICATION_SERVICE_PORT:8086}
       - http://${REALTIME_EDGE_SERVICE_HOST:localhost}:${REALTIME_EDGE_SERVICE_PORT:8090}
       - http://${UPLOAD_SERVICE_HOST:localhost}:${UPLOAD_SERVICE_PORT:8088}
+      - http://${VOICE_SERVICE_HOST:localhost}:${VOICE_SERVICE_PORT:8091}
 
   security:
     jwt:

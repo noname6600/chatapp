@@ -23,6 +23,9 @@ import com.chatweb.common.integration.presence.PresenceUserOfflinePayload;
 import com.chatweb.common.integration.presence.PresenceUserOnlinePayload;
 import com.chatweb.common.integration.presence.PresenceUserStatePayload;
 import com.chatweb.common.integration.user.UserEventType;
+import com.chatweb.common.integration.voice.CallEventPayload;
+import com.chatweb.common.integration.voice.VoiceEventType;
+import com.chatweb.common.integration.voice.VoiceRoomEventPayload;
 
 import java.util.Set;
 
@@ -128,5 +131,19 @@ public final class SharedEventCatalog {
         registry.register(PresenceEventType.ROOM_STOP_TYPING.value(), PresenceStopTypingPayload.class);
         registry.register(PresenceEventType.ROOM_JOIN.value(), PresenceRoomJoinPayload.class);
         registry.register(PresenceEventType.ROOM_LEAVE.value(), PresenceRoomLeavePayload.class);
+
+        // Voice -- room events
+        registry.register(VoiceEventType.VOICE_ROOM_JOINED.value(), VoiceRoomEventPayload.class);
+        registry.register(VoiceEventType.VOICE_ROOM_LEFT.value(), VoiceRoomEventPayload.class);
+        registry.register(VoiceEventType.VOICE_ROOM_CREATED.value(), VoiceRoomEventPayload.class);
+        registry.register(VoiceEventType.VOICE_ROOM_CLOSED.value(), VoiceRoomEventPayload.class);
+
+        // Voice -- call events
+        registry.register(VoiceEventType.CALL_INITIATED.value(), CallEventPayload.class);
+        registry.register(VoiceEventType.CALL_ACCEPTED.value(), CallEventPayload.class);
+        registry.register(VoiceEventType.CALL_DECLINED.value(), CallEventPayload.class);
+        registry.register(VoiceEventType.CALL_CANCELLED.value(), CallEventPayload.class);
+        registry.register(VoiceEventType.CALL_ENDED.value(), CallEventPayload.class);
+        registry.register(VoiceEventType.CALL_MISSED.value(), CallEventPayload.class);
     }
 }

@@ -53,6 +53,7 @@ services:
       FRIENDSHIP_DATABASE_NAME: ${FRIENDSHIP_DATABASE_NAME:-friendship_service}
       NOTIFICATION_DATABASE_NAME: ${NOTIFICATION_DATABASE_NAME:-notification_service}
       PRESENCE_DATABASE_NAME: ${PRESENCE_DATABASE_NAME:-presence_service}
+      VOICE_DATABASE_NAME: ${VOICE_DATABASE_NAME:-voice_service}
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./docker/postgres/init/01-create-databases.sh:/docker-entrypoint-initdb.d/01-create-databases.sh:ro
@@ -113,6 +114,28 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
+
+  # ─────────────────────────────────────────────────────────
+  # LIVEKIT (SFU + built-in STUN/TURN)
+  # ─────────────────────────────────────────────────────────
+  livekit:
+    image: livekit/livekit-server:v1.7.2
+    container_name: chatapp-livekit
+    command: --config /livekit.yaml
+    environment:
+      LIVEKIT_NODE_IP: ${VPS_PUBLIC_IP}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-devsecret_at_least_32_chars_long}
+    volumes:
+      - ./livekit/livekit.yaml:/livekit.yaml:ro
+    ports:
+      - "7881:7881/tcp"
+      - "7881:7881/udp"
+      - "3478:3478/udp"
+      - "50000-50500:50000-50500/udp"
+    networks:
+      - chatapp-net
+    restart: unless-stopped
 
   # ─────────────────────────────────────────────────────────
   # OBSERVABILITY
@@ -629,6 +652,84 @@ services:
           - upload-service
 
   # ─────────────────────────────────────────────────────────
+  # VOICE SERVICE
+  # ─────────────────────────────────────────────────────────
+  voice-service: &voice-service-base
+    container_name: chatappbe-voice-service
+    hostname: chatappbe-voice-service
+    mem_limit: 640m
+    build:
+      context: .
+      dockerfile: voice-service/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      livekit:
+        condition: service_started
+      otel-agent-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: "voice-service"
+      PORT: 8091
+      VOICE_DATABASE_URL: jdbc:postgresql://postgres:5432/${VOICE_DATABASE_NAME:-voice_service}
+      VOICE_DATABASE_USER: ${POSTGRES_USER:-postgres}
+      VOICE_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092,chatapp-kafka:9092}
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:-http://auth-service:8081/.well-known/jwks.json}
+      SERVICES_USER_URL: ${SERVICES_USER_URL:-http://user-service:8082}
+      SERVICES_CHAT_URL: ${SERVICES_CHAT_URL:-http://chat-service:8083}
+      SERVICES_FRIENDSHIP_URL: ${SERVICES_FRIENDSHIP_URL:-http://friendship-service:8085}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-devsecret_at_least_32_chars_long}
+      LIVEKIT_URL_INTERNAL: ${LIVEKIT_URL_INTERNAL:-ws://chatapp-livekit:7880}
+      LIVEKIT_URL_EXTERNAL: ${LIVEKIT_URL_EXTERNAL:-ws://localhost:7880}
+      LIVEKIT_ENABLED: ${LIVEKIT_ENABLED:-true}
+    volumes:
+      - otel-agent:/otel:ro
+    networks:
+      - chatapp-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8091/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 360s
+
+  voice-service-2:
+    <<: *voice-service-base
+    container_name: chatappbe-voice-service-2
+    hostname: chatappbe-voice-service-2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      voice-service:
+        condition: service_healthy
+      otel-agent-init:
+        condition: service_completed_successfully
+    networks:
+      chatapp-net:
+        aliases:
+          - voice-service
+
+  # ─────────────────────────────────────────────────────────
   # API GATEWAY
   # ─────────────────────────────────────────────────────────
   gateway-service: &gateway-service-base
@@ -657,6 +758,8 @@ services:
         condition: service_healthy
       upload-service:
         condition: service_healthy
+      voice-service:
+        condition: service_healthy
       otel-agent-init:
         condition: service_completed_successfully
     environment:
@@ -679,6 +782,8 @@ services:
       UPLOAD_SERVICE_PORT: ${UPLOAD_SERVICE_PORT:-8088}
       REALTIME_EDGE_SERVICE_HOST: ${REALTIME_EDGE_SERVICE_HOST:-realtime-edge-service}
       REALTIME_EDGE_SERVICE_PORT: ${REALTIME_EDGE_SERVICE_PORT:-8090}
+      VOICE_SERVICE_HOST: ${VOICE_SERVICE_HOST:-voice-service}
+      VOICE_SERVICE_PORT: ${VOICE_SERVICE_PORT:-8091}
       SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
       SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
@@ -768,7 +873,7 @@ services:
     command: >
       bash -c "
         echo 'Creating/updating Kafka topics...' &&
-        for topic in chat.message.sent chat.message.events chat.reaction.updated friendship.events friendship.request.events notification.realtime account.created system.dead-letter system.retry; do
+        for topic in chat.message.sent chat.message.events chat.reaction.updated friendship.events friendship.request.events notification.realtime account.created system.dead-letter system.retry voice.room.events voice.call.events; do
           kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic $$topic --partitions 2 --replication-factor 1 &&
           kafka-topics --bootstrap-server kafka:9092 --alter --topic $$topic --partitions 2 2>/dev/null || true;
         done &&

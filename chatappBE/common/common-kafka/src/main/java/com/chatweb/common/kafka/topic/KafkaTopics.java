@@ -36,5 +36,10 @@ public final class KafkaTopics {
 
     // Infrastructure routes â€" transport-specific, no matching event type in common-events
     public static final String TOPIC_SYSTEM_DEAD_LETTER = "system.dead-letter";
+    // Voice routes
+    public static final String TOPIC_VOICE_ROOM_EVENTS = "voice.room.events";
+    public static final String TOPIC_VOICE_CALL_EVENTS = "voice.call.events";
+
+    // Infrastructure routes
     public static final String TOPIC_SYSTEM_RETRY       = "system.retry";
 }

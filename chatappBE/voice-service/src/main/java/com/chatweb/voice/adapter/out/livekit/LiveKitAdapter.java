@@ -1,0 +1,71 @@
+package com.chatweb.voice.adapter.out.livekit;
+
+import com.chatweb.voice.config.LiveKitProperties;
+import com.chatweb.voice.domain.port.out.LiveKitPort;
+import io.livekit.server.AccessToken;
+import io.livekit.server.RoomJoin;
+import io.livekit.server.RoomName;
+import io.livekit.server.RoomServiceClient;
+import livekit.LivekitModels;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+
+import java.util.concurrent.TimeUnit;
+
+@Component
+@RequiredArgsConstructor
+@Slf4j
+public class LiveKitAdapter implements LiveKitPort {
+
+    private static final long TOKEN_TTL_SECONDS = 600; // 10 minutes
+
+    private final LiveKitProperties props;
+    private final RoomServiceClient roomServiceClient;
+
+    @Override
+    public void createRoom(String roomName) {
+        if (!props.isEnabled()) {
+            log.debug("[LIVEKIT-STUB] createRoom roomName={}", roomName);
+            return;
+        }
+        try {
+            LivekitModels.Room room = LivekitModels.Room.newBuilder()
+                    .setName(roomName)
+                    .setEmptyTimeout(300)
+                    .build();
+            roomServiceClient.createRoom(room).execute();
+            log.info("[LIVEKIT] Room created roomName={}", roomName);
+        } catch (Exception ex) {
+            log.warn("[LIVEKIT] createRoom failed roomName={} — may already exist", roomName, ex);
+        }
+    }
+
+    @Override
+    public void deleteRoom(String roomName) {
+        if (!props.isEnabled()) {
+            log.debug("[LIVEKIT-STUB] deleteRoom roomName={}", roomName);
+            return;
+        }
+        try {
+            roomServiceClient.deleteRoom(roomName).execute();
+            log.info("[LIVEKIT] Room deleted roomName={}", roomName);
+        } catch (Exception ex) {
+            log.warn("[LIVEKIT] deleteRoom failed roomName={}", roomName, ex);
+        }
+    }
+
+    @Override
+    public String generateToken(String roomName, String participantIdentity, boolean canPublish, boolean canSubscribe) {
+        if (!props.isEnabled()) {
+            log.debug("[LIVEKIT-STUB] generateToken roomName={} identity={}", roomName, participantIdentity);
+            return "stub-token-" + participantIdentity + "-" + roomName;
+        }
+        AccessToken token = new AccessToken(props.getApiKey(), props.getApiSecret());
+        token.setName(participantIdentity);
+        token.setIdentity(participantIdentity);
+        token.setTtl(TOKEN_TTL_SECONDS, TimeUnit.SECONDS);
+        token.addGrants(new RoomJoin(true), new RoomName(roomName));
+        return token.toJwt();
+    }
+}

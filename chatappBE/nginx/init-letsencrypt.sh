@@ -10,7 +10,7 @@
 set -euo pipefail
 
 EMAIL="${1:?Usage: $0 <email>}"
-DOMAINS=("chatweb.nani.id.vn" "api.chatweb.nani.id.vn")
+DOMAINS=("chatweb.nani.id.vn" "api.chatweb.nani.id.vn" "livekit.chatweb.nani.id.vn")
 RSA_KEY_SIZE=4096
 DATA_PATH="./certbot"
 COMPOSE_ARGS=( -f docker-compose.yml --env-file .env.production )

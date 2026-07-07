@@ -26,4 +26,5 @@ export const API_URL = {
   UPLOAD: buildApiUrl("uploads"),
   FRIEND: buildApiUrl("friends"),
   CHAT_INSTANCE: buildApiUrl("chat"),
+  VOICE: buildApiUrl("voice"),
 };

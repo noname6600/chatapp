@@ -9,6 +9,7 @@ import { ChatEventType } from "../../constants/chatEvents";
 import TypingDots from "../presence/TypingDots";
 import UserAvatar from "../user/UserAvatar";
 import Username from "../user/Username";
+import VoiceChannel from "../voice/VoiceChannel";
 import type { PresenceStatus } from "../../types/presence";
 import { PRESENCE_STATUS_ORDER } from "../../utils/presenceStatus";
 import { isFeatureEnabled } from "../../config/featureFlags";
@@ -125,6 +126,14 @@ export default function RoomMembersSidebar({ roomId }: Props) {
 
   return (
     <div className="h-full flex flex-col bg-white">
+      {/* Voice channel section */}
+      <div className="border-b">
+        <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+          Voice Channel
+        </div>
+        <VoiceChannel chatRoomId={roomId} />
+      </div>
+
       <div className="px-3 py-2.5 border-b flex items-center justify-between gap-2">
         <span className="font-semibold text-sm text-gray-700">Members</span>
         <div className="flex items-center gap-1">

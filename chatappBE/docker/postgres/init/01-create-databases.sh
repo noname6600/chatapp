@@ -19,3 +19,4 @@ create_user_and_database "chat_user"         "chat_password"         "${CHAT_DAT
 create_user_and_database "friendship_user"   "friendship_password"   "${FRIENDSHIP_DATABASE_NAME:-friendship_service}"
 create_user_and_database "notification_user" "notification_password" "${NOTIFICATION_DATABASE_NAME:-notification_service}"
 create_user_and_database "presence_user"     "presence_password"     "${PRESENCE_DATABASE_NAME:-presence_service}"
+create_user_and_database "voice_user"        "voice_password"        "${VOICE_DATABASE_NAME:-voice_service}"

@@ -80,17 +80,19 @@ public class KeyManager implements IKeyManager {
                 redisTemplate.opsForValue().setIfAbsent(ROTATION_LOCK_KEY, lockValue, ROTATION_LOCK_TTL));
 
         if (!acquired) {
-            // Another instance is rotating. Wait briefly then return whatever they saved.
-            try { Thread.sleep(500); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
-            return repo.findLatestActive()
-                    .map(entity -> {
-                        KeyRecord r = toRecord(entity);
-                        keyStore.put(r.getKid(), r);
-                        currentKid = r.getKid();
-                        return r;
-                    })
-                    .orElseThrow(() -> new BusinessException(
-                            CommonErrorCode.INTERNAL_ERROR, "Key rotation in progress but no key found in DB"));
+            // Another instance is rotating. Poll until it saves the key (up to the lock TTL).
+            long deadline = System.currentTimeMillis() + ROTATION_LOCK_TTL.toMillis();
+            while (System.currentTimeMillis() < deadline) {
+                try { Thread.sleep(200); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); break; }
+                Optional<JwtKeyEntity> active = repo.findLatestActive();
+                if (active.isPresent()) {
+                    KeyRecord r = toRecord(active.get());
+                    keyStore.put(r.getKid(), r);
+                    currentKid = r.getKid();
+                    return r;
+                }
+            }
+            throw new BusinessException(CommonErrorCode.INTERNAL_ERROR, "Key rotation in progress but no key found in DB");
         }
 
         try {
