@@ -4,25 +4,18 @@ rtc:
   port_range_start: 50000
   port_range_end: 50500
   tcp_port: 7881
-  # Public IP of the VPS — LiveKit advertises this to clients as the media endpoint.
-  # Without this, WebRTC connections from outside Docker fail.
-  node_ip: ${LIVEKIT_NODE_IP}
-
-# API key → secret map. Variable substitution is supported.
-keys:
-  ${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}
+  # node_ip and keys are passed via --node-ip and --keys CLI flags in docker-compose
+  # so that env var substitution is handled by Docker Compose, not LiveKit's YAML parser.
 
 turn:
   enabled: true
   udp_port: 3478
-  # external_tls: false — LiveKit handles TURN directly, no Nginx TLS for TURN.
-  # Clients use TURNS via the signaling WSS connection (port 443) as fallback.
   external_tls: false
 
 webhook:
   urls:
     - http://voice-service:8091/internal/livekit/webhook
-  api_key: ${LIVEKIT_API_KEY}
+  api_key: chatapp
 
 logging:
   level: info

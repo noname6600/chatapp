@@ -12,7 +12,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class UserSummaryResponse {
-    private UUID id;
+    private UUID accountId;
     private String username;
     private String displayName;
     private String avatarUrl;

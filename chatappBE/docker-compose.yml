@@ -119,13 +119,15 @@ services:
   # LIVEKIT (SFU + built-in STUN/TURN)
   # ─────────────────────────────────────────────────────────
   livekit:
-    image: livekit/livekit-server:v1.7.2
+    image: livekit/livekit-server:v1.13.3
     container_name: chatapp-livekit
-    command: --config /livekit.yaml
-    environment:
-      LIVEKIT_NODE_IP: ${VPS_PUBLIC_IP}
-      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
-      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-devsecret_at_least_32_chars_long}
+    command:
+      - --config
+      - /livekit.yaml
+      - --keys
+      - "${LIVEKIT_API_KEY:-devkey}: ${LIVEKIT_API_SECRET:-devsecret_at_least_32_chars_long}"
+      - --node-ip
+      - "${VPS_PUBLIC_IP}"
     volumes:
       - ./livekit/livekit.yaml:/livekit.yaml:ro
     ports:

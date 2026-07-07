@@ -4,6 +4,7 @@ import {
   RoomEvent,
   Track,
   type RemoteTrack,
+  type RemoteAudioTrack,
   type RemoteParticipant,
   type Participant,
   ConnectionState,
@@ -53,7 +54,7 @@ export function useVoiceRoom(chatRoomId: string | null) {
     if (!room) return
     room.remoteParticipants.forEach((participant: RemoteParticipant) => {
       participant.audioTrackPublications.forEach((pub) => {
-        pub.setVolume(volume)
+        ;(pub.track as RemoteAudioTrack | undefined)?.setVolume(volume)
       })
     })
   }, [])
@@ -92,11 +93,11 @@ export function useVoiceRoom(chatRoomId: string | null) {
 
       // ── Room event listeners ──
 
-      room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, pub, participant: RemoteParticipant) => {
+      room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
         attachAudio(track, participant.sid)
         // Apply current deafen state to newly subscribed track
         if (store.isDeafened && track.kind === Track.Kind.Audio) {
-          pub.setVolume(0)
+          ;(track as RemoteAudioTrack).setVolume(0)
         }
       })
 

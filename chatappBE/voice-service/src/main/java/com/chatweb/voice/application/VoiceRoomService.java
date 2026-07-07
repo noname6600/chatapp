@@ -2,6 +2,7 @@ package com.chatweb.voice.application;
 
 import com.chatweb.common.core.exception.BusinessException;
 import com.chatweb.common.core.exception.CommonErrorCode;
+import com.chatweb.common.web.response.ApiResponse;
 import com.chatweb.voice.adapter.in.web.dto.JoinVoiceRoomResponse;
 import com.chatweb.voice.adapter.in.web.dto.VoiceParticipantDto;
 import com.chatweb.voice.adapter.out.feign.UserServiceClient;
@@ -100,14 +101,15 @@ public class VoiceRoomService {
         List<UUID> ids = participantIds.stream().map(UUID::fromString).collect(Collectors.toList());
         List<UserSummaryResponse> users;
         try {
-            users = userServiceClient.getUsersBatch(ids);
+            ApiResponse<List<UserSummaryResponse>> resp = userServiceClient.getUsersBatch(ids);
+            users = (resp != null && resp.getData() != null) ? resp.getData() : List.of();
         } catch (Exception ex) {
             log.warn("[VOICE-ROOM] Failed to enrich participants from user-service", ex);
             users = List.of();
         }
 
         Map<UUID, UserSummaryResponse> userMap = users.stream()
-                .collect(Collectors.toMap(UserSummaryResponse::getId, Function.identity()));
+                .collect(Collectors.toMap(UserSummaryResponse::getAccountId, Function.identity()));
 
         List<VoiceParticipantDto> result = new ArrayList<>();
         for (UUID id : ids) {
@@ -125,7 +127,8 @@ public class VoiceRoomService {
     private UserSummaryResponse findUser(Set<String> participantIds, UUID userId) {
         if (participantIds.isEmpty()) return null;
         try {
-            List<UserSummaryResponse> users = userServiceClient.getUsersBatch(List.of(userId));
+            ApiResponse<List<UserSummaryResponse>> resp = userServiceClient.getUsersBatch(List.of(userId));
+            List<UserSummaryResponse> users = (resp != null && resp.getData() != null) ? resp.getData() : List.of();
             return users.isEmpty() ? null : users.get(0);
         } catch (Exception ex) {
             log.warn("[VOICE-ROOM] Failed to fetch user info userId={}", userId, ex);

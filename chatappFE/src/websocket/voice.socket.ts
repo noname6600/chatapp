@@ -32,7 +32,7 @@ onRealtimeEvent((msg) => {
     const event: VoiceWsEvent = {
       type: msg.type as VoiceEventType,
       payload: msg.payload,
-      eventId: msg.eventId ?? "",
+      eventId: String(msg.eventId ?? ""),
     }
 
     handleVoiceEvent(event)

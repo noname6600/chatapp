@@ -6,12 +6,9 @@ import io.livekit.server.AccessToken;
 import io.livekit.server.RoomJoin;
 import io.livekit.server.RoomName;
 import io.livekit.server.RoomServiceClient;
-import livekit.LivekitModels;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-
-import java.util.concurrent.TimeUnit;
 
 @Component
 @RequiredArgsConstructor
@@ -30,11 +27,7 @@ public class LiveKitAdapter implements LiveKitPort {
             return;
         }
         try {
-            LivekitModels.Room room = LivekitModels.Room.newBuilder()
-                    .setName(roomName)
-                    .setEmptyTimeout(300)
-                    .build();
-            roomServiceClient.createRoom(room).execute();
+            roomServiceClient.createRoom(roomName).execute();
             log.info("[LIVEKIT] Room created roomName={}", roomName);
         } catch (Exception ex) {
             log.warn("[LIVEKIT] createRoom failed roomName={} — may already exist", roomName, ex);
@@ -64,7 +57,7 @@ public class LiveKitAdapter implements LiveKitPort {
         AccessToken token = new AccessToken(props.getApiKey(), props.getApiSecret());
         token.setName(participantIdentity);
         token.setIdentity(participantIdentity);
-        token.setTtl(TOKEN_TTL_SECONDS, TimeUnit.SECONDS);
+        token.setTtl(TOKEN_TTL_SECONDS);
         token.addGrants(new RoomJoin(true), new RoomName(roomName));
         return token.toJwt();
     }
