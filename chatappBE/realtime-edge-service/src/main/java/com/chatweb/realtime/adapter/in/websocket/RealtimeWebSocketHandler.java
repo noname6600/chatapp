@@ -71,6 +71,7 @@ public class RealtimeWebSocketHandler extends TextWebSocketHandler {
         session.getAttributes().put("realtimeEndpoint", "/realtime");
         subscribeSession(realtimeSession, "notification:" + userId);
         subscribeSession(realtimeSession, "friendship:" + userId);
+        subscribeSession(realtimeSession, "call:" + userId);
         subscribeSession(realtimeSession, "presence:global");
 
         String accessToken = requireActiveAccessToken(session, realtimeSession, "connect");

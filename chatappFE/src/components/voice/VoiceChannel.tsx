@@ -1,6 +1,7 @@
-import { Mic, MicOff, Headphones, Volume2, Phone, PhoneOff, Loader2 } from "lucide-react"
+import { Mic, MicOff, Headphones, Volume2, Phone, PhoneOff, Loader2, Monitor, MonitorOff } from "lucide-react"
 import { useVoiceRoom } from "../../hooks/useVoiceRoom"
 import VoiceParticipantTile from "./VoiceParticipantTile"
+import ScreenShareOverlay from "./ScreenShareOverlay"
 
 interface Props {
   chatRoomId: string
@@ -13,12 +14,17 @@ export default function VoiceChannel({ chatRoomId }: Props) {
     isDeafened,
     isConnecting,
     isConnected,
+    isScreenSharing,
+    remoteScreenTracks,
     speakingUserIds,
     join,
     leave,
     toggleMute,
     toggleDeafen,
+    toggleScreenShare,
   } = useVoiceRoom(chatRoomId)
+
+  const canScreenShare = typeof navigator !== "undefined" && !!navigator.mediaDevices?.getDisplayMedia
 
   const myUserId = localStorage.getItem("my_user_id") ?? ""
 
@@ -89,6 +95,20 @@ export default function VoiceChannel({ chatRoomId }: Props) {
           {isDeafened ? <Volume2 size={16} /> : <Headphones size={16} />}
         </button>
 
+        {canScreenShare && (
+          <button
+            onClick={toggleScreenShare}
+            title={isScreenSharing ? "Stop sharing" : "Share screen"}
+            className={`p-2 rounded-lg transition-colors ${
+              isScreenSharing
+                ? "bg-blue-100 text-blue-600 hover:bg-blue-200"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }`}
+          >
+            {isScreenSharing ? <MonitorOff size={16} /> : <Monitor size={16} />}
+          </button>
+        )}
+
         <button
           onClick={leave}
           title="Leave voice channel"
@@ -97,6 +117,8 @@ export default function VoiceChannel({ chatRoomId }: Props) {
           <PhoneOff size={16} />
         </button>
       </div>
+
+      <ScreenShareOverlay tracks={remoteScreenTracks} />
     </div>
   )
 }

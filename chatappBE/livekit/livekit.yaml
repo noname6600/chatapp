@@ -5,7 +5,9 @@ rtc:
   port_range_end: 50500
   tcp_port: 7881
   # node_ip and keys are passed via --node-ip and --keys CLI flags in docker-compose
-  # so that env var substitution is handled by Docker Compose, not LiveKit's YAML parser.
+
+redis:
+  address: chatapp-redis:6379
 
 turn:
   enabled: true

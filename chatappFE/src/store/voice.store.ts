@@ -1,5 +1,6 @@
 import { create } from "zustand"
 import type { VoiceParticipant } from "../api/voice.service"
+import type { RemoteTrack } from "livekit-client"
 
 export interface VoiceState {
   activeVoiceRoomId: string | null
@@ -11,6 +12,8 @@ export interface VoiceState {
   speakingUserIds: Set<string>
   lkToken: string | null
   lkUrl: string | null
+  isScreenSharing: boolean
+  remoteScreenTracks: RemoteTrack[]
 
   setActiveRoom: (roomId: string | null) => void
   setParticipants: (participants: VoiceParticipant[]) => void
@@ -22,6 +25,9 @@ export interface VoiceState {
   setConnected: (connected: boolean) => void
   setSpeaking: (userIds: string[]) => void
   setCredentials: (token: string, url: string) => void
+  setScreenSharing: (sharing: boolean) => void
+  addRemoteScreenTrack: (track: RemoteTrack) => void
+  removeRemoteScreenTrack: (trackSid: string) => void
   reset: () => void
 }
 
@@ -35,6 +41,8 @@ const initialState = {
   speakingUserIds: new Set<string>(),
   lkToken: null,
   lkUrl: null,
+  isScreenSharing: false,
+  remoteScreenTracks: [] as RemoteTrack[],
 }
 
 export const useVoiceStore = create<VoiceState>((set) => ({
@@ -67,9 +75,22 @@ export const useVoiceStore = create<VoiceState>((set) => ({
 
   setCredentials: (lkToken, lkUrl) => set({ lkToken, lkUrl }),
 
+  setScreenSharing: (isScreenSharing) => set({ isScreenSharing }),
+
+  addRemoteScreenTrack: (track) =>
+    set((state) => ({
+      remoteScreenTracks: [...state.remoteScreenTracks.filter((t) => t.sid !== track.sid), track],
+    })),
+
+  removeRemoteScreenTrack: (trackSid) =>
+    set((state) => ({
+      remoteScreenTracks: state.remoteScreenTracks.filter((t) => t.sid !== trackSid),
+    })),
+
   reset: () =>
     set({
       ...initialState,
       speakingUserIds: new Set<string>(),
+      remoteScreenTracks: [],
     }),
 }))

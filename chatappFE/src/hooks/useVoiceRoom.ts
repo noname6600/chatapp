@@ -94,6 +94,10 @@ export function useVoiceRoom(chatRoomId: string | null) {
       // ── Room event listeners ──
 
       room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
+        if (track.source === Track.Source.ScreenShare) {
+          store.addRemoteScreenTrack(track)
+          return
+        }
         attachAudio(track, participant.sid)
         // Apply current deafen state to newly subscribed track
         if (store.isDeafened && track.kind === Track.Kind.Audio) {
@@ -102,6 +106,10 @@ export function useVoiceRoom(chatRoomId: string | null) {
       })
 
       room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
+        if (track.source === Track.Source.ScreenShare) {
+          store.removeRemoteScreenTrack(track.sid)
+          return
+        }
         detachAudio(track, participant.sid)
       })
 
@@ -184,6 +192,19 @@ export function useVoiceRoom(chatRoomId: string | null) {
     }
   }, [store, setRemoteVolume])
 
+  const toggleScreenShare = useCallback(async () => {
+    const room = roomRef.current
+    if (!room) return
+    const next = !store.isScreenSharing
+    store.setScreenSharing(next)
+    try {
+      await room.localParticipant.setScreenShareEnabled(next)
+    } catch (err) {
+      console.error("[useVoiceRoom] toggleScreenShare failed", err)
+      store.setScreenSharing(!next)
+    }
+  }, [store])
+
   // ── Tab close — disconnect LiveKit so the server gets participant_left webhook
   useEffect(() => {
     const handleUnload = () => {
@@ -213,11 +234,14 @@ export function useVoiceRoom(chatRoomId: string | null) {
     isDeafened: store.isDeafened,
     isConnecting: store.isConnecting,
     isConnected: store.isConnected,
+    isScreenSharing: store.isScreenSharing,
+    remoteScreenTracks: store.remoteScreenTracks,
     speakingUserIds: store.speakingUserIds,
     activeVoiceRoomId: store.activeVoiceRoomId,
     join,
     leave,
     toggleMute,
     toggleDeafen,
+    toggleScreenShare,
   }
 }

@@ -139,6 +139,25 @@ services:
       - chatapp-net
     restart: unless-stopped
 
+  livekit-2:
+    image: livekit/livekit-server:v1.13.3
+    container_name: chatapp-livekit-2
+    command:
+      - --config
+      - /livekit.yaml
+      - --keys
+      - "${LIVEKIT_API_KEY:-devkey}: ${LIVEKIT_API_SECRET:-devsecret_at_least_32_chars_long}"
+      - --node-ip
+      - "${VPS_PUBLIC_IP}"
+    volumes:
+      - ./livekit/livekit.yaml:/livekit.yaml:ro
+    ports:
+      - "7882:7881/tcp"
+      - "7882:7881/udp"
+    networks:
+      - chatapp-net
+    restart: unless-stopped
+
   # ─────────────────────────────────────────────────────────
   # OBSERVABILITY
   # ─────────────────────────────────────────────────────────
