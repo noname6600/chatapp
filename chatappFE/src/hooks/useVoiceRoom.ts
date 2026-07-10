@@ -95,11 +95,10 @@ export function useVoiceRoom(chatRoomId: string | null) {
 
       room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
         if (track.source === Track.Source.ScreenShare) {
-          store.addRemoteScreenTrack(track)
+          store.setRemoteScreenTrack(participant.identity, track)
           return
         }
         attachAudio(track, participant.sid)
-        // Apply current deafen state to newly subscribed track
         if (store.isDeafened && track.kind === Track.Kind.Audio) {
           ;(track as RemoteAudioTrack).setVolume(0)
         }
@@ -107,7 +106,7 @@ export function useVoiceRoom(chatRoomId: string | null) {
 
       room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
         if (track.source === Track.Source.ScreenShare) {
-          store.removeRemoteScreenTrack(track.sid ?? "")
+          store.clearRemoteScreenTrack(participant.identity)
           return
         }
         detachAudio(track, participant.sid)
@@ -235,7 +234,7 @@ export function useVoiceRoom(chatRoomId: string | null) {
     isConnecting: store.isConnecting,
     isConnected: store.isConnected,
     isScreenSharing: store.isScreenSharing,
-    remoteScreenTracks: store.remoteScreenTracks,
+    screenShareByUser: store.screenShareByUser,
     speakingUserIds: store.speakingUserIds,
     activeVoiceRoomId: store.activeVoiceRoomId,
     join,

@@ -13,7 +13,8 @@ export interface VoiceState {
   lkToken: string | null
   lkUrl: string | null
   isScreenSharing: boolean
-  remoteScreenTracks: RemoteTrack[]
+  /** userId → remote screen-share track */
+  screenShareByUser: Record<string, RemoteTrack>
 
   setActiveRoom: (roomId: string | null) => void
   setParticipants: (participants: VoiceParticipant[]) => void
@@ -26,8 +27,8 @@ export interface VoiceState {
   setSpeaking: (userIds: string[]) => void
   setCredentials: (token: string, url: string) => void
   setScreenSharing: (sharing: boolean) => void
-  addRemoteScreenTrack: (track: RemoteTrack) => void
-  removeRemoteScreenTrack: (trackSid: string) => void
+  setRemoteScreenTrack: (userId: string, track: RemoteTrack) => void
+  clearRemoteScreenTrack: (userId: string) => void
   reset: () => void
 }
 
@@ -42,7 +43,7 @@ const initialState = {
   lkToken: null,
   lkUrl: null,
   isScreenSharing: false,
-  remoteScreenTracks: [] as RemoteTrack[],
+  screenShareByUser: {} as Record<string, RemoteTrack>,
 }
 
 export const useVoiceStore = create<VoiceState>((set) => ({
@@ -77,20 +78,22 @@ export const useVoiceStore = create<VoiceState>((set) => ({
 
   setScreenSharing: (isScreenSharing) => set({ isScreenSharing }),
 
-  addRemoteScreenTrack: (track) =>
+  setRemoteScreenTrack: (userId, track) =>
     set((state) => ({
-      remoteScreenTracks: [...state.remoteScreenTracks.filter((t) => t.sid !== track.sid), track],
+      screenShareByUser: { ...state.screenShareByUser, [userId]: track },
     })),
 
-  removeRemoteScreenTrack: (trackSid) =>
-    set((state) => ({
-      remoteScreenTracks: state.remoteScreenTracks.filter((t) => t.sid !== trackSid),
-    })),
+  clearRemoteScreenTrack: (userId) =>
+    set((state) => {
+      const next = { ...state.screenShareByUser }
+      delete next[userId]
+      return { screenShareByUser: next }
+    }),
 
   reset: () =>
     set({
       ...initialState,
       speakingUserIds: new Set<string>(),
-      remoteScreenTracks: [],
+      screenShareByUser: {},
     }),
 }))

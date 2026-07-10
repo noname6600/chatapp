@@ -1,7 +1,6 @@
 import { VoiceEventType } from "../constants/voiceEvents"
 import { onRealtimeEvent } from "./realtime.socket"
 import { useVoiceStore } from "../store/voice.store"
-import type { VoiceParticipant } from "../api/voice.service"
 
 export interface VoiceRoomPayload {
   chatRoomId: string
@@ -45,35 +44,11 @@ onRealtimeEvent((msg) => {
 function handleVoiceEvent(event: VoiceWsEvent) {
   const store = useVoiceStore.getState()
 
-  switch (event.type) {
-    case VoiceEventType.VOICE_ROOM_JOINED: {
-      const p = event.payload as VoiceRoomPayload
-      if (!p?.userId || !p?.chatRoomId) return
-      if (p.chatRoomId !== store.activeVoiceRoomId) return
-      const participant: VoiceParticipant = {
-        userId: p.userId,
-        username: p.username,
-        avatarUrl: p.avatarUrl,
-        joinedAt: p.timestamp,
-      }
-      store.addParticipant(participant)
-      break
-    }
-
-    case VoiceEventType.VOICE_ROOM_LEFT: {
-      const p = event.payload as VoiceRoomPayload
-      if (!p?.userId || !p?.chatRoomId) return
-      if (p.chatRoomId !== store.activeVoiceRoomId) return
-      store.removeParticipant(p.userId)
-      break
-    }
-
-    case VoiceEventType.VOICE_ROOM_CLOSED: {
-      const p = event.payload as VoiceRoomPayload
-      if (!p?.chatRoomId) return
-      if (p.chatRoomId !== store.activeVoiceRoomId) return
+  // When the room we are connected to closes, reset connection state.
+  if (event.type === VoiceEventType.VOICE_ROOM_CLOSED) {
+    const p = event.payload as VoiceRoomPayload
+    if (p?.chatRoomId && p.chatRoomId === store.activeVoiceRoomId) {
       store.reset()
-      break
     }
   }
 }
