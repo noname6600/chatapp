@@ -65,6 +65,7 @@ public class SystemMessageService implements ISystemMessageService {
         String content = switch (eventType) {
             case JOIN -> actorName + " joined the group";
             case PIN -> actorName + " pinned a message. See all pinned messages.";
+            default -> eventType.name().toLowerCase().replace('_', ' ');
         };
 
         long nextSeq = messageSequenceService.nextSeq(roomId);
