@@ -107,7 +107,7 @@ export function useVoiceRoom(chatRoomId: string | null) {
 
       room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
         if (track.source === Track.Source.ScreenShare) {
-          store.removeRemoteScreenTrack(track.sid)
+          store.removeRemoteScreenTrack(track.sid ?? "")
           return
         }
         detachAudio(track, participant.sid)
