@@ -12,6 +12,10 @@ import {
 import { useVoiceStore } from "../store/voice.store"
 import { joinVoiceRoomApi, leaveVoiceRoomApi } from "../api/voice.service"
 
+// Module-level singletons — enforce one active LK room across all hook instances
+let _globalRoom: Room | null = null
+let _globalRoomId: string | null = null
+
 export function useVoiceRoom(chatRoomId: string | null) {
   const store = useVoiceStore()
 
@@ -69,6 +73,8 @@ export function useVoiceRoom(chatRoomId: string | null) {
       room.disconnect()
     }
     roomRef.current = null
+    _globalRoom = null
+    _globalRoomId = null
     detachAllAudio()
   }, [detachAllAudio])
 
@@ -77,6 +83,24 @@ export function useVoiceRoom(chatRoomId: string | null) {
   const join = useCallback(async () => {
     if (!chatRoomId) return
     if (store.isConnecting || store.isConnected) return
+
+    // Enforce one room at a time — disconnect existing room from any hook instance
+    if (_globalRoom && _globalRoomId !== chatRoomId) {
+      _globalRoom.removeAllListeners()
+      if (_globalRoom.state !== ConnectionState.Disconnected) {
+        _globalRoom.disconnect()
+      }
+      // Clean up any audio elements left by the previous connection
+      document.querySelectorAll<HTMLAudioElement>("audio[data-lk-sid]").forEach((el) => el.remove())
+      audioElementsRef.current.clear()
+      const oldRoomId = _globalRoomId
+      _globalRoom = null
+      _globalRoomId = null
+      if (oldRoomId) {
+        try { await leaveVoiceRoomApi(oldRoomId) } catch { /* best-effort */ }
+      }
+      store.reset()
+    }
 
     store.setConnecting(true)
     try {
@@ -90,6 +114,8 @@ export function useVoiceRoom(chatRoomId: string | null) {
       // Connect to LiveKit
       const room = new Room()
       roomRef.current = room
+      _globalRoom = room
+      _globalRoomId = chatRoomId
 
       // ── Room event listeners ──
 

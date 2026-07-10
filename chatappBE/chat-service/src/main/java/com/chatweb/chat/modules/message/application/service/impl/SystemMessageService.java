@@ -29,6 +29,28 @@ public class SystemMessageService implements ISystemMessageService {
     private final IMessageEventPublisher messageEventPublisher;
 
     @Override
+    @Transactional
+    public void sendRawSystemMessage(UUID roomId, UUID senderId, SystemEventType eventType, String content) {
+        long nextSeq = messageSequenceService.nextSeq(roomId);
+        ChatMessage msg = ChatMessage.builder()
+                .id(UUID.randomUUID())
+                .roomId(roomId)
+                .senderId(senderId)
+                .seq(nextSeq)
+                .type(MessageType.SYSTEM)
+                .content(content)
+                .systemEventType(eventType)
+                .actorUserId(senderId)
+                .deleted(false)
+                .createdAt(Instant.now())
+                .build();
+        chatMessageRepository.save(msg);
+        TransactionPublisher.publishAfterCommit(() ->
+                messageEventPublisher.publishMessageCreated(msg, List.of(), List.of())
+        );
+    }
+
+    @Override
     public void sendSystemMessage(
             UUID roomId,
             SystemEventType eventType,

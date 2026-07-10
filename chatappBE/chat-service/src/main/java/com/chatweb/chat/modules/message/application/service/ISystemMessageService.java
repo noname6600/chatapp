@@ -12,4 +12,11 @@ public interface ISystemMessageService {
             UUID actorUserId,
             UUID targetMessageId
     );
+
+    void sendRawSystemMessage(
+            UUID roomId,
+            UUID senderId,
+            SystemEventType eventType,
+            String content
+    );
 }

@@ -64,7 +64,7 @@ export interface ChatMessage {
   replyToMessageId: string | null
   replyToAuthorId?: string | null
   forwardedFromMessageId?: string | null
-  systemEventType?: "JOIN" | "PIN" | null
+  systemEventType?: string | null
   actorUserId?: string | null
   targetMessageId?: string | null
 

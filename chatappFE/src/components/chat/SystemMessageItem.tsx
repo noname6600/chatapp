@@ -61,6 +61,8 @@ export default function SystemMessageItem({
         {actorNode} joined the group.
       </span>
     )
+  } else if (message.content) {
+    content = <span className="text-gray-600">{message.content}</span>
   }
 
   return (

@@ -1,6 +1,7 @@
 import { VoiceEventType } from "../constants/voiceEvents"
 import { onRealtimeEvent } from "./realtime.socket"
 import { useCallStore } from "../store/call.store"
+import { startRingtone, stopRingtone } from "../utils/ringtone"
 
 export interface CallEventPayload {
   callId: string
@@ -38,10 +39,12 @@ onRealtimeEvent((msg) => {
         callerName: payload.callerName,
         callerAvatarUrl: payload.callerAvatarUrl,
       })
+      startRingtone()
       break
     }
 
     case VoiceEventType.CALL_ACCEPTED: {
+      stopRingtone()
       if (payload.callerId !== myUserId) return
       store.setOutgoing(null)
       store.setActive({
@@ -57,12 +60,14 @@ onRealtimeEvent((msg) => {
     }
 
     case VoiceEventType.CALL_DECLINED: {
+      stopRingtone()
       if (payload.callerId !== myUserId) return
       store.setOutgoing(null)
       break
     }
 
     case VoiceEventType.CALL_CANCELLED: {
+      stopRingtone()
       if (payload.calleeId !== myUserId) return
       store.setIncoming(null)
       break
@@ -70,6 +75,7 @@ onRealtimeEvent((msg) => {
 
     case VoiceEventType.CALL_ENDED:
     case VoiceEventType.CALL_MISSED: {
+      stopRingtone()
       if (payload.callerId !== myUserId && payload.calleeId !== myUserId) return
       store.setActive(null)
       store.setIncoming(null)
