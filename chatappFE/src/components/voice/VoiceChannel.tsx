@@ -167,7 +167,7 @@ export default function VoiceChannel({ chatRoomId }: Props) {
 
   // Subscribe to join/leave events for real-time updates (for everyone)
   useEffect(() => {
-    return onVoiceEvent((event) => {
+    const off = onVoiceEvent((event) => {
       const p = event.payload as VoiceRoomPayload
       if (!p?.chatRoomId || p.chatRoomId !== chatRoomId) return
 
@@ -192,6 +192,7 @@ export default function VoiceChannel({ chatRoomId }: Props) {
         setParticipants([])
       }
     })
+    return () => { off() }
   }, [chatRoomId])
 
   // ── Screen share viewer ───────────────────────────────────────────────────
