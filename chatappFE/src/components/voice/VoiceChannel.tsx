@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import {
   Mic, MicOff, Headphones, Volume2, Phone, PhoneOff,
-  Loader2, Monitor, MonitorOff, X, MonitorPlay,
+  Loader2, Monitor, MonitorOff, X, MonitorPlay, AlertTriangle,
 } from "lucide-react"
 import { useVoiceRoom } from "../../hooks/useVoiceRoom"
 import { getVoiceParticipantsApi, type VoiceParticipant } from "../../api/voice.service"
 import { onVoiceEvent, type VoiceRoomPayload } from "../../websocket/voice.socket"
 import { VoiceEventType } from "../../constants/voiceEvents"
+import { Button } from "../ui/Button"
 import type { RemoteTrack } from "livekit-client"
 
 interface Props {
@@ -146,12 +147,24 @@ export default function VoiceChannel({ chatRoomId }: Props) {
     isScreenSharing,
     screenShareByUser,
     speakingUserIds,
+    activeVoiceRoomId,
     join,
     leave,
     toggleMute,
     toggleDeafen,
     toggleScreenShare,
   } = useVoiceRoom(chatRoomId)
+
+  const [leavingStale, setLeavingStale] = useState(false)
+  const [showSwitchConfirm, setShowSwitchConfirm] = useState(false)
+
+  const handleJoinClick = useCallback(() => {
+    if (activeVoiceRoomId && activeVoiceRoomId !== chatRoomId) {
+      setShowSwitchConfirm(true)
+    } else {
+      join()
+    }
+  }, [activeVoiceRoomId, chatRoomId, join])
 
   const myUserId = localStorage.getItem("my_user_id") ?? ""
   const canScreenShare =
@@ -164,6 +177,13 @@ export default function VoiceChannel({ chatRoomId }: Props) {
   useEffect(() => {
     getVoiceParticipantsApi(chatRoomId).then(setParticipants).catch(() => {})
   }, [chatRoomId])
+
+  // After a page refresh the LiveKit connection is gone but the server may still
+  // list us as a participant (webhook cleanup hasn't caught up yet). In that
+  // state isConnected is false so the normal controls are hidden — surface an
+  // explicit way to force-leave the stale session instead of being stuck.
+  const isSelfStale =
+    !isConnected && !isConnecting && myUserId !== "" && participants.some((p) => p.userId === myUserId)
 
   // Subscribe to join/leave events for real-time updates (for everyone)
   useEffect(() => {
@@ -287,9 +307,29 @@ export default function VoiceChannel({ chatRoomId }: Props) {
               <PhoneOff size={14} />
             </button>
           </div>
+        ) : isSelfStale ? (
+          <div className="flex items-center gap-2 pt-2 mt-1 border-t border-gray-100 dark:border-gray-700">
+            <p className="text-xs text-gray-400 flex-1">Still shown as in this room</p>
+            <button
+              onClick={async () => {
+                setLeavingStale(true)
+                try {
+                  await leave()
+                } finally {
+                  setLeavingStale(false)
+                }
+              }}
+              disabled={leavingStale}
+              title="Leave voice"
+              className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 disabled:opacity-60 text-white text-xs font-medium transition-colors"
+            >
+              {leavingStale ? <Loader2 size={13} className="animate-spin" /> : <PhoneOff size={13} />}
+              Leave
+            </button>
+          </div>
         ) : (
           <button
-            onClick={join}
+            onClick={handleJoinClick}
             disabled={isConnecting}
             className="mt-1 flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg bg-green-500 hover:bg-green-600 disabled:opacity-60 text-white text-xs font-medium transition-colors"
           >
@@ -312,6 +352,39 @@ export default function VoiceChannel({ chatRoomId }: Props) {
           }
           onClose={() => setViewingScreen(null)}
         />
+      )}
+
+      {/* Confirm switching voice rooms */}
+      {showSwitchConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-lg p-6 max-w-sm w-full space-y-4">
+            <div className="flex items-center gap-3">
+              <AlertTriangle size={24} className="text-amber-500" />
+              <h2 className="text-lg font-semibold text-gray-900">Switch voice rooms?</h2>
+            </div>
+
+            <p className="text-sm text-gray-600">
+              You're already in another voice room. Joining this one will leave that room.
+              Are you sure you want to continue?
+            </p>
+
+            <div className="flex gap-3 justify-end">
+              <Button variant="outline" size="sm" onClick={() => setShowSwitchConfirm(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => {
+                  setShowSwitchConfirm(false)
+                  join()
+                }}
+              >
+                Leave &amp; Join
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   )

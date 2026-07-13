@@ -1,7 +1,6 @@
 import axios from "axios"
 import type { AxiosInstance } from "axios"
 import createAuthRefreshInterceptor from "axios-auth-refresh"
-import { refreshTokenApi } from "./auth.service"
 
 export const createBaseApi = (baseURL: string): AxiosInstance => {
   const api = axios.create({
@@ -24,6 +23,8 @@ export const createBaseApi = (baseURL: string): AxiosInstance => {
 
     let tokens
     try {
+      // Lazy import — avoids a static circular dependency (auth.service -> auth.api -> base.api)
+      const { refreshTokenApi } = await import("./auth.service")
       tokens = await refreshTokenApi(refreshToken)
     } catch (error) {
       emitAuthLogout()

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Users, Settings, LogOut, PanelRightClose, PanelRightOpen, Pin } from "lucide-react";
+import { ChevronDown, Users, Settings, LogOut, PanelRightClose, PanelRightOpen, Pin, Phone } from "lucide-react";
 import type { Room } from "../../types/room";
 import { usePresenceStore } from "../../store/presence.store";
+import { useCallSession } from "../../hooks/useCallSession";
 import UserAvatar from "../user/UserAvatar";
 
 interface RoomHeaderProps {
@@ -31,6 +32,7 @@ export default function RoomHeader({
 }: RoomHeaderProps) {
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const { active, outgoing, initiateCall } = useCallSession();
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -135,6 +137,18 @@ export default function RoomHeader({
             title={membersOpen ? "Hide members" : "Show members"}
           >
             {membersOpen ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}
+          </button>
+        )}
+        {!isGroupRoom && otherUserId && (
+          <button
+            onClick={() => {
+              initiateCall(otherUserId, displayName, room.avatarUrl ?? null).catch(() => {});
+            }}
+            disabled={!!active || !!outgoing}
+            className="p-1.5 rounded-lg text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors disabled:opacity-40"
+            title="Start voice call"
+          >
+            <Phone size={18} />
           </button>
         )}
         {isGroupRoom ? (
