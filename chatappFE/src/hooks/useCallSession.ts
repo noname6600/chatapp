@@ -8,6 +8,7 @@ import {
   cancelCallApi,
   endCallApi,
 } from "../api/call.service"
+import { startRingtone, stopRingtone } from "../utils/ringtone"
 
 export function useCallSession() {
   const store = useCallStore()
@@ -34,6 +35,9 @@ export function useCallSession() {
         calleeName,
         calleeAvatarUrl,
       })
+      // Ringback for the caller — mirrors the callee's ringtone, which is
+      // started from the CALL_INITIATED socket event instead (see call.socket.ts)
+      startRingtone()
     } catch (err) {
       console.error("[useCallSession] initiate failed", err)
       throw err
@@ -80,6 +84,7 @@ export function useCallSession() {
   }, [store])
 
   const cancelCall = useCallback(async (callId: string) => {
+    stopRingtone()
     try {
       await cancelCallApi(callId)
     } catch (err) {

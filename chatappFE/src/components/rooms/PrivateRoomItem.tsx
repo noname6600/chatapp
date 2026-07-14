@@ -1,3 +1,4 @@
+import { Phone } from "lucide-react";
 import type { Room } from "../../types/room";
 import { usePresenceStore } from "../../store/presence.store";
 import UserAvatar from "../user/UserAvatar";
@@ -6,12 +7,15 @@ interface PrivateRoomItemProps {
   room: Room;
   isActive: boolean;
   onClick: () => void;
+  /** Set while this DM has a ringing or in-progress call, to surface it above the normal preview */
+  callStatus?: "ringing" | "active" | null;
 }
 
 export default function PrivateRoomItem({
   room,
   isActive,
   onClick,
+  callStatus = null,
 }: PrivateRoomItemProps) {
   const status = usePresenceStore((s) =>
     room.otherUserId ? s.getUserStatus(room.otherUserId) : "OFFLINE"
@@ -57,13 +61,20 @@ export default function PrivateRoomItem({
         >
           {room.name}
         </div>
-        {room.lastMessage && (
-          <div className="mt-1 truncate text-xs leading-tight text-slate-400">
-            <span className="font-medium text-slate-500">
-              {room.lastMessage.senderName}:
-            </span>{" "}
-            {room.lastMessage.content}
+        {callStatus ? (
+          <div className="mt-1 flex items-center gap-1 truncate text-xs font-medium text-green-600">
+            <Phone size={12} className={callStatus === "ringing" ? "animate-pulse" : ""} />
+            {callStatus === "ringing" ? "Calling…" : "In call"}
           </div>
+        ) : (
+          room.lastMessage && (
+            <div className="mt-1 truncate text-xs leading-tight text-slate-400">
+              <span className="font-medium text-slate-500">
+                {room.lastMessage.senderName}:
+              </span>{" "}
+              {room.lastMessage.content}
+            </div>
+          )
         )}
       </div>
     </button>
