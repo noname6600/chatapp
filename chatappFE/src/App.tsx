@@ -6,8 +6,6 @@ import { RoomProvider } from "./store/room.store"
 import { useFriendshipInitialization } from "./store/friendship.provider"
 import IncomingCallOverlay from "./components/voice/IncomingCallOverlay"
 import OutgoingCallOverlay from "./components/voice/OutgoingCallOverlay"
-import ActiveCallBar from "./components/voice/ActiveCallBar"
-import VoiceRoomActiveBar from "./components/voice/VoiceRoomActiveBar"
 // Side-effect import — registers call event handlers on the realtime socket
 import "./websocket/call.socket"
 
@@ -17,8 +15,6 @@ function AppContent() {
 
   return (
     <>
-      <ActiveCallBar />
-      <VoiceRoomActiveBar />
       <IncomingCallOverlay />
       <OutgoingCallOverlay />
       <AppRoutes />

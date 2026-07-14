@@ -26,7 +26,7 @@ export default function ActiveCallBar() {
   const avatar = active.otherAvatarUrl
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-4 py-2 bg-green-600 text-white shadow-lg">
+    <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 bg-green-600 text-white shadow-lg">
       <div className="flex items-center gap-3">
         {avatar ? (
           <img src={avatar} alt={displayName} className="w-8 h-8 rounded-full object-cover" />
