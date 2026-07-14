@@ -271,20 +271,6 @@ export function useVoiceRoom(chatRoomId: string | null) {
     return () => window.removeEventListener("beforeunload", handleUnload)
   }, [])
 
-  // ── Unmount cleanup ────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    return () => {
-      if (activeRoomIdRef.current) {
-        disconnectLiveKit()
-        leaveVoiceRoomApi(activeRoomIdRef.current).catch(() => {})
-        activeRoomIdRef.current = null
-        store.reset()
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
   return {
     // Scoped to *this* room — the global store only tracks one active voice
     // connection at a time, so without this check, every other room's
