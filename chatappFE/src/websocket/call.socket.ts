@@ -2,6 +2,7 @@ import { VoiceEventType } from "../constants/voiceEvents"
 import { onRealtimeEvent } from "./realtime.socket"
 import { useCallStore } from "../store/call.store"
 import { startRingtone, stopRingtone } from "../utils/ringtone"
+import { connectAsCaller } from "../hooks/useCallSession"
 
 export interface CallEventPayload {
   callId: string
@@ -56,6 +57,12 @@ onRealtimeEvent((msg) => {
         liveKitUrl: payload.lkExternalUrl ?? "",
         startedAt: Date.now(),
       })
+      // The callee already connected directly inside acceptCall() — this is
+      // the only place the caller side ever learns the call was accepted, so
+      // this is the only place it can join the LiveKit room.
+      if (payload.callerLkToken && payload.lkExternalUrl) {
+        connectAsCaller(payload.lkExternalUrl, payload.callerLkToken)
+      }
       break
     }
 

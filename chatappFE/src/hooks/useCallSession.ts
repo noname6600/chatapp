@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react"
+import { useCallback } from "react"
 import { Room, ConnectionState } from "livekit-client"
 import { useCallStore } from "../store/call.store"
 import {
@@ -10,17 +10,47 @@ import {
 } from "../api/call.service"
 import { startRingtone, stopRingtone } from "../utils/ringtone"
 
+// Module-level singleton — a call has exactly one LiveKit Room regardless of
+// which component (IncomingCallOverlay, ActiveCallBar, ...) is currently
+// mounted and calling useCallSession(). A per-instance ref here would mean
+// the Room created in one component becomes unreachable the moment a
+// different component (e.g. ActiveCallBar, once the call goes active) is the
+// one rendering next.
+let _callRoom: Room | null = null
+
+function disconnectCallRoom() {
+  const room = _callRoom
+  if (!room) return
+  room.removeAllListeners()
+  if (room.state !== ConnectionState.Disconnected) room.disconnect()
+  _callRoom = null
+}
+
+async function connectCallRoom(liveKitUrl: string, token: string) {
+  disconnectCallRoom()
+  const room = new Room()
+  _callRoom = room
+  await room.connect(liveKitUrl, token)
+  await room.localParticipant.setMicrophoneEnabled(true)
+}
+
+/**
+ * The callee connects directly inside acceptCall() below. The caller only
+ * learns their outgoing call was accepted via the realtime CALL_ACCEPTED
+ * event (see call.socket.ts) — this is the sole place that side ever
+ * actually joins the LiveKit room, so without calling this, the caller's
+ * audio never connects at all.
+ */
+export async function connectAsCaller(liveKitUrl: string, token: string) {
+  try {
+    await connectCallRoom(liveKitUrl, token)
+  } catch (err) {
+    console.error("[useCallSession] caller connect failed", err)
+  }
+}
+
 export function useCallSession() {
   const store = useCallStore()
-  const roomRef = useRef<Room | null>(null)
-
-  const disconnectRoom = useCallback(() => {
-    const room = roomRef.current
-    if (!room) return
-    room.removeAllListeners()
-    if (room.state !== ConnectionState.Disconnected) room.disconnect()
-    roomRef.current = null
-  }, [])
 
   const initiateCall = useCallback(async (
     targetUserId: string,
@@ -45,6 +75,7 @@ export function useCallSession() {
   }, [store])
 
   const acceptCall = useCallback(async (callId: string) => {
+    stopRingtone()
     try {
       const res = await acceptCallApi(callId)
       const incoming = store.incoming
@@ -60,20 +91,17 @@ export function useCallSession() {
         startedAt: Date.now(),
       })
 
-      // Connect callee to LiveKit room
-      const room = new Room()
-      roomRef.current = room
-      await room.connect(res.liveKitUrl, res.token)
-      await room.localParticipant.setMicrophoneEnabled(true)
+      await connectCallRoom(res.liveKitUrl, res.token)
     } catch (err) {
       console.error("[useCallSession] accept failed", err)
-      disconnectRoom()
+      disconnectCallRoom()
       store.setIncoming(null)
       throw err
     }
-  }, [store, disconnectRoom])
+  }, [store])
 
   const declineCall = useCallback(async (callId: string) => {
+    stopRingtone()
     try {
       await declineCallApi(callId)
     } catch (err) {
@@ -95,7 +123,7 @@ export function useCallSession() {
   }, [store])
 
   const endCall = useCallback(async (callId: string) => {
-    disconnectRoom()
+    disconnectCallRoom()
     try {
       await endCallApi(callId)
     } catch (err) {
@@ -103,16 +131,16 @@ export function useCallSession() {
     } finally {
       store.setActive(null)
     }
-  }, [store, disconnectRoom])
+  }, [store])
 
   const toggleMute = useCallback(async () => {
-    const room = roomRef.current
+    const room = _callRoom
     if (!room) return
     const current = room.localParticipant.isMicrophoneEnabled
     await room.localParticipant.setMicrophoneEnabled(!current)
   }, [])
 
-  const isMuted = !(roomRef.current?.localParticipant?.isMicrophoneEnabled ?? true)
+  const isMuted = !(_callRoom?.localParticipant?.isMicrophoneEnabled ?? true)
 
   return {
     incoming: store.incoming,

@@ -159,14 +159,6 @@ export default function VoiceChannel({ chatRoomId }: Props) {
   const [leavingStale, setLeavingStale] = useState(false)
   const [showSwitchConfirm, setShowSwitchConfirm] = useState(false)
 
-  const handleJoinClick = useCallback(() => {
-    if (activeVoiceRoomId && activeVoiceRoomId !== chatRoomId) {
-      setShowSwitchConfirm(true)
-    } else {
-      join()
-    }
-  }, [activeVoiceRoomId, chatRoomId, join])
-
   const myUserId = localStorage.getItem("my_user_id") ?? ""
   const canScreenShare =
     typeof navigator !== "undefined" && !!navigator.mediaDevices?.getDisplayMedia
@@ -174,10 +166,26 @@ export default function VoiceChannel({ chatRoomId }: Props) {
   // ── Local participant list — visible to ALL room viewers ──────────────────
   const [participants, setParticipants] = useState<VoiceParticipant[]>([])
 
-  // Fetch current participants on mount / room change
-  useEffect(() => {
+  const refreshParticipants = useCallback(() => {
     getVoiceParticipantsApi(chatRoomId).then(setParticipants).catch(() => {})
   }, [chatRoomId])
+
+  // Fetch current participants on mount / room change
+  useEffect(() => {
+    refreshParticipants()
+  }, [refreshParticipants])
+
+  // Re-fetch immediately after our own join/leave completes, instead of relying
+  // solely on the realtime echo — that echo can race with this component's own
+  // room-change effects (e.g. switching rooms right after joining), silently
+  // dropping the update and leaving our own name/avatar missing or stale.
+  const handleJoinClick = useCallback(() => {
+    if (activeVoiceRoomId && activeVoiceRoomId !== chatRoomId) {
+      setShowSwitchConfirm(true)
+    } else {
+      join().then(refreshParticipants)
+    }
+  }, [activeVoiceRoomId, chatRoomId, join, refreshParticipants])
 
   // After a page refresh the LiveKit connection is gone but the server may still
   // list us as a participant (webhook cleanup hasn't caught up yet). In that
@@ -301,7 +309,7 @@ export default function VoiceChannel({ chatRoomId }: Props) {
             )}
 
             <button
-              onClick={leave}
+              onClick={() => leave().then(refreshParticipants)}
               title="Leave voice"
               className="ml-auto p-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors"
             >
@@ -318,6 +326,7 @@ export default function VoiceChannel({ chatRoomId }: Props) {
                 setLeavingStale(true)
                 try {
                   await leave()
+                  refreshParticipants()
                 } finally {
                   setLeavingStale(false)
                 }
@@ -383,7 +392,7 @@ export default function VoiceChannel({ chatRoomId }: Props) {
                 size="sm"
                 onClick={() => {
                   setShowSwitchConfirm(false)
-                  join()
+                  join().then(refreshParticipants)
                 }}
               >
                 Leave &amp; Join
