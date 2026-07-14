@@ -13,6 +13,7 @@ import com.chatweb.voice.domain.port.out.LiveKitPort;
 import com.chatweb.voice.domain.port.out.VoiceRoomStatePort;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -27,6 +28,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class VoiceRoomService {
+
+    private static final long STALE_PARTICIPANT_GRACE_MS = 30_000;
 
     private final LiveKitPort liveKitPort;
     private final VoiceRoomStatePort voiceRoomStatePort;
@@ -91,6 +94,50 @@ public class VoiceRoomService {
     public void handleWebhookLeave(UUID chatRoomId, UUID userId) {
         boolean wasMember = voiceRoomStatePort.getParticipantIds(chatRoomId).contains(userId.toString());
         if (wasMember) {
+            leave(chatRoomId, userId);
+        }
+    }
+
+    /**
+     * Safety net for participants whose client vanished without a clean leave (browser killed,
+     * crash, network loss) instead of a graceful disconnect — those cases may never trigger the
+     * LiveKit participant_left webhook, leaving them recorded as "in the room" indefinitely.
+     * Cross-checks Redis-recorded participants against what LiveKit actually reports as connected
+     * and drops anyone missing for longer than the grace period.
+     */
+    @Scheduled(fixedDelay = 20_000)
+    public void reconcileStaleParticipants() {
+        for (UUID chatRoomId : voiceRoomStatePort.getRoomsWithParticipants()) {
+            try {
+                reconcileRoom(chatRoomId);
+            } catch (Exception ex) {
+                log.warn("[VOICE-ROOM-RECONCILE] Failed to reconcile chatRoomId={}", chatRoomId, ex);
+            }
+        }
+    }
+
+    private void reconcileRoom(UUID chatRoomId) {
+        String lkRoomName = "voice-" + chatRoomId;
+        Set<String> liveIdentities = liveKitPort.listLiveParticipantIdentities(lkRoomName);
+        if (liveIdentities == null) return; // unknown state (LiveKit disabled or lookup failed) — skip this cycle
+
+        long now = System.currentTimeMillis();
+        for (String idStr : voiceRoomStatePort.getParticipantIds(chatRoomId)) {
+            if (liveIdentities.contains(idStr)) continue;
+
+            UUID userId;
+            try {
+                userId = UUID.fromString(idStr);
+            } catch (IllegalArgumentException ex) {
+                continue;
+            }
+
+            Long joinedAt = voiceRoomStatePort.getParticipantJoinedAt(chatRoomId, userId);
+            // Not recorded, or joined too recently for LiveKit to have connected yet — leave it alone.
+            if (joinedAt == null || now - joinedAt < STALE_PARTICIPANT_GRACE_MS) continue;
+
+            log.info("[VOICE-ROOM-RECONCILE] userId={} chatRoomId={} not present in LiveKit — removing stale record",
+                    userId, chatRoomId);
             leave(chatRoomId, userId);
         }
     }

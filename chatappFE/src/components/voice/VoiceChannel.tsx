@@ -148,6 +148,7 @@ export default function VoiceChannel({ chatRoomId }: Props) {
     screenShareByUser,
     speakingUserIds,
     activeVoiceRoomId,
+    joinError,
     join,
     leave,
     toggleMute,
@@ -309,7 +310,9 @@ export default function VoiceChannel({ chatRoomId }: Props) {
           </div>
         ) : isSelfStale ? (
           <div className="flex items-center gap-2 pt-2 mt-1 border-t border-gray-100 dark:border-gray-700">
-            <p className="text-xs text-gray-400 flex-1">Still shown as in this room</p>
+            <p className="text-xs text-gray-400 flex-1">
+              {joinError ?? "Still shown as in this room"}
+            </p>
             <button
               onClick={async () => {
                 setLeavingStale(true)
@@ -340,6 +343,9 @@ export default function VoiceChannel({ chatRoomId }: Props) {
             )}
             {isConnecting ? "Connecting…" : "Join Voice"}
           </button>
+        )}
+        {joinError && !isSelfStale && (
+          <p className="mt-1 text-[11px] text-red-500 text-center">{joinError}</p>
         )}
       </div>
 

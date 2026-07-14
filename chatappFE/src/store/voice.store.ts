@@ -15,6 +15,8 @@ export interface VoiceState {
   isScreenSharing: boolean
   /** userId → remote screen-share track */
   screenShareByUser: Record<string, RemoteTrack>
+  /** Set when a join attempt fails (e.g. mic permission denied) — cleared on the next attempt */
+  joinError: string | null
 
   setActiveRoom: (roomId: string | null) => void
   setParticipants: (participants: VoiceParticipant[]) => void
@@ -29,6 +31,7 @@ export interface VoiceState {
   setScreenSharing: (sharing: boolean) => void
   setRemoteScreenTrack: (userId: string, track: RemoteTrack) => void
   clearRemoteScreenTrack: (userId: string) => void
+  setJoinError: (error: string | null) => void
   reset: () => void
 }
 
@@ -44,6 +47,7 @@ const initialState = {
   lkUrl: null,
   isScreenSharing: false,
   screenShareByUser: {} as Record<string, RemoteTrack>,
+  joinError: null as string | null,
 }
 
 export const useVoiceStore = create<VoiceState>((set) => ({
@@ -89,6 +93,8 @@ export const useVoiceStore = create<VoiceState>((set) => ({
       delete next[userId]
       return { screenShareByUser: next }
     }),
+
+  setJoinError: (joinError) => set({ joinError }),
 
   reset: () =>
     set({

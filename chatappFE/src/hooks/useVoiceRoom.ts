@@ -3,6 +3,7 @@ import {
   Room,
   RoomEvent,
   Track,
+  DisconnectReason,
   type RemoteTrack,
   type RemoteAudioTrack,
   type RemoteParticipant,
@@ -84,6 +85,25 @@ export function useVoiceRoom(chatRoomId: string | null) {
     if (!chatRoomId) return
     if (store.isConnecting || store.isConnected) return
 
+    store.setJoinError(null)
+    store.setConnecting(true)
+
+    // Verify mic access up front, before touching the backend or any existing
+    // room connection. Without this, a permission failure inside LiveKit's own
+    // getUserMedia call (after we've already told the backend we joined) can
+    // leave the room listing us as present while our own client shows nothing
+    // usable — surfacing the same mute/deafen/screen-share controls as a
+    // normal successful join, even though there's no working mic behind them.
+    try {
+      const probe = await navigator.mediaDevices.getUserMedia({ audio: true })
+      probe.getTracks().forEach((t) => t.stop())
+    } catch (err) {
+      console.error("[useVoiceRoom] microphone permission check failed", err)
+      store.setConnecting(false)
+      store.setJoinError("Microphone access is required to join voice chat.")
+      return
+    }
+
     // Enforce one room at a time — disconnect existing room from any hook instance
     if (_globalRoom && _globalRoomId !== chatRoomId) {
       _globalRoom.removeAllListeners()
@@ -142,7 +162,18 @@ export function useVoiceRoom(chatRoomId: string | null) {
         store.setSpeaking(speakers.map((s) => s.identity))
       })
 
-      room.on(RoomEvent.Disconnected, () => {
+      room.on(RoomEvent.Disconnected, (reason) => {
+        if (reason === DisconnectReason.DUPLICATE_IDENTITY) {
+          // Same account connected to this room from another browser/device —
+          // LiveKit only allows one connection per identity, so that other
+          // session is now the live one. It's still legitimately in the room,
+          // so this must NOT call leaveVoiceRoomApi (that would kick it too).
+          disconnectLiveKit()
+          activeRoomIdRef.current = null
+          store.reset()
+          store.setJoinError("You joined this voice room from another device or tab.")
+          return
+        }
         store.setConnected(false)
         store.setSpeaking([])
       })
@@ -166,6 +197,11 @@ export function useVoiceRoom(chatRoomId: string | null) {
       console.error("[useVoiceRoom] join failed", err)
       disconnectLiveKit()
       store.reset()
+      store.setJoinError("Couldn't join voice chat. Please try again.")
+      // Best-effort — if the backend had already recorded us as a participant
+      // before this failure, tell it we're gone rather than waiting on the
+      // LiveKit webhook or the server-side reconciliation sweep.
+      leaveVoiceRoomApi(chatRoomId).catch(() => {})
     } finally {
       store.setConnecting(false)
     }
@@ -263,6 +299,7 @@ export function useVoiceRoom(chatRoomId: string | null) {
     screenShareByUser: store.screenShareByUser,
     speakingUserIds: store.speakingUserIds,
     activeVoiceRoomId: store.activeVoiceRoomId,
+    joinError: store.joinError,
     join,
     leave,
     toggleMute,

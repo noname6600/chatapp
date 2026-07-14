@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 
@@ -60,5 +61,30 @@ public class VoiceRoomRedisAdapter implements VoiceRoomStatePort {
         String key = USER_ACTIVE_ROOMS_KEY.formatted(userId);
         Set<String> rooms = redisTemplate.opsForSet().members(key);
         return rooms != null ? rooms : Set.of();
+    }
+
+    @Override
+    public Set<UUID> getRoomsWithParticipants() {
+        Set<String> keys = redisTemplate.keys("voice:room:*:participants");
+        if (keys == null || keys.isEmpty()) return Set.of();
+
+        Set<UUID> roomIds = new HashSet<>();
+        for (String key : keys) {
+            String[] parts = key.split(":");
+            if (parts.length < 3) continue;
+            try {
+                roomIds.add(UUID.fromString(parts[2]));
+            } catch (IllegalArgumentException ignored) {
+                // malformed key — skip
+            }
+        }
+        return roomIds;
+    }
+
+    @Override
+    public Long getParticipantJoinedAt(UUID chatRoomId, UUID userId) {
+        String key = ROOM_PARTICIPANTS_KEY.formatted(chatRoomId);
+        Double score = redisTemplate.opsForZSet().score(key, userId.toString());
+        return score != null ? score.longValue() : null;
     }
 }

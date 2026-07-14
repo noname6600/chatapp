@@ -18,4 +18,10 @@ public interface VoiceRoomStatePort {
     void removeActiveRoom(UUID userId, UUID chatRoomId);
 
     Set<String> getActiveRooms(UUID userId);
+
+    /** All chat room ids that currently have at least one recorded participant. */
+    Set<UUID> getRoomsWithParticipants();
+
+    /** Epoch millis the participant was recorded as joined, or null if not present. */
+    Long getParticipantJoinedAt(UUID chatRoomId, UUID userId);
 }
