@@ -20,8 +20,6 @@ let _globalRoomId: string | null = null
 export function useVoiceRoom(chatRoomId: string | null) {
   const store = useVoiceStore()
 
-  // LiveKit Room instance — kept in a ref so it never triggers re-renders
-  const roomRef = useRef<Room | null>(null)
   // Map of participantSid → <audio> element for headless audio playback
   const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map())
   // Which chat room we're currently connected to (survives re-renders)
@@ -55,7 +53,7 @@ export function useVoiceRoom(chatRoomId: string | null) {
   // ── Volume helpers for deafen ──────────────────────────────────────────────
 
   const setRemoteVolume = useCallback((volume: number) => {
-    const room = roomRef.current
+    const room = _globalRoom
     if (!room) return
     room.remoteParticipants.forEach((participant: RemoteParticipant) => {
       participant.audioTrackPublications.forEach((pub) => {
@@ -67,13 +65,12 @@ export function useVoiceRoom(chatRoomId: string | null) {
   // ── Cleanup LiveKit connection ─────────────────────────────────────────────
 
   const disconnectLiveKit = useCallback(() => {
-    const room = roomRef.current
+    const room = _globalRoom
     if (!room) return
     room.removeAllListeners()
     if (room.state !== ConnectionState.Disconnected) {
       room.disconnect()
     }
-    roomRef.current = null
     _globalRoom = null
     _globalRoomId = null
     detachAllAudio()
@@ -133,7 +130,6 @@ export function useVoiceRoom(chatRoomId: string | null) {
 
       // Connect to LiveKit
       const room = new Room()
-      roomRef.current = room
       _globalRoom = room
       _globalRoomId = chatRoomId
 
@@ -231,7 +227,7 @@ export function useVoiceRoom(chatRoomId: string | null) {
     const next = !store.isMuted
     store.setMuted(next)
     try {
-      await roomRef.current?.localParticipant.setMicrophoneEnabled(!next)
+      await _globalRoom?.localParticipant.setMicrophoneEnabled(!next)
     } catch (err) {
       console.error("[useVoiceRoom] toggleMute failed", err)
       store.setMuted(!next) // revert on error
@@ -245,7 +241,7 @@ export function useVoiceRoom(chatRoomId: string | null) {
       // Deafen implies mute
       store.setMuted(true)
       try {
-        await roomRef.current?.localParticipant.setMicrophoneEnabled(false)
+        await _globalRoom?.localParticipant.setMicrophoneEnabled(false)
       } catch { /* ignore */ }
       setRemoteVolume(0)
     } else {
@@ -254,7 +250,7 @@ export function useVoiceRoom(chatRoomId: string | null) {
   }, [store, setRemoteVolume])
 
   const toggleScreenShare = useCallback(async () => {
-    const room = roomRef.current
+    const room = _globalRoom
     if (!room) return
     const next = !store.isScreenSharing
     store.setScreenSharing(next)
@@ -269,7 +265,7 @@ export function useVoiceRoom(chatRoomId: string | null) {
   // ── Tab close — disconnect LiveKit so the server gets participant_left webhook
   useEffect(() => {
     const handleUnload = () => {
-      roomRef.current?.disconnect()
+      _globalRoom?.disconnect()
     }
     window.addEventListener("beforeunload", handleUnload)
     return () => window.removeEventListener("beforeunload", handleUnload)
