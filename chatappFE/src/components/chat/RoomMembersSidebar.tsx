@@ -16,6 +16,7 @@ import { isFeatureEnabled } from "../../config/featureFlags";
 
 interface Props {
   roomId: string;
+  roomType?: "GROUP" | "PRIVATE";
 }
 
 interface MemberRaw {
@@ -23,7 +24,7 @@ interface MemberRaw {
   role: string;
 }
 
-export default function RoomMembersSidebar({ roomId }: Props) {
+export default function RoomMembersSidebar({ roomId, roomType }: Props) {
   const navigate = useNavigate();
   const [membersRaw, setMembersRaw] = useState<MemberRaw[]>([]);
   const [showOffline, setShowOffline] = useState(true);
@@ -126,13 +127,15 @@ export default function RoomMembersSidebar({ roomId }: Props) {
 
   return (
     <div className="h-full flex flex-col bg-white">
-      {/* Voice channel section */}
-      <div className="border-b">
-        <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-          Voice Channel
+      {/* Voice channel section — group rooms only; DMs use the ringing Call button instead */}
+      {roomType !== "PRIVATE" && (
+        <div className="border-b">
+          <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+            Voice Channel
+          </div>
+          <VoiceChannel chatRoomId={roomId} />
         </div>
-        <VoiceChannel chatRoomId={roomId} />
-      </div>
+      )}
 
       <div className="px-3 py-2.5 border-b flex items-center justify-between gap-2">
         <span className="font-semibold text-sm text-gray-700">Members</span>

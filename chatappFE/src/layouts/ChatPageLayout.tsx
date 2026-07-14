@@ -275,7 +275,7 @@ export default function ChatPageLayout() {
 
       {currentRoom && showMembers && (
         <div className="w-60 shrink-0 border-l bg-white overflow-hidden">
-          <RoomMembersSidebar roomId={currentRoom.id} />
+          <RoomMembersSidebar roomId={currentRoom.id} roomType={currentRoom.type} />
         </div>
       )}
 

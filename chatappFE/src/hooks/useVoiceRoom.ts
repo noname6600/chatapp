@@ -290,11 +290,14 @@ export function useVoiceRoom(chatRoomId: string | null) {
   }, [])
 
   return {
+    // Scoped to *this* room — the global store only tracks one active voice
+    // connection at a time, so without this check, every other room's
+    // VoiceChannel would also render as "connected" while you're in one room.
     participants: store.participants,
     isMuted: store.isMuted,
     isDeafened: store.isDeafened,
-    isConnecting: store.isConnecting,
-    isConnected: store.isConnected,
+    isConnecting: store.isConnecting && store.activeVoiceRoomId === chatRoomId,
+    isConnected: store.isConnected && store.activeVoiceRoomId === chatRoomId,
     isScreenSharing: store.isScreenSharing,
     screenShareByUser: store.screenShareByUser,
     speakingUserIds: store.speakingUserIds,
