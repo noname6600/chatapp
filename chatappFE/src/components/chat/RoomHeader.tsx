@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Users, Settings, LogOut, PanelRightClose, PanelRightOpen, Pin, Phone } from "lucide-react";
+import { ChevronDown, Users, Settings, LogOut, PanelRightClose, PanelRightOpen, Pin, Phone, AlertTriangle } from "lucide-react";
 import type { Room } from "../../types/room";
 import { usePresenceStore } from "../../store/presence.store";
 import { useCallSession } from "../../hooks/useCallSession";
+import { useVoiceStore } from "../../store/voice.store";
+import { leaveActiveVoiceRoom } from "../../hooks/useVoiceRoom";
+import { Button } from "../ui/Button";
 import UserAvatar from "../user/UserAvatar";
 
 interface RoomHeaderProps {
@@ -31,8 +34,10 @@ export default function RoomHeader({
   pinCount = 0,
 }: RoomHeaderProps) {
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showCallSwitchConfirm, setShowCallSwitchConfirm] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { active, outgoing, initiateCall } = useCallSession();
+  const isInVoiceRoom = useVoiceStore((s) => s.isConnected);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -142,6 +147,10 @@ export default function RoomHeader({
         {!isGroupRoom && otherUserId && (
           <button
             onClick={() => {
+              if (isInVoiceRoom) {
+                setShowCallSwitchConfirm(true);
+                return;
+              }
               initiateCall(otherUserId, displayName, room.avatarUrl ?? null).catch(() => {});
             }}
             disabled={!!active || !!outgoing}
@@ -167,6 +176,38 @@ export default function RoomHeader({
           />
         )}
       </div>
+
+      {showCallSwitchConfirm && otherUserId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-lg p-6 max-w-sm w-full space-y-4">
+            <div className="flex items-center gap-3">
+              <AlertTriangle size={24} className="text-amber-500" />
+              <h2 className="text-lg font-semibold text-gray-900">Leave voice room to call?</h2>
+            </div>
+
+            <p className="text-sm text-gray-600">
+              You're in a voice room. Starting this call will leave it. Are you sure you want to continue?
+            </p>
+
+            <div className="flex gap-3 justify-end">
+              <Button variant="outline" size="sm" onClick={() => setShowCallSwitchConfirm(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={async () => {
+                  setShowCallSwitchConfirm(false);
+                  await leaveActiveVoiceRoom();
+                  initiateCall(otherUserId, displayName, room.avatarUrl ?? null).catch(() => {});
+                }}
+              >
+                Leave &amp; Call
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

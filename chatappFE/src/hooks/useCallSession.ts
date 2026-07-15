@@ -9,6 +9,7 @@ import {
   endCallApi,
 } from "../api/call.service"
 import { startRingtone, stopRingtone } from "../utils/ringtone"
+import { leaveActiveVoiceRoom } from "./useVoiceRoom"
 
 // Module-level singleton — a call has exactly one LiveKit Room regardless of
 // which component (IncomingCallOverlay, ActiveCallBar, ...) is currently
@@ -77,6 +78,10 @@ export function useCallSession() {
   const acceptCall = useCallback(async (callId: string) => {
     stopRingtone()
     try {
+      // Only one active voice session at a time — answering a call takes
+      // priority over an open voice room, the same way a phone call would.
+      await leaveActiveVoiceRoom()
+
       const res = await acceptCallApi(callId)
       const incoming = store.incoming
 

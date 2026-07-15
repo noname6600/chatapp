@@ -4,6 +4,7 @@ import {
   Loader2, Monitor, MonitorOff, X, MonitorPlay, AlertTriangle,
 } from "lucide-react"
 import { useVoiceRoom } from "../../hooks/useVoiceRoom"
+import { useCallSession } from "../../hooks/useCallSession"
 import { getVoiceParticipantsApi, type VoiceParticipant } from "../../api/voice.service"
 import { onVoiceEvent, type VoiceRoomPayload } from "../../websocket/voice.socket"
 import { VoiceEventType } from "../../constants/voiceEvents"
@@ -156,8 +157,11 @@ export default function VoiceChannel({ chatRoomId }: Props) {
     toggleScreenShare,
   } = useVoiceRoom(chatRoomId)
 
+  const { active: activeCall, outgoing: outgoingCall, incoming: incomingCall, endCall, cancelCall, declineCall } = useCallSession()
+
   const [leavingStale, setLeavingStale] = useState(false)
-  const [showSwitchConfirm, setShowSwitchConfirm] = useState(false)
+  // "room" = already connected to a different voice room; "call" = on a call
+  const [switchConfirmReason, setSwitchConfirmReason] = useState<"room" | "call" | null>(null)
 
   const myUserId = localStorage.getItem("my_user_id") ?? ""
   const canScreenShare =
@@ -180,12 +184,22 @@ export default function VoiceChannel({ chatRoomId }: Props) {
   // room-change effects (e.g. switching rooms right after joining), silently
   // dropping the update and leaving our own name/avatar missing or stale.
   const handleJoinClick = useCallback(() => {
-    if (activeVoiceRoomId && activeVoiceRoomId !== chatRoomId) {
-      setShowSwitchConfirm(true)
+    if (activeCall || outgoingCall || incomingCall) {
+      setSwitchConfirmReason("call")
+    } else if (activeVoiceRoomId && activeVoiceRoomId !== chatRoomId) {
+      setSwitchConfirmReason("room")
     } else {
       join().then(refreshParticipants)
     }
-  }, [activeVoiceRoomId, chatRoomId, join, refreshParticipants])
+  }, [activeCall, outgoingCall, incomingCall, activeVoiceRoomId, chatRoomId, join, refreshParticipants])
+
+  const confirmSwitch = useCallback(async () => {
+    setSwitchConfirmReason(null)
+    if (activeCall) await endCall(activeCall.callId)
+    else if (outgoingCall) await cancelCall(outgoingCall.callId)
+    else if (incomingCall) await declineCall(incomingCall.callId)
+    join().then(refreshParticipants)
+  }, [activeCall, outgoingCall, incomingCall, endCall, cancelCall, declineCall, join, refreshParticipants])
 
   // After a page refresh the LiveKit connection is gone but the server may still
   // list us as a participant (webhook cleanup hasn't caught up yet). In that
@@ -369,33 +383,30 @@ export default function VoiceChannel({ chatRoomId }: Props) {
         />
       )}
 
-      {/* Confirm switching voice rooms */}
-      {showSwitchConfirm && (
+      {/* Confirm switching away from another active voice session */}
+      {switchConfirmReason && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-lg p-6 max-w-sm w-full space-y-4">
             <div className="flex items-center gap-3">
               <AlertTriangle size={24} className="text-amber-500" />
-              <h2 className="text-lg font-semibold text-gray-900">Switch voice rooms?</h2>
+              <h2 className="text-lg font-semibold text-gray-900">
+                {switchConfirmReason === "call" ? "Leave call to join voice?" : "Switch voice rooms?"}
+              </h2>
             </div>
 
             <p className="text-sm text-gray-600">
-              You're already in another voice room. Joining this one will leave that room.
-              Are you sure you want to continue?
+              {switchConfirmReason === "call"
+                ? "You have an active call. Joining this voice room will end it."
+                : "You're already in another voice room. Joining this one will leave that room."}
+              {" "}Are you sure you want to continue?
             </p>
 
             <div className="flex gap-3 justify-end">
-              <Button variant="outline" size="sm" onClick={() => setShowSwitchConfirm(false)}>
+              <Button variant="outline" size="sm" onClick={() => setSwitchConfirmReason(null)}>
                 Cancel
               </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => {
-                  setShowSwitchConfirm(false)
-                  join().then(refreshParticipants)
-                }}
-              >
-                Leave &amp; Join
+              <Button variant="destructive" size="sm" onClick={confirmSwitch}>
+                {switchConfirmReason === "call" ? "End Call & Join" : "Leave & Join"}
               </Button>
             </div>
           </div>

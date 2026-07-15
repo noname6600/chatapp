@@ -17,6 +17,32 @@ import { joinVoiceRoomApi, leaveVoiceRoomApi } from "../api/voice.service"
 let _globalRoom: Room | null = null
 let _globalRoomId: string | null = null
 
+/**
+ * Leaves whatever voice room is currently active, independent of any mounted
+ * component/hook instance. Used to enforce "only one active voice session at
+ * a time" when starting or accepting a call — see useCallSession.ts.
+ */
+export async function leaveActiveVoiceRoom() {
+  const roomId = useVoiceStore.getState().activeVoiceRoomId
+  if (!roomId) return
+
+  const room = _globalRoom
+  if (room) {
+    room.removeAllListeners()
+    if (room.state !== ConnectionState.Disconnected) room.disconnect()
+  }
+  _globalRoom = null
+  _globalRoomId = null
+
+  try {
+    await leaveVoiceRoomApi(roomId)
+  } catch {
+    // best-effort; LiveKit webhook / reconciliation sweep covers this otherwise
+  } finally {
+    useVoiceStore.getState().reset()
+  }
+}
+
 export function useVoiceRoom(chatRoomId: string | null) {
   const store = useVoiceStore()
 
