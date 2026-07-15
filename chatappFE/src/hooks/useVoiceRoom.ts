@@ -106,7 +106,13 @@ export function useVoiceRoom(chatRoomId: string | null) {
 
   const join = useCallback(async () => {
     if (!chatRoomId) return
-    if (store.isConnecting || store.isConnected) return
+    // Only a no-op if we're already connected/connecting to THIS room — this
+    // used to check the raw global flags, which also silently blocked
+    // switching to a *different* room (clicking "Leave & Join" in the switch
+    // confirm would call join() for the new room while the old room's
+    // isConnected was still true, hitting this guard and returning before
+    // ever reaching the "enforce one room at a time" logic below).
+    if ((store.isConnecting || store.isConnected) && store.activeVoiceRoomId === chatRoomId) return
 
     store.setJoinError(null)
     store.setConnecting(true)
