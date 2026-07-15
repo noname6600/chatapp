@@ -11,7 +11,7 @@ import {
   ConnectionState,
 } from "livekit-client"
 import { useVoiceStore } from "../store/voice.store"
-import { joinVoiceRoomApi, leaveVoiceRoomApi } from "../api/voice.service"
+import { joinVoiceRoomApi, leaveVoiceRoomApi, type VoiceParticipant } from "../api/voice.service"
 
 // Module-level singletons — enforce one active LK room across all hook instances
 let _globalRoom: Room | null = null
@@ -104,7 +104,7 @@ export function useVoiceRoom(chatRoomId: string | null) {
 
   // ── Join ──────────────────────────────────────────────────────────────────
 
-  const join = useCallback(async () => {
+  const join = useCallback(async (onBackendJoined?: (participants: VoiceParticipant[]) => void) => {
     if (!chatRoomId) return
     // Only a no-op if we're already connected/connecting to THIS room — this
     // used to check the raw global flags, which also silently blocked
@@ -116,22 +116,6 @@ export function useVoiceRoom(chatRoomId: string | null) {
 
     store.setJoinError(null)
     store.setConnecting(true)
-
-    // Verify mic access up front, before touching the backend or any existing
-    // room connection. Without this, a permission failure inside LiveKit's own
-    // getUserMedia call (after we've already told the backend we joined) can
-    // leave the room listing us as present while our own client shows nothing
-    // usable — surfacing the same mute/deafen/screen-share controls as a
-    // normal successful join, even though there's no working mic behind them.
-    try {
-      const probe = await navigator.mediaDevices.getUserMedia({ audio: true })
-      probe.getTracks().forEach((t) => t.stop())
-    } catch (err) {
-      console.error("[useVoiceRoom] microphone permission check failed", err)
-      store.setConnecting(false)
-      store.setJoinError("Microphone access is required to join voice chat.")
-      return
-    }
 
     // Enforce one room at a time — disconnect existing room from any hook instance
     if (_globalRoom && _globalRoomId !== chatRoomId) {
@@ -159,6 +143,10 @@ export function useVoiceRoom(chatRoomId: string | null) {
       store.setParticipants(res.participants)
       store.setActiveRoom(chatRoomId)
       activeRoomIdRef.current = chatRoomId
+      // The backend already recorded us as a participant at this point (well
+      // before the LiveKit connection below completes) — let the caller show
+      // that immediately instead of waiting for the whole join() to resolve.
+      onBackendJoined?.(res.participants)
 
       // Connect to LiveKit
       const room = new Room()
@@ -225,7 +213,16 @@ export function useVoiceRoom(chatRoomId: string | null) {
       console.error("[useVoiceRoom] join failed", err)
       disconnectLiveKit()
       store.reset()
-      store.setJoinError("Couldn't join voice chat. Please try again.")
+      // setMicrophoneEnabled surfaces mic permission/device errors as a
+      // DOMException — no separate up-front getUserMedia probe needed to
+      // catch this, that just meant acquiring the mic twice on every join.
+      const isMicError = err instanceof DOMException
+        && (err.name === "NotAllowedError" || err.name === "NotFoundError" || err.name === "NotReadableError")
+      store.setJoinError(
+        isMicError
+          ? "Microphone access is required to join voice chat."
+          : "Couldn't join voice chat. Please try again."
+      )
       // Best-effort — if the backend had already recorded us as a participant
       // before this failure, tell it we're gone rather than waiting on the
       // LiveKit webhook or the server-side reconciliation sweep.

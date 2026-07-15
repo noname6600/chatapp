@@ -79,6 +79,7 @@ function ParticipantRow({
   isSelf,
   isSelfMuted,
   isScreenSharing,
+  isConnectingSelf,
   onClickScreen,
 }: {
   participant: VoiceParticipant
@@ -86,15 +87,16 @@ function ParticipantRow({
   isSelf: boolean
   isSelfMuted: boolean
   isScreenSharing: boolean
+  isConnectingSelf?: boolean
   onClickScreen?: () => void
 }) {
   const muted = isSelf ? isSelfMuted : false
 
   return (
     <div
-      className={`flex items-center gap-2.5 px-2 py-1.5 rounded-lg transition-colors ${
+      className={`flex items-center gap-2.5 px-2 py-1.5 rounded-lg transition-all duration-300 ${
         isSpeaking ? "bg-green-50 dark:bg-green-900/20" : "hover:bg-gray-50 dark:hover:bg-gray-800/40"
-      }`}
+      } ${isConnectingSelf ? "opacity-50 blur-[1px]" : ""}`}
     >
       {/* Avatar with speaking ring */}
       <div
@@ -111,9 +113,11 @@ function ParticipantRow({
           {participant.username || "Unknown"}
           {isSelf && <span className="ml-1 text-xs text-gray-400 font-normal">(you)</span>}
         </p>
-        {isSpeaking && (
+        {isConnectingSelf ? (
+          <p className="text-[10px] text-gray-400 font-medium leading-none mt-0.5">Connecting…</p>
+        ) : isSpeaking ? (
           <p className="text-[10px] text-green-500 font-medium leading-none mt-0.5">Speaking</p>
-        )}
+        ) : null}
       </div>
 
       {/* Right icons */}
@@ -189,7 +193,7 @@ export default function VoiceChannel({ chatRoomId }: Props) {
     } else if (activeVoiceRoomId && activeVoiceRoomId !== chatRoomId) {
       setSwitchConfirmReason("room")
     } else {
-      join().then(refreshParticipants)
+      join(setParticipants).then(refreshParticipants)
     }
   }, [activeCall, outgoingCall, incomingCall, activeVoiceRoomId, chatRoomId, join, refreshParticipants])
 
@@ -198,7 +202,7 @@ export default function VoiceChannel({ chatRoomId }: Props) {
     if (activeCall) await endCall(activeCall.callId)
     else if (outgoingCall) await cancelCall(outgoingCall.callId)
     else if (incomingCall) await declineCall(incomingCall.callId)
-    join().then(refreshParticipants)
+    join(setParticipants).then(refreshParticipants)
   }, [activeCall, outgoingCall, incomingCall, endCall, cancelCall, declineCall, join, refreshParticipants])
 
   // After a page refresh the LiveKit connection is gone but the server may still
@@ -276,6 +280,7 @@ export default function VoiceChannel({ chatRoomId }: Props) {
               isSelf={p.userId === myUserId}
               isSelfMuted={isMuted}
               isScreenSharing={!!screenShareByUser[p.userId]}
+              isConnectingSelf={p.userId === myUserId && isConnecting}
               onClickScreen={() => openScreenShare(p.userId)}
             />
           ))
@@ -354,18 +359,31 @@ export default function VoiceChannel({ chatRoomId }: Props) {
             </button>
           </div>
         ) : (
-          <button
-            onClick={handleJoinClick}
-            disabled={isConnecting}
-            className="mt-1 flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg bg-green-500 hover:bg-green-600 disabled:opacity-60 text-white text-xs font-medium transition-colors"
-          >
-            {isConnecting ? (
-              <Loader2 size={13} className="animate-spin" />
-            ) : (
-              <Phone size={13} />
+          <div className="mt-1 flex items-center gap-1.5">
+            <button
+              onClick={handleJoinClick}
+              disabled={isConnecting}
+              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-green-500 hover:bg-green-600 disabled:opacity-60 text-white text-xs font-medium transition-colors"
+            >
+              {isConnecting ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <Phone size={13} />
+              )}
+              {isConnecting ? "Connecting…" : "Join Voice"}
+            </button>
+            {/* Always give a way out, even mid-connect — no dead end while
+                waiting on a slow or hanging connection attempt. */}
+            {isConnecting && (
+              <button
+                onClick={() => leave().then(refreshParticipants)}
+                title="Cancel"
+                className="p-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors"
+              >
+                <PhoneOff size={14} />
+              </button>
             )}
-            {isConnecting ? "Connecting…" : "Join Voice"}
-          </button>
+          </div>
         )}
         {joinError && !isSelfStale && (
           <p className="mt-1 text-[11px] text-red-500 text-center">{joinError}</p>
