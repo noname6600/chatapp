@@ -1,5 +1,5 @@
 import { useCallback } from "react"
-import { Room, ConnectionState } from "livekit-client"
+import { Room, RoomEvent, Track, ConnectionState, type RemoteTrack } from "livekit-client"
 import { useCallStore } from "../store/call.store"
 import {
   initiateCallApi,
@@ -18,6 +18,9 @@ import { leaveActiveVoiceRoom } from "./useVoiceRoom"
 // different component (e.g. ActiveCallBar, once the call goes active) is the
 // one rendering next.
 let _callRoom: Room | null = null
+// Headless <audio> elements for the other party's track — same pattern as
+// useVoiceRoom's audioElementsRef, just module-level to match _callRoom.
+const _audioElements = new Map<string, HTMLAudioElement>()
 
 function disconnectCallRoom() {
   const room = _callRoom
@@ -25,12 +28,34 @@ function disconnectCallRoom() {
   room.removeAllListeners()
   if (room.state !== ConnectionState.Disconnected) room.disconnect()
   _callRoom = null
+  _audioElements.forEach((el) => el.remove())
+  _audioElements.clear()
 }
 
 async function connectCallRoom(liveKitUrl: string, token: string) {
   disconnectCallRoom()
   const room = new Room()
   _callRoom = room
+
+  // Without this, both sides successfully connect and publish their own mic
+  // (confirmed server-side) but neither ever plays back what it receives.
+  room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub, participant) => {
+    if (track.kind !== Track.Kind.Audio) return
+    const el = track.attach() as HTMLAudioElement
+    _audioElements.set(participant.sid, el)
+    document.body.appendChild(el)
+  })
+
+  room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack, _pub, participant) => {
+    if (track.kind !== Track.Kind.Audio) return
+    track.detach()
+    const el = _audioElements.get(participant.sid)
+    if (el) {
+      el.remove()
+      _audioElements.delete(participant.sid)
+    }
+  })
+
   await room.connect(liveKitUrl, token)
   await room.localParticipant.setMicrophoneEnabled(true)
 }
