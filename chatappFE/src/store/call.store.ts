@@ -28,9 +28,11 @@ interface CallState {
   incoming: IncomingCall | null
   outgoing: OutgoingCall | null
   active: ActiveCall | null
+  isMuted: boolean
   setIncoming: (call: IncomingCall | null) => void
   setOutgoing: (call: OutgoingCall | null) => void
   setActive: (call: ActiveCall | null) => void
+  setMuted: (muted: boolean) => void
   reset: () => void
 }
 
@@ -38,9 +40,11 @@ export const useCallStore = create<CallState>((set) => ({
   incoming: null,
   outgoing: null,
   active: null,
+  isMuted: false,
 
   setIncoming: (incoming) => set({ incoming }),
   setOutgoing: (outgoing) => set({ outgoing }),
   setActive: (active) => set({ active }),
-  reset: () => set({ incoming: null, outgoing: null, active: null }),
+  setMuted: (isMuted) => set({ isMuted }),
+  reset: () => set({ incoming: null, outgoing: null, active: null, isMuted: false }),
 }))

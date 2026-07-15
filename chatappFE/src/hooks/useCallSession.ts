@@ -58,6 +58,10 @@ async function connectCallRoom(liveKitUrl: string, token: string) {
 
   await room.connect(liveKitUrl, token)
   await room.localParticipant.setMicrophoneEnabled(true)
+  // Reflect the fresh, unmuted connection in reactive state — connectCallRoom
+  // runs outside any component, so it can't use the useCallSession() store
+  // reference and reaches for the store directly instead.
+  useCallStore.getState().setMuted(false)
 }
 
 /**
@@ -160,23 +164,31 @@ export function useCallSession() {
       console.error("[useCallSession] end failed", err)
     } finally {
       store.setActive(null)
+      store.setMuted(false)
     }
   }, [store])
 
+  // Mirrors useVoiceRoom's toggleMute — optimistically update reactive state
+  // first, revert on failure. isMuted must live in the store, not be read
+  // live off the LiveKit room object each render: nothing about that object
+  // changing (e.g. after setMicrophoneEnabled resolves) triggers a React
+  // re-render on its own, so the UI would only ever catch up by coincidence.
   const toggleMute = useCallback(async () => {
-    const room = _callRoom
-    if (!room) return
-    const current = room.localParticipant.isMicrophoneEnabled
-    await room.localParticipant.setMicrophoneEnabled(!current)
-  }, [])
-
-  const isMuted = !(_callRoom?.localParticipant?.isMicrophoneEnabled ?? true)
+    const next = !store.isMuted
+    store.setMuted(next)
+    try {
+      await _callRoom?.localParticipant.setMicrophoneEnabled(!next)
+    } catch (err) {
+      console.error("[useCallSession] toggleMute failed", err)
+      store.setMuted(!next) // revert on error
+    }
+  }, [store])
 
   return {
     incoming: store.incoming,
     outgoing: store.outgoing,
     active: store.active,
-    isMuted,
+    isMuted: store.isMuted,
     initiateCall,
     acceptCall,
     declineCall,
