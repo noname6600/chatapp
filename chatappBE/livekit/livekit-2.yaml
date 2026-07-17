@@ -3,7 +3,7 @@ port: 7880
 rtc:
   port_range_start: 50501
   port_range_end: 51001
-  tcp_port: 7881
+  tcp_port: 7882
   # node_ip and keys are passed via --node-ip and --keys CLI flags in docker-compose
 
 redis:
