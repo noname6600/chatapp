@@ -150,10 +150,12 @@ services:
       - --node-ip
       - "${VPS_PUBLIC_IP}"
     volumes:
-      - ./livekit/livekit.yaml:/livekit.yaml:ro
+      - ./livekit/livekit-2.yaml:/livekit.yaml:ro
     ports:
       - "7882:7881/tcp"
       - "7882:7881/udp"
+      - "3479:3479/udp"
+      - "50501-51001:50501-51001/udp"
     networks:
       - chatapp-net
     restart: unless-stopped
