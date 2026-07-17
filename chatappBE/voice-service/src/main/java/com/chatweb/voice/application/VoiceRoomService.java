@@ -3,6 +3,7 @@ package com.chatweb.voice.application;
 import com.chatweb.common.core.exception.BusinessException;
 import com.chatweb.common.core.exception.CommonErrorCode;
 import com.chatweb.common.web.response.ApiResponse;
+import com.chatweb.voice.adapter.in.web.dto.ActiveVoiceRoomResponse;
 import com.chatweb.voice.adapter.in.web.dto.JoinVoiceRoomResponse;
 import com.chatweb.voice.adapter.in.web.dto.VoiceParticipantDto;
 import com.chatweb.voice.adapter.out.feign.UserServiceClient;
@@ -29,7 +30,7 @@ import java.util.stream.Collectors;
 @Slf4j
 public class VoiceRoomService {
 
-    private static final long STALE_PARTICIPANT_GRACE_MS = 30_000;
+    private static final long STALE_PARTICIPANT_GRACE_MS = 120_000; // 2 minutes — gives the reconnect bar time to work
 
     private final LiveKitPort liveKitPort;
     private final VoiceRoomStatePort voiceRoomStatePort;
@@ -89,6 +90,26 @@ public class VoiceRoomService {
     public List<VoiceParticipantDto> getParticipants(UUID chatRoomId) {
         Set<String> ids = voiceRoomStatePort.getParticipantIds(chatRoomId);
         return enrichParticipants(ids);
+    }
+
+    /**
+     * For the reconnect bar: is this user currently recorded as active in a voice room (from
+     * any device), and is that a live LiveKit connection right now, or just a stale record
+     * (e.g. after a refresh) waiting on reconcileStaleParticipants to catch up.
+     */
+    public ActiveVoiceRoomResponse getMyActiveRoom(UUID userId) {
+        Set<String> activeRoomIds = voiceRoomStatePort.getActiveRooms(userId);
+        if (activeRoomIds.isEmpty()) return null;
+
+        UUID chatRoomId = UUID.fromString(activeRoomIds.iterator().next());
+        String lkRoomName = "voice-" + chatRoomId;
+        Set<String> liveIdentities = liveKitPort.listLiveParticipantIdentities(lkRoomName);
+        boolean isLiveElsewhere = liveIdentities != null && liveIdentities.contains(userId.toString());
+
+        return ActiveVoiceRoomResponse.builder()
+                .chatRoomId(chatRoomId)
+                .liveElsewhere(isLiveElsewhere)
+                .build();
     }
 
     public void handleWebhookLeave(UUID chatRoomId, UUID userId) {

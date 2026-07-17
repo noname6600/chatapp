@@ -1,7 +1,8 @@
-import { Mic, MicOff, Headphones, Volume2, PhoneOff, Monitor, MonitorOff } from "lucide-react"
+import { Mic, MicOff, Headphones, Volume2, PhoneOff } from "lucide-react"
 import { useVoiceStore } from "../../store/voice.store"
 import { useVoiceRoom } from "../../hooks/useVoiceRoom"
 import { useRooms } from "../../store/room.store"
+import ScreenShareControl from "./ScreenShareControl"
 
 export default function VoiceRoomActiveBar() {
   const activeVoiceRoomId = useVoiceStore((s) => s.activeVoiceRoomId)
@@ -48,13 +49,12 @@ export default function VoiceRoomActiveBar() {
           {isDeafened ? <Volume2 size={16} /> : <Headphones size={16} />}
         </button>
         {canScreenShare && (
-          <button
-            onClick={toggleScreenShare}
-            className={`p-2 rounded-full transition-colors ${isScreenSharing ? "bg-blue-500 hover:bg-blue-400" : "bg-green-500 hover:bg-green-400"}`}
-            title={isScreenSharing ? "Stop sharing" : "Share screen"}
-          >
-            {isScreenSharing ? <MonitorOff size={16} /> : <Monitor size={16} />}
-          </button>
+          <ScreenShareControl
+            isScreenSharing={isScreenSharing}
+            toggleScreenShare={toggleScreenShare}
+            buttonClassName={`p-2 rounded-full transition-colors ${isScreenSharing ? "bg-blue-500 hover:bg-blue-400" : "bg-green-500 hover:bg-green-400"}`}
+            iconSize={16}
+          />
         )}
         <button
           onClick={() => leave()}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import {
   Mic, MicOff, Headphones, Volume2, Phone, PhoneOff,
-  Loader2, Monitor, MonitorOff, X, MonitorPlay, AlertTriangle,
+  Loader2, X, MonitorPlay, AlertTriangle,
 } from "lucide-react"
 import { useVoiceRoom } from "../../hooks/useVoiceRoom"
 import { useCallSession } from "../../hooks/useCallSession"
@@ -9,6 +9,8 @@ import { getVoiceParticipantsApi, type VoiceParticipant } from "../../api/voice.
 import { onVoiceEvent, type VoiceRoomPayload } from "../../websocket/voice.socket"
 import { VoiceEventType } from "../../constants/voiceEvents"
 import { Button } from "../ui/Button"
+import ParticipantSettingsMenu from "./ParticipantSettingsMenu"
+import ScreenShareControl from "./ScreenShareControl"
 import type { RemoteTrack } from "livekit-client"
 
 interface Props {
@@ -77,21 +79,35 @@ function ParticipantRow({
   participant,
   isSpeaking,
   isSelf,
-  isSelfMuted,
+  isMuted,
+  isDeafened,
   isScreenSharing,
   isConnectingSelf,
   onClickScreen,
+  onToggleMute,
+  onToggleDeafen,
+  mutedForMe,
+  volume,
+  onToggleMuteForMe,
+  onVolumeChange,
 }: {
   participant: VoiceParticipant
   isSpeaking: boolean
   isSelf: boolean
-  isSelfMuted: boolean
+  /** Self: the shared mute/deafen state. Other: derived from LiveKit's native track-mute signal / participant attributes. */
+  isMuted: boolean
+  isDeafened: boolean
   isScreenSharing: boolean
   isConnectingSelf?: boolean
   onClickScreen?: () => void
+  onToggleMute: () => void
+  onToggleDeafen: () => void
+  /** Other-participant-only — local-only "mute for me" + per-user volume preference */
+  mutedForMe: boolean
+  volume: number
+  onToggleMuteForMe: () => void
+  onVolumeChange: (volume: number) => void
 }) {
-  const muted = isSelf ? isSelfMuted : false
-
   return (
     <div
       className={`flex items-center gap-2.5 px-2 py-1.5 rounded-lg transition-all duration-300 ${
@@ -120,8 +136,32 @@ function ParticipantRow({
         ) : null}
       </div>
 
-      {/* Right icons */}
+      {/* Right icons — mute/deafen status badges, settings, watch-screen */}
       <div className="flex items-center gap-1 flex-shrink-0">
+        {isMuted ? (
+          <MicOff size={13} className="text-red-400" title="Muted" />
+        ) : isSpeaking ? (
+          <Mic size={13} className="text-green-400" />
+        ) : (
+          <Mic size={13} className="text-gray-300" />
+        )}
+        {isDeafened ? (
+          <Headphones size={13} className="text-red-400" title="Deafened" />
+        ) : (
+          <Headphones size={13} className="text-gray-200 dark:text-gray-600" />
+        )}
+        <ParticipantSettingsMenu
+          participant={participant}
+          isSelf={isSelf}
+          isMuted={isMuted}
+          isDeafened={isDeafened}
+          onToggleMute={onToggleMute}
+          onToggleDeafen={onToggleDeafen}
+          mutedForMe={mutedForMe}
+          volume={volume}
+          onToggleMuteForMe={onToggleMuteForMe}
+          onVolumeChange={onVolumeChange}
+        />
         {isScreenSharing && (
           <button
             onClick={onClickScreen}
@@ -130,13 +170,6 @@ function ParticipantRow({
           >
             <MonitorPlay size={14} />
           </button>
-        )}
-        {muted ? (
-          <MicOff size={13} className="text-red-400" />
-        ) : isSpeaking ? (
-          <Mic size={13} className="text-green-400" />
-        ) : (
-          <Mic size={13} className="text-gray-300" />
         )}
       </div>
     </div>
@@ -151,6 +184,10 @@ export default function VoiceChannel({ chatRoomId }: Props) {
     isConnected,
     isScreenSharing,
     screenShareByUser,
+    remoteMicMutedByUser,
+    remoteDeafenedByUser,
+    remoteVolumeByUser,
+    remoteMutedForMeByUser,
     speakingUserIds,
     activeVoiceRoomId,
     joinError,
@@ -159,6 +196,8 @@ export default function VoiceChannel({ chatRoomId }: Props) {
     toggleMute,
     toggleDeafen,
     toggleScreenShare,
+    setParticipantVolume,
+    toggleMuteForMe,
   } = useVoiceRoom(chatRoomId)
 
   const { active: activeCall, outgoing: outgoingCall, incoming: incomingCall, endCall, cancelCall, declineCall } = useCallSession()
@@ -272,18 +311,28 @@ export default function VoiceChannel({ chatRoomId }: Props) {
         {participants.length === 0 ? (
           <p className="text-xs text-gray-400 italic px-2 py-1">No one in voice</p>
         ) : (
-          participants.map((p) => (
-            <ParticipantRow
-              key={p.userId}
-              participant={p}
-              isSpeaking={speakingUserIds.has(p.userId)}
-              isSelf={p.userId === myUserId}
-              isSelfMuted={isMuted}
-              isScreenSharing={!!screenShareByUser[p.userId]}
-              isConnectingSelf={p.userId === myUserId && isConnecting}
-              onClickScreen={() => openScreenShare(p.userId)}
-            />
-          ))
+          participants.map((p) => {
+            const isSelfRow = p.userId === myUserId
+            return (
+              <ParticipantRow
+                key={p.userId}
+                participant={p}
+                isSpeaking={speakingUserIds.has(p.userId)}
+                isSelf={isSelfRow}
+                isMuted={isSelfRow ? isMuted : !!remoteMicMutedByUser[p.userId]}
+                isDeafened={isSelfRow ? isDeafened : !!remoteDeafenedByUser[p.userId]}
+                isScreenSharing={!!screenShareByUser[p.userId]}
+                isConnectingSelf={isSelfRow && isConnecting}
+                onClickScreen={() => openScreenShare(p.userId)}
+                onToggleMute={toggleMute}
+                onToggleDeafen={toggleDeafen}
+                mutedForMe={!!remoteMutedForMeByUser[p.userId]}
+                volume={remoteVolumeByUser[p.userId] ?? 1}
+                onToggleMuteForMe={() => toggleMuteForMe(p.userId)}
+                onVolumeChange={(volume) => setParticipantVolume(p.userId, volume)}
+              />
+            )
+          })
         )}
 
         {/* Controls — only shown when connected */}
@@ -314,17 +363,16 @@ export default function VoiceChannel({ chatRoomId }: Props) {
             </button>
 
             {canScreenShare && (
-              <button
-                onClick={toggleScreenShare}
-                title={isScreenSharing ? "Stop sharing" : "Share screen"}
-                className={`p-1.5 rounded-lg transition-colors ${
+              <ScreenShareControl
+                isScreenSharing={isScreenSharing}
+                toggleScreenShare={toggleScreenShare}
+                buttonClassName={`p-1.5 rounded-lg transition-colors ${
                   isScreenSharing
                     ? "bg-blue-100 text-blue-600 hover:bg-blue-200"
                     : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                 }`}
-              >
-                {isScreenSharing ? <MonitorOff size={14} /> : <Monitor size={14} />}
-              </button>
+                iconSize={14}
+              />
             )}
 
             <button
@@ -340,6 +388,15 @@ export default function VoiceChannel({ chatRoomId }: Props) {
             <p className="text-xs text-gray-400 flex-1">
               {joinError ?? "Still shown as in this room"}
             </p>
+            <button
+              onClick={handleJoinClick}
+              disabled={isConnecting}
+              title="Reconnect"
+              className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white text-xs font-medium transition-colors"
+            >
+              {isConnecting ? <Loader2 size={13} className="animate-spin" /> : <Phone size={13} />}
+              Reconnect
+            </button>
             <button
               onClick={async () => {
                 setLeavingStale(true)

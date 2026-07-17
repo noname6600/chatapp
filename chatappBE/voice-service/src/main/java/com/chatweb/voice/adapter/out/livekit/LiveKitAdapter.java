@@ -3,6 +3,7 @@ package com.chatweb.voice.adapter.out.livekit;
 import com.chatweb.voice.config.LiveKitProperties;
 import com.chatweb.voice.domain.port.out.LiveKitPort;
 import io.livekit.server.AccessToken;
+import io.livekit.server.CanUpdateOwnMetadata;
 import io.livekit.server.RoomJoin;
 import io.livekit.server.RoomName;
 import io.livekit.server.RoomServiceClient;
@@ -64,7 +65,10 @@ public class LiveKitAdapter implements LiveKitPort {
         token.setName(participantIdentity);
         token.setIdentity(participantIdentity);
         token.setTtl(TOKEN_TTL_SECONDS);
-        token.addGrants(new RoomJoin(true), new RoomName(roomName));
+        // CanUpdateOwnMetadata is required for localParticipant.setAttributes() — used
+        // client-side to broadcast "deafened" status to other participants, since that
+        // state never touches the published track and has no native LiveKit signal.
+        token.addGrants(new RoomJoin(true), new RoomName(roomName), new CanUpdateOwnMetadata(true));
         return token.toJwt();
     }
 

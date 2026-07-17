@@ -15,8 +15,25 @@ export interface VoiceState {
   isScreenSharing: boolean
   /** userId → remote screen-share track */
   screenShareByUser: Record<string, RemoteTrack>
+  /** userId → derived from RoomEvent.TrackMuted/TrackUnmuted on their mic track */
+  remoteMicMutedByUser: Record<string, boolean>
+  /** userId → derived from RoomEvent.ParticipantAttributesChanged ("deafened" attribute) */
+  remoteDeafenedByUser: Record<string, boolean>
+  /** userId → this user's own slider position for that participant (0–1), survives a "mute for me" toggle */
+  remoteVolumeByUser: Record<string, number>
+  /** userId → "mute for me" override, independent of the slider position above */
+  remoteMutedForMeByUser: Record<string, boolean>
   /** Set when a join attempt fails (e.g. mic permission denied) — cleared on the next attempt */
   joinError: string | null
+  /**
+   * Backend says this account is recorded as active in a voice room that
+   * *this* tab isn't the live connection for — either connected on another
+   * device, or a stale record left behind by a refresh. Deliberately not
+   * part of reset()/initialState: it reflects state elsewhere, not this
+   * tab's own connection lifecycle, so a normal leave/room-switch here
+   * must not wipe it.
+   */
+  reconnectPrompt: { chatRoomId: string; liveElsewhere: boolean } | null
 
   setActiveRoom: (roomId: string | null) => void
   setParticipants: (participants: VoiceParticipant[]) => void
@@ -31,7 +48,12 @@ export interface VoiceState {
   setScreenSharing: (sharing: boolean) => void
   setRemoteScreenTrack: (userId: string, track: RemoteTrack) => void
   clearRemoteScreenTrack: (userId: string) => void
+  setRemoteMicMuted: (userId: string, muted: boolean) => void
+  setRemoteDeafened: (userId: string, deafened: boolean) => void
+  setParticipantVolumePref: (userId: string, volume: number) => void
+  setMutedForMe: (userId: string, muted: boolean) => void
   setJoinError: (error: string | null) => void
+  setReconnectPrompt: (prompt: { chatRoomId: string; liveElsewhere: boolean } | null) => void
   reset: () => void
 }
 
@@ -47,11 +69,16 @@ const initialState = {
   lkUrl: null,
   isScreenSharing: false,
   screenShareByUser: {} as Record<string, RemoteTrack>,
+  remoteMicMutedByUser: {} as Record<string, boolean>,
+  remoteDeafenedByUser: {} as Record<string, boolean>,
+  remoteVolumeByUser: {} as Record<string, number>,
+  remoteMutedForMeByUser: {} as Record<string, boolean>,
   joinError: null as string | null,
 }
 
 export const useVoiceStore = create<VoiceState>((set) => ({
   ...initialState,
+  reconnectPrompt: null,
 
   setActiveRoom: (roomId) => set({ activeVoiceRoomId: roomId }),
 
@@ -94,12 +121,31 @@ export const useVoiceStore = create<VoiceState>((set) => ({
       return { screenShareByUser: next }
     }),
 
+  setRemoteMicMuted: (userId, muted) =>
+    set((state) => ({ remoteMicMutedByUser: { ...state.remoteMicMutedByUser, [userId]: muted } })),
+
+  setRemoteDeafened: (userId, deafened) =>
+    set((state) => ({ remoteDeafenedByUser: { ...state.remoteDeafenedByUser, [userId]: deafened } })),
+
+  setParticipantVolumePref: (userId, volume) =>
+    set((state) => ({ remoteVolumeByUser: { ...state.remoteVolumeByUser, [userId]: volume } })),
+
+  setMutedForMe: (userId, muted) =>
+    set((state) => ({ remoteMutedForMeByUser: { ...state.remoteMutedForMeByUser, [userId]: muted } })),
+
   setJoinError: (joinError) => set({ joinError }),
 
+  setReconnectPrompt: (reconnectPrompt) => set({ reconnectPrompt }),
+
+  // Deliberately does not touch reconnectPrompt — see its field comment above.
   reset: () =>
     set({
       ...initialState,
       speakingUserIds: new Set<string>(),
       screenShareByUser: {},
+      remoteMicMutedByUser: {},
+      remoteDeafenedByUser: {},
+      remoteVolumeByUser: {},
+      remoteMutedForMeByUser: {},
     }),
 }))

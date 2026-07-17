@@ -4,6 +4,7 @@ import com.chatweb.common.core.exception.BusinessException;
 import com.chatweb.common.core.exception.CommonErrorCode;
 import com.chatweb.common.security.jwt.JwtHelper;
 import com.chatweb.common.web.response.ApiResponse;
+import com.chatweb.voice.adapter.in.web.dto.ActiveVoiceRoomResponse;
 import com.chatweb.voice.adapter.in.web.dto.JoinVoiceRoomResponse;
 import com.chatweb.voice.adapter.in.web.dto.VoiceParticipantDto;
 import com.chatweb.voice.application.VoiceRoomService;
@@ -50,5 +51,14 @@ public class VoiceRoomController {
             @PathVariable UUID chatRoomId
     ) {
         return ResponseEntity.ok(ApiResponse.success(voiceRoomService.getParticipants(chatRoomId)));
+    }
+
+    @GetMapping("/active")
+    public ResponseEntity<ApiResponse<ActiveVoiceRoomResponse>> getMyActiveRoom(
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        UUID userId = JwtHelper.extractUserId(jwt)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized"));
+        return ResponseEntity.ok(ApiResponse.success(voiceRoomService.getMyActiveRoom(userId)));
     }
 }

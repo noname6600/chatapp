@@ -5,6 +5,7 @@ export type OverlaySource =
   | "CHAT"
   | "MENTION"
   | "FRIEND_SEARCH"
+  | "VOICE_ROOM"
   | "UNKNOWN";
 
 interface OverlayState {

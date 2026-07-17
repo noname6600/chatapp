@@ -41,3 +41,23 @@ export const getVoiceParticipantsApi = async (chatRoomId: string): Promise<Voice
     throw new Error(extractErrorMessage(error))
   }
 }
+
+export interface ActiveVoiceRoomInfo {
+  chatRoomId: string
+  liveElsewhere: boolean
+}
+
+// Unlike the other calls here, a null payload is a normal "not active in any
+// room" result, not an error — unwrap() would throw on that, so this checks
+// the envelope directly instead.
+export const getMyActiveVoiceRoomApi = async (): Promise<ActiveVoiceRoomInfo | null> => {
+  try {
+    const res = await voiceApi.get<ApiResponse<ActiveVoiceRoomInfo | null>>("/rooms/active")
+    if (!res.data.success || res.data.error) {
+      throw new Error(res.data.error?.message || "API error")
+    }
+    return res.data.data
+  } catch (error) {
+    throw new Error(extractErrorMessage(error))
+  }
+}

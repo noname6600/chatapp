@@ -4,14 +4,24 @@ import {
   RoomEvent,
   Track,
   DisconnectReason,
+  ScreenSharePresets,
   type RemoteTrack,
   type RemoteAudioTrack,
   type RemoteParticipant,
   type Participant,
+  type VideoPreset,
   ConnectionState,
 } from "livekit-client"
 import { useVoiceStore } from "../store/voice.store"
 import { joinVoiceRoomApi, leaveVoiceRoomApi, type VoiceParticipant } from "../api/voice.service"
+
+export type ScreenShareQuality = "auto" | "high" | "medium" | "low"
+
+const SCREEN_SHARE_QUALITY_PRESETS: Record<Exclude<ScreenShareQuality, "auto">, VideoPreset> = {
+  high: ScreenSharePresets.h1080fps30,
+  medium: ScreenSharePresets.h720fps15,
+  low: ScreenSharePresets.h360fps15,
+}
 
 // Module-level singletons — enforce one active LK room across all hook instances
 let _globalRoom: Room | null = null
@@ -80,15 +90,25 @@ export function useVoiceRoom(chatRoomId: string | null) {
     audioElementsRef.current.clear()
   }, [])
 
-  // ── Volume helpers for deafen ──────────────────────────────────────────────
-
-  const setRemoteVolume = useCallback((volume: number) => {
+  // ── Per-participant volume ──────────────────────────────────────────────────
+  // Priority: self-deafen silences everyone regardless of anyone's individual
+  // setting; otherwise each participant's own "mute for me" override wins over
+  // their slider position, which defaults to full volume if never touched.
+  const applyEffectiveVolume = useCallback((identity: string) => {
     const room = _globalRoom
     if (!room) return
-    room.remoteParticipants.forEach((participant: RemoteParticipant) => {
-      participant.audioTrackPublications.forEach((pub) => {
-        ;(pub.track as RemoteAudioTrack | undefined)?.setVolume(volume)
-      })
+    const participant = room.remoteParticipants.get(identity)
+    if (!participant) return
+
+    const state = useVoiceStore.getState()
+    const effective = state.isDeafened
+      ? 0
+      : state.remoteMutedForMeByUser[identity]
+        ? 0
+        : (state.remoteVolumeByUser[identity] ?? 1)
+
+    participant.audioTrackPublications.forEach((pub) => {
+      ;(pub.track as RemoteAudioTrack | undefined)?.setVolume(effective)
     })
   }, [])
 
@@ -183,8 +203,8 @@ export function useVoiceRoom(chatRoomId: string | null) {
             return
           }
           attachAudio(track, participant.sid)
-          if (store.isDeafened && track.kind === Track.Kind.Audio) {
-            ;(track as RemoteAudioTrack).setVolume(0)
+          if (track.kind === Track.Kind.Audio) {
+            applyEffectiveVolume(participant.identity)
           }
         })
 
@@ -198,6 +218,31 @@ export function useVoiceRoom(chatRoomId: string | null) {
 
         room.on(RoomEvent.ActiveSpeakersChanged, (speakers: Participant[]) => {
           store.setSpeaking(speakers.map((s) => s.identity))
+        })
+
+        // Muting doesn't unpublish a track, it just flips its published mute
+        // state — LiveKit relays that to everyone automatically, so this needs
+        // no backend involvement at all, just listening for it.
+        room.on(RoomEvent.TrackMuted, (publication, participant) => {
+          if (participant.identity === room.localParticipant.identity) return
+          if (publication.source !== Track.Source.Microphone) return
+          store.setRemoteMicMuted(participant.identity, true)
+        })
+
+        room.on(RoomEvent.TrackUnmuted, (publication, participant) => {
+          if (participant.identity === room.localParticipant.identity) return
+          if (publication.source !== Track.Source.Microphone) return
+          store.setRemoteMicMuted(participant.identity, false)
+        })
+
+        // Deafening never touches a published track (it only affects what the
+        // deafened user hears locally), so unlike mute there's no native
+        // LiveKit signal for it — participant attributes are LiveKit's own
+        // mechanism for broadcasting small custom state like this.
+        room.on(RoomEvent.ParticipantAttributesChanged, (changedAttributes, participant) => {
+          if (participant.identity === room.localParticipant.identity) return
+          if (!("deafened" in changedAttributes)) return
+          store.setRemoteDeafened(participant.identity, changedAttributes.deafened === "true")
         })
 
         room.on(RoomEvent.Disconnected, (reason) => {
@@ -316,25 +361,57 @@ export function useVoiceRoom(chatRoomId: string | null) {
   const toggleDeafen = useCallback(async () => {
     const next = !store.isDeafened
     store.setDeafened(next)
+    try {
+      // Broadcast to everyone else — see the ParticipantAttributesChanged
+      // listener in join() for the receiving side.
+      await _globalRoom?.localParticipant.setAttributes({ deafened: next ? "true" : "false" })
+    } catch (err) {
+      console.error("[useVoiceRoom] failed to broadcast deafen status", err)
+    }
     if (next) {
       // Deafen implies mute
       store.setMuted(true)
       try {
         await _globalRoom?.localParticipant.setMicrophoneEnabled(false)
       } catch { /* ignore */ }
-      setRemoteVolume(0)
-    } else {
-      setRemoteVolume(1)
     }
-  }, [store, setRemoteVolume])
+    // Re-apply per-participant effective volume for everyone rather than a
+    // blanket set — undeafening must restore each participant's own
+    // mute-for-me/slider preference, not blow it away back to full volume.
+    _globalRoom?.remoteParticipants.forEach((participant) => {
+      applyEffectiveVolume(participant.identity)
+    })
+  }, [store, applyEffectiveVolume])
 
-  const toggleScreenShare = useCallback(async () => {
+  const setParticipantVolume = useCallback((userId: string, volume: number) => {
+    store.setParticipantVolumePref(userId, volume)
+    applyEffectiveVolume(userId)
+  }, [store, applyEffectiveVolume])
+
+  const toggleMuteForMe = useCallback((userId: string) => {
+    const next = !store.remoteMutedForMeByUser[userId]
+    store.setMutedForMe(userId, next)
+    applyEffectiveVolume(userId)
+  }, [store, applyEffectiveVolume])
+
+  const toggleScreenShare = useCallback(async (options?: { audio?: boolean; quality?: ScreenShareQuality }) => {
     const room = _globalRoom
     if (!room) return
     const next = !store.isScreenSharing
     store.setScreenSharing(next)
     try {
-      await room.localParticipant.setScreenShareEnabled(next)
+      if (next) {
+        const preset = options?.quality && options.quality !== "auto"
+          ? SCREEN_SHARE_QUALITY_PRESETS[options.quality]
+          : undefined
+        await room.localParticipant.setScreenShareEnabled(
+          true,
+          { audio: options?.audio, resolution: preset?.resolution },
+          { screenShareEncoding: preset?.encoding }
+        )
+      } else {
+        await room.localParticipant.setScreenShareEnabled(false)
+      }
     } catch (err) {
       console.error("[useVoiceRoom] toggleScreenShare failed", err)
       store.setScreenSharing(!next)
@@ -361,6 +438,10 @@ export function useVoiceRoom(chatRoomId: string | null) {
     isConnected: store.isConnected && store.activeVoiceRoomId === chatRoomId,
     isScreenSharing: store.isScreenSharing,
     screenShareByUser: store.screenShareByUser,
+    remoteMicMutedByUser: store.remoteMicMutedByUser,
+    remoteDeafenedByUser: store.remoteDeafenedByUser,
+    remoteVolumeByUser: store.remoteVolumeByUser,
+    remoteMutedForMeByUser: store.remoteMutedForMeByUser,
     speakingUserIds: store.speakingUserIds,
     activeVoiceRoomId: store.activeVoiceRoomId,
     joinError: store.joinError,
@@ -369,5 +450,7 @@ export function useVoiceRoom(chatRoomId: string | null) {
     toggleMute,
     toggleDeafen,
     toggleScreenShare,
+    setParticipantVolume,
+    toggleMuteForMe,
   }
 }
