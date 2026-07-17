@@ -139,14 +139,14 @@ function ParticipantRow({
       {/* Right icons — mute/deafen status badges, settings, watch-screen */}
       <div className="flex items-center gap-1 flex-shrink-0">
         {isMuted ? (
-          <MicOff size={13} className="text-red-400" title="Muted" />
+          <span title="Muted"><MicOff size={13} className="text-red-400" /></span>
         ) : isSpeaking ? (
           <Mic size={13} className="text-green-400" />
         ) : (
           <Mic size={13} className="text-gray-300" />
         )}
         {isDeafened ? (
-          <Headphones size={13} className="text-red-400" title="Deafened" />
+          <span title="Deafened"><Headphones size={13} className="text-red-400" /></span>
         ) : (
           <Headphones size={13} className="text-gray-200 dark:text-gray-600" />
         )}
