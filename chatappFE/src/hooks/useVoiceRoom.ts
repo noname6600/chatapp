@@ -16,6 +16,10 @@ import { joinVoiceRoomApi, leaveVoiceRoomApi, type VoiceParticipant } from "../a
 // Module-level singletons — enforce one active LK room across all hook instances
 let _globalRoom: Room | null = null
 let _globalRoomId: string | null = null
+// Incrementing this invalidates any in-flight join/retry loop — bumped by both
+// a fresh join() call and by leave(), so starting a new attempt or explicitly
+// backing out always wins over a stale retry loop still waiting to fire.
+let _joinAttemptToken = 0
 
 /**
  * Leaves whatever voice room is currently active, independent of any mounted
@@ -114,8 +118,19 @@ export function useVoiceRoom(chatRoomId: string | null) {
     // ever reaching the "enforce one room at a time" logic below).
     if ((store.isConnecting || store.isConnected) && store.activeVoiceRoomId === chatRoomId) return
 
+    const myToken = ++_joinAttemptToken
     store.setJoinError(null)
     store.setConnecting(true)
+    // Set before the first attempt even starts (not just after a successful
+    // backend call) so isConnecting/isConnected — scoped to this room via
+    // activeVoiceRoomId — read correctly for the whole join+retry duration,
+    // including while the very first attempt is still in flight. Also clear
+    // isConnected up front: when switching rooms, the old room's stale
+    // isConnected=true would otherwise briefly read as "connected" for the
+    // *new* room too, for as long as leaving the old room's backend call
+    // below takes.
+    store.setConnected(false)
+    store.setActiveRoom(chatRoomId)
 
     // Enforce one room at a time — disconnect existing room from any hook instance
     if (_globalRoom && _globalRoomId !== chatRoomId) {
@@ -132,109 +147,144 @@ export function useVoiceRoom(chatRoomId: string | null) {
       if (oldRoomId) {
         try { await leaveVoiceRoomApi(oldRoomId) } catch { /* best-effort */ }
       }
+      // reset() wipes isConnecting/activeVoiceRoomId along with everything
+      // else — both need restoring for this in-progress join(), otherwise
+      // the retry loop below starts with isConnecting already false again.
       store.reset()
-    }
-
-    store.setConnecting(true)
-    try {
-      const res = await joinVoiceRoomApi(chatRoomId)
-
-      store.setCredentials(res.token, res.liveKitUrl)
-      store.setParticipants(res.participants)
+      store.setConnecting(true)
       store.setActiveRoom(chatRoomId)
-      activeRoomIdRef.current = chatRoomId
-      // The backend already recorded us as a participant at this point (well
-      // before the LiveKit connection below completes) — let the caller show
-      // that immediately instead of waiting for the whole join() to resolve.
-      onBackendJoined?.(res.participants)
-
-      // Connect to LiveKit
-      const room = new Room()
-      _globalRoom = room
-      _globalRoomId = chatRoomId
-
-      // ── Room event listeners ──
-
-      room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
-        if (track.source === Track.Source.ScreenShare) {
-          store.setRemoteScreenTrack(participant.identity, track)
-          return
-        }
-        attachAudio(track, participant.sid)
-        if (store.isDeafened && track.kind === Track.Kind.Audio) {
-          ;(track as RemoteAudioTrack).setVolume(0)
-        }
-      })
-
-      room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
-        if (track.source === Track.Source.ScreenShare) {
-          store.clearRemoteScreenTrack(participant.identity)
-          return
-        }
-        detachAudio(track, participant.sid)
-      })
-
-      room.on(RoomEvent.ActiveSpeakersChanged, (speakers: Participant[]) => {
-        store.setSpeaking(speakers.map((s) => s.identity))
-      })
-
-      room.on(RoomEvent.Disconnected, (reason) => {
-        if (reason === DisconnectReason.DUPLICATE_IDENTITY) {
-          // Same account connected to this room from another browser/device —
-          // LiveKit only allows one connection per identity, so that other
-          // session is now the live one. It's still legitimately in the room,
-          // so this must NOT call leaveVoiceRoomApi (that would kick it too).
-          disconnectLiveKit()
-          activeRoomIdRef.current = null
-          store.reset()
-          store.setJoinError("You joined this voice room from another device or tab.")
-          return
-        }
-        store.setConnected(false)
-        store.setSpeaking([])
-      })
-
-      room.on(RoomEvent.Reconnecting, () => {
-        store.setConnecting(true)
-      })
-
-      room.on(RoomEvent.Reconnected, () => {
-        store.setConnecting(false)
-        store.setConnected(true)
-      })
-
-      await room.connect(res.liveKitUrl, res.token)
-
-      // Enable microphone after connecting
-      await room.localParticipant.setMicrophoneEnabled(true)
-
-      store.setConnected(true)
-    } catch (err) {
-      console.error("[useVoiceRoom] join failed", err)
-      disconnectLiveKit()
-      store.reset()
-      // setMicrophoneEnabled surfaces mic permission/device errors as a
-      // DOMException — no separate up-front getUserMedia probe needed to
-      // catch this, that just meant acquiring the mic twice on every join.
-      const isMicError = err instanceof DOMException
-        && (err.name === "NotAllowedError" || err.name === "NotFoundError" || err.name === "NotReadableError")
-      store.setJoinError(
-        isMicError
-          ? "Microphone access is required to join voice chat."
-          : "Couldn't join voice chat. Please try again."
-      )
-      // Best-effort — if the backend had already recorded us as a participant
-      // before this failure, tell it we're gone rather than waiting on the
-      // LiveKit webhook or the server-side reconciliation sweep.
-      leaveVoiceRoomApi(chatRoomId).catch(() => {})
-    } finally {
-      store.setConnecting(false)
     }
+
+    // Retries indefinitely with capped exponential backoff until it connects,
+    // the attempt is superseded by a newer join()/leave() call (token check),
+    // or the failure is a mic/device problem retrying can't fix.
+    for (let attempt = 1; _joinAttemptToken === myToken; attempt++) {
+      try {
+        const res = await joinVoiceRoomApi(chatRoomId)
+
+        store.setCredentials(res.token, res.liveKitUrl)
+        store.setParticipants(res.participants)
+        activeRoomIdRef.current = chatRoomId
+        // The backend already recorded us as a participant at this point (well
+        // before the LiveKit connection below completes) — let the caller show
+        // that immediately instead of waiting for the whole join() to resolve.
+        onBackendJoined?.(res.participants)
+
+        // Connect to LiveKit
+        const room = new Room()
+        _globalRoom = room
+        _globalRoomId = chatRoomId
+
+        // ── Room event listeners ──
+
+        room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
+          if (track.source === Track.Source.ScreenShare) {
+            store.setRemoteScreenTrack(participant.identity, track)
+            return
+          }
+          attachAudio(track, participant.sid)
+          if (store.isDeafened && track.kind === Track.Kind.Audio) {
+            ;(track as RemoteAudioTrack).setVolume(0)
+          }
+        })
+
+        room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
+          if (track.source === Track.Source.ScreenShare) {
+            store.clearRemoteScreenTrack(participant.identity)
+            return
+          }
+          detachAudio(track, participant.sid)
+        })
+
+        room.on(RoomEvent.ActiveSpeakersChanged, (speakers: Participant[]) => {
+          store.setSpeaking(speakers.map((s) => s.identity))
+        })
+
+        room.on(RoomEvent.Disconnected, (reason) => {
+          if (reason === DisconnectReason.DUPLICATE_IDENTITY) {
+            // Same account connected to this room from another browser/device —
+            // LiveKit only allows one connection per identity, so that other
+            // session is now the live one. It's still legitimately in the room,
+            // so this must NOT call leaveVoiceRoomApi (that would kick it too).
+            disconnectLiveKit()
+            activeRoomIdRef.current = null
+            store.reset()
+            store.setJoinError("You joined this voice room from another device or tab.")
+            return
+          }
+          store.setConnected(false)
+          store.setSpeaking([])
+        })
+
+        room.on(RoomEvent.Reconnecting, () => {
+          store.setConnecting(true)
+        })
+
+        room.on(RoomEvent.Reconnected, () => {
+          store.setConnecting(false)
+          store.setConnected(true)
+        })
+
+        await room.connect(res.liveKitUrl, res.token)
+
+        // Enable microphone after connecting
+        await room.localParticipant.setMicrophoneEnabled(true)
+
+        if (_joinAttemptToken !== myToken) {
+          // Cancelled (Leave clicked, or a newer join() started) while this
+          // attempt was still connecting — don't leave a connection alive
+          // that the user already backed out of.
+          disconnectLiveKit()
+          leaveVoiceRoomApi(chatRoomId).catch(() => {})
+          return
+        }
+
+        store.setConnected(true)
+        store.setConnecting(false)
+        store.setJoinError(null)
+        return
+      } catch (err) {
+        console.error(`[useVoiceRoom] join attempt ${attempt} failed`, err)
+        disconnectLiveKit()
+        // Best-effort — if the backend had already recorded us as a participant
+        // before this failure, tell it we're gone rather than waiting on the
+        // LiveKit webhook or the server-side reconciliation sweep.
+        leaveVoiceRoomApi(chatRoomId).catch(() => {})
+
+        // setMicrophoneEnabled surfaces mic permission/device errors as a
+        // DOMException. Retrying can't fix a permission the user hasn't
+        // granted, so this is the one failure mode that stops and requires
+        // an explicit new click instead of retrying automatically.
+        const isMicError = err instanceof DOMException
+          && (err.name === "NotAllowedError" || err.name === "NotFoundError" || err.name === "NotReadableError")
+        if (isMicError) {
+          store.reset()
+          store.setJoinError("Microphone access is required to join voice chat.")
+          store.setConnecting(false)
+          return
+        }
+
+        if (_joinAttemptToken !== myToken) break // cancelled — stop retrying
+
+        store.setJoinError("Having trouble connecting — retrying…")
+        const delaySeconds = Math.min(2 ** (attempt - 1), 15)
+        await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000))
+      }
+    }
+    // The loop only ever exits here when the token was invalidated (a newer
+    // join() or a leave() cancelled this attempt) — success and terminal
+    // mic errors both return from inside the loop above. Clear the
+    // transient "connecting" UI rather than leaving it stuck.
+    store.setConnecting(false)
   }, [chatRoomId, store, attachAudio, detachAudio, disconnectLiveKit])
 
   // ── Leave ─────────────────────────────────────────────────────────────────
 
   const leave = useCallback(async () => {
+    // Stop any in-flight join/retry loop first — otherwise a retry already
+    // queued behind a setTimeout would fire after this and silently
+    // reconnect the room the user just explicitly left.
+    _joinAttemptToken++
     const roomId = activeRoomIdRef.current ?? chatRoomId
     if (!roomId) return
 
