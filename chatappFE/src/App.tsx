@@ -1,3 +1,4 @@
+import { Toaster } from "react-hot-toast"
 import AppRoutes from "./routes/AppRoutes"
 import { AuthProvider } from "./store/auth.store"
 import { ChatProvider } from "./store/chat.store"
@@ -15,6 +16,7 @@ function AppContent() {
 
   return (
     <>
+      <Toaster position="top-center" />
       <IncomingCallOverlay />
       <OutgoingCallOverlay />
       <AppRoutes />

@@ -61,7 +61,7 @@ onRealtimeEvent((msg) => {
       // the only place the caller side ever learns the call was accepted, so
       // this is the only place it can join the LiveKit room.
       if (payload.callerLkToken && payload.lkExternalUrl) {
-        connectAsCaller(payload.lkExternalUrl, payload.callerLkToken)
+        connectAsCaller(payload.lkExternalUrl, payload.callerLkToken, payload.callId)
       }
       break
     }

@@ -1,4 +1,5 @@
 import { useCallback } from "react"
+import toast from "react-hot-toast"
 import { Room, RoomEvent, Track, ConnectionState, type RemoteTrack } from "livekit-client"
 import { useCallStore } from "../store/call.store"
 import {
@@ -65,17 +66,37 @@ async function connectCallRoom(liveKitUrl: string, token: string) {
 }
 
 /**
+ * Both call setup paths (caller and callee) set the "active" call in the
+ * store before the LiveKit room finishes connecting, since the UI needs to
+ * show the call immediately. If the LiveKit connection itself then fails
+ * (e.g. a bad SFU node), leaving "active" set behind would show a live-looking
+ * call UI with dead silence and no indication anything is wrong — this
+ * tears that down and tells the other party the call is over instead.
+ */
+async function failCallConnection(callId: string) {
+  disconnectCallRoom()
+  useCallStore.getState().setActive(null)
+  toast.error("Call failed to connect. Please try again.")
+  try {
+    await endCallApi(callId)
+  } catch (err) {
+    console.error("[useCallSession] failed to end call after connect failure", err)
+  }
+}
+
+/**
  * The callee connects directly inside acceptCall() below. The caller only
  * learns their outgoing call was accepted via the realtime CALL_ACCEPTED
  * event (see call.socket.ts) — this is the sole place that side ever
  * actually joins the LiveKit room, so without calling this, the caller's
  * audio never connects at all.
  */
-export async function connectAsCaller(liveKitUrl: string, token: string) {
+export async function connectAsCaller(liveKitUrl: string, token: string, callId: string) {
   try {
     await connectCallRoom(liveKitUrl, token)
   } catch (err) {
     console.error("[useCallSession] caller connect failed", err)
+    await failCallConnection(callId)
   }
 }
 
@@ -128,8 +149,8 @@ export function useCallSession() {
       await connectCallRoom(res.liveKitUrl, res.token)
     } catch (err) {
       console.error("[useCallSession] accept failed", err)
-      disconnectCallRoom()
       store.setIncoming(null)
+      await failCallConnection(callId)
       throw err
     }
   }, [store])
