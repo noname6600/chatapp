@@ -1,0 +1,94 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+  - job_name: auth-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['auth-service:8081']
+        labels: {instance: auth-service-1}
+      - targets: ['auth-service-2:8081']
+        labels: {instance: auth-service-2}
+
+  - job_name: user-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['user-service:8082']
+        labels: {instance: user-service-1}
+      - targets: ['user-service-2:8082']
+        labels: {instance: user-service-2}
+
+  - job_name: chat-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['chat-service:8083']
+        labels: {instance: chat-service-1}
+      - targets: ['chat-service-2:8083']
+        labels: {instance: chat-service-2}
+
+  - job_name: presence-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['presence-service:8084']
+        labels: {instance: presence-service-1}
+      - targets: ['presence-service-2:8084']
+        labels: {instance: presence-service-2}
+
+  - job_name: friendship-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['friendship-service:8085']
+        labels: {instance: friendship-service-1}
+      - targets: ['friendship-service-2:8085']
+        labels: {instance: friendship-service-2}
+
+  - job_name: notification-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['notification-service:8086']
+        labels: {instance: notification-service-1}
+      - targets: ['notification-service-2:8086']
+        labels: {instance: notification-service-2}
+
+  - job_name: upload-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['upload-service:8088']
+        labels: {instance: upload-service-1}
+      - targets: ['upload-service-2:8088']
+        labels: {instance: upload-service-2}
+
+  - job_name: realtime-edge-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['realtime-edge-service:8090']
+        labels: {instance: realtime-edge-service-1}
+      - targets: ['realtime-edge-service-2:8090']
+        labels: {instance: realtime-edge-service-2}
+
+  - job_name: gateway-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['gateway-service:8080']
+        labels: {instance: gateway-service-1}
+      - targets: ['gateway-service-2:8080']
+        labels: {instance: gateway-service-2}
+
+  - job_name: kafka-exporter
+    static_configs:
+      - targets: ['kafka-exporter:9308']
+        labels: {instance: kafka}
+
+  - job_name: node
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels: {instance: vps}

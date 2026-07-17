@@ -2,32 +2,14 @@ import type { ChatMessage } from "../types/message"
 import type { RoomMemberJoinedPayload, RoomMemberLeftPayload } from "../types/room"
 import { ChatEventType } from "../constants/chatEvents"
 import { normalizeReactions } from "../utils/reactionState"
-import { getWsEndpoint } from "../config/ws.config"
-
-let socket: WebSocket | null = null
-let reconnectTimeout: number | null = null
-let manualClose = false
-
-const eventHandlers = new Set<(event: ChatSocketEvent) => void>()
-const openHandlers = new Set<() => void>()
-
-const subscribedRooms = new Set<string>()
-
-const WS_URL = getWsEndpoint("CHAT")
-const RECONNECT_DELAY = 3000
-
-const logSendFlow = (event: string, payload: Record<string, unknown>) => {
-  if (!import.meta.env.DEV) return
-  if (import.meta.env.MODE === "test") return
-  console.info("[send-flow][ws]", { event, ...payload })
-}
+import { sendRealtimeMessage, onRealtimeEvent, onRealtimeOpen } from "./realtime.socket"
 
 export type MessageEditedPayload = {
   messageId: string
   roomId: string
   seq: number
   content: string | null
-  editedAt: string | null
+  editedAt: number | string | null
 }
 
 export type MessageDeletedPayload = {
@@ -66,199 +48,109 @@ export type ChatSocketEvent =
   | { type: typeof ChatEventType.MEMBER_LEFT; payload: RoomMemberLeftPayload }
   | { type: typeof ChatEventType.MEMBER_REMOVED; payload: RoomMemberLeftPayload }
 
-/* ================= CONNECT ================= */
+const eventHandlers = new Set<(event: ChatSocketEvent) => void>()
+const openHandlers = new Set<() => void>()
+const subscribedRooms = new Set<string>()
 
-export const connectChatSocket = () => {
-  if (
-    socket &&
-    (socket.readyState === WebSocket.OPEN ||
-      socket.readyState === WebSocket.CONNECTING)
-  ) {
-    return
-  }
-
-  const token = localStorage.getItem("access_token")
-  if (!token) return
-
-  manualClose = false
-
-  socket = new WebSocket(`${WS_URL}?token=${token}`)
-
-  logSendFlow("socket_connecting", { wsUrl: WS_URL })
-
-  socket.onopen = () => {
-    logSendFlow("socket_open", { subscribedRooms: subscribedRooms.size })
-
-    subscribedRooms.forEach((roomId) => {
-      socket?.send(JSON.stringify({ type: "JOIN", roomId }))
-    })
-
-    openHandlers.forEach((h) => h())
-  }
-
-  socket.onmessage = (event) => {
-    try {
-      const { type, payload } = JSON.parse(event.data)
-
-      switch (type) {
-        case ChatEventType.MESSAGE_SENT: {
-          const msg = mapToChatMessage(payload)
-          logSendFlow("socket_message_sent_received", {
-            roomId: msg.roomId,
-            messageId: msg.messageId,
-            seq: msg.seq,
-            clientMessageId: msg.clientMessageId ?? null,
-          })
-          eventHandlers.forEach((h) =>
-            h({ type: ChatEventType.MESSAGE_SENT, payload: msg })
-          )
-          break
-        }
-
-        case ChatEventType.MESSAGE_EDITED: {
-          eventHandlers.forEach((h) =>
-            h({
-              type: ChatEventType.MESSAGE_EDITED,
-              payload: mapEditedPayload(payload),
-            })
-          )
-          break
-        }
-
-        case ChatEventType.MESSAGE_DELETED: {
-          eventHandlers.forEach((h) =>
-            h({
-              type: ChatEventType.MESSAGE_DELETED,
-              payload: mapDeletedPayload(payload),
-            })
-          )
-          break
-        }
-
-        case ChatEventType.MESSAGE_PINNED: {
-          eventHandlers.forEach((h) =>
-            h({
-              type: ChatEventType.MESSAGE_PINNED,
-              payload: mapMessagePinPayload(payload),
-            })
-          )
-          break
-        }
-
-        case ChatEventType.MESSAGE_UNPINNED: {
-          eventHandlers.forEach((h) =>
-            h({
-              type: ChatEventType.MESSAGE_UNPINNED,
-              payload: mapMessagePinPayload(payload),
-            })
-          )
-          break
-        }
-
-        case ChatEventType.REACTION_UPDATED: {
-          eventHandlers.forEach((h) =>
-            h({
-              type: ChatEventType.REACTION_UPDATED,
-              payload: mapReactionPayload(payload),
-            })
-          )
-          break
-        }
-
-        case ChatEventType.MEMBER_JOINED: {
-          eventHandlers.forEach((h) =>
-            h({ type: ChatEventType.MEMBER_JOINED, payload: payload as RoomMemberJoinedPayload })
-          )
-          break
-        }
-
-        case ChatEventType.MEMBER_LEFT: {
-          eventHandlers.forEach((h) =>
-            h({ type: ChatEventType.MEMBER_LEFT, payload: payload as RoomMemberLeftPayload })
-          )
-          break
-        }
-
-        case ChatEventType.MEMBER_REMOVED: {
-          eventHandlers.forEach((h) =>
-            h({ type: ChatEventType.MEMBER_REMOVED, payload: payload as RoomMemberLeftPayload })
-          )
-          break
-        }
-
-        default:
-          break
-      }
-    } catch (e) {
-      console.error("WS parse error", e)
-    }
-  }
-
-  socket.onclose = () => {
-    logSendFlow("socket_closed", {
-      manualClose,
-      willReconnect: !manualClose && Boolean(localStorage.getItem("access_token")),
-    })
-
-    socket = null
-
-    if (!manualClose && localStorage.getItem("access_token")) {
-      reconnectTimeout = window.setTimeout(connectChatSocket, RECONNECT_DELAY)
-    }
-  }
-
-  socket.onerror = () => {
-    socket?.close()
-  }
+const logSendFlow = (event: string, payload: Record<string, unknown>) => {
+  if (!import.meta.env.DEV) return
+  if (import.meta.env.MODE === "test") return
+  console.info("[send-flow][ws]", { event, ...payload })
 }
 
-/* ================= DISCONNECT ================= */
-
-export const disconnectChatSocket = () => {
-  manualClose = true
-
-  if (reconnectTimeout) {
-    clearTimeout(reconnectTimeout)
-    reconnectTimeout = null
+// Route incoming chat messages from the unified socket
+onRealtimeEvent((msg) => {
+  if (!msg.type.startsWith("chat.")) return
+  try {
+    const { type, payload } = msg
+    switch (type) {
+      case ChatEventType.MESSAGE_SENT: {
+        const chatMsg = mapToChatMessage(payload)
+        logSendFlow("socket_message_sent_received", {
+          roomId: chatMsg.roomId,
+          messageId: chatMsg.messageId,
+          seq: chatMsg.seq,
+          clientMessageId: chatMsg.clientMessageId ?? null,
+        })
+        eventHandlers.forEach((h) => h({ type: ChatEventType.MESSAGE_SENT, payload: chatMsg }))
+        break
+      }
+      case ChatEventType.MESSAGE_EDITED:
+        eventHandlers.forEach((h) =>
+          h({ type: ChatEventType.MESSAGE_EDITED, payload: mapEditedPayload(payload) })
+        )
+        break
+      case ChatEventType.MESSAGE_DELETED:
+        eventHandlers.forEach((h) =>
+          h({ type: ChatEventType.MESSAGE_DELETED, payload: mapDeletedPayload(payload) })
+        )
+        break
+      case ChatEventType.MESSAGE_PINNED:
+        eventHandlers.forEach((h) =>
+          h({ type: ChatEventType.MESSAGE_PINNED, payload: mapMessagePinPayload(payload) })
+        )
+        break
+      case ChatEventType.MESSAGE_UNPINNED:
+        eventHandlers.forEach((h) =>
+          h({ type: ChatEventType.MESSAGE_UNPINNED, payload: mapMessagePinPayload(payload) })
+        )
+        break
+      case ChatEventType.REACTION_UPDATED:
+        eventHandlers.forEach((h) =>
+          h({ type: ChatEventType.REACTION_UPDATED, payload: mapReactionPayload(payload) })
+        )
+        break
+      case ChatEventType.MEMBER_JOINED:
+        eventHandlers.forEach((h) =>
+          h({ type: ChatEventType.MEMBER_JOINED, payload: payload as RoomMemberJoinedPayload })
+        )
+        break
+      case ChatEventType.MEMBER_LEFT:
+        eventHandlers.forEach((h) =>
+          h({ type: ChatEventType.MEMBER_LEFT, payload: payload as RoomMemberLeftPayload })
+        )
+        break
+      case ChatEventType.MEMBER_REMOVED:
+        eventHandlers.forEach((h) =>
+          h({ type: ChatEventType.MEMBER_REMOVED, payload: payload as RoomMemberLeftPayload })
+        )
+        break
+      default:
+        break
+    }
+  } catch (e) {
+    console.error("WS parse error", e)
   }
+})
 
-  socket?.close()
-  socket = null
+// Re-join all subscribed rooms after socket reconnects
+onRealtimeOpen(() => {
+  logSendFlow("socket_open", { subscribedRooms: subscribedRooms.size })
+  subscribedRooms.forEach((roomId) => {
+    sendRealtimeMessage({ type: "JOIN", roomId })
+  })
+  openHandlers.forEach((h) => h())
+})
 
+export const resetChatState = () => {
   subscribedRooms.clear()
 }
 
-/* ================= SUBSCRIBE ================= */
-
 export const subscribeRoom = (roomId: string) => {
   subscribedRooms.add(roomId)
-
-  logSendFlow("socket_subscribe_room", { roomId, readyState: socket?.readyState ?? null })
-
-  if (socket?.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({ type: "JOIN", roomId }))
-  }
+  logSendFlow("socket_subscribe_room", { roomId })
+  sendRealtimeMessage({ type: "JOIN", roomId })
 }
 
-/* ================= HANDLERS ================= */
-
-export const onChatEvent = (handler: (event: ChatSocketEvent) => void) => {
+export const onChatEvent = (handler: (event: ChatSocketEvent) => void): () => void => {
   eventHandlers.add(handler)
-
-  return () => {
-    eventHandlers.delete(handler)
-  }
+  return () => { eventHandlers.delete(handler) }
 }
 
-export const onSocketOpen = (handler: () => void) => {
+export const onSocketOpen = (handler: () => void): () => void => {
   openHandlers.add(handler)
-
-  return () => {
-    openHandlers.delete(handler)
-  }
+  return () => { openHandlers.delete(handler) }
 }
-
-/* ================= MAPPER ================= */
 
 function mapToChatMessage(p: any): ChatMessage {
   return {
@@ -269,6 +161,7 @@ function mapToChatMessage(p: any): ChatMessage {
     type: p.type,
     content: p.content,
     replyToMessageId: p.replyToMessageId ?? null,
+    replyToAuthorId: p.replyToAuthorId ?? null,
     forwardedFromMessageId: p.forwardedFromMessageId ?? null,
     systemEventType: p.systemEventType ?? null,
     actorUserId: p.actorUserId ?? null,
@@ -279,6 +172,7 @@ function mapToChatMessage(p: any): ChatMessage {
     deleted: p.deleted ?? false,
     attachments: p.attachments ?? [],
     blocks: p.blocks ?? [],
+    mentionedUserIds: p.mentionedUserIds ?? [],
     reactions: normalizeReactions(p.reactions ?? []),
   }
 }

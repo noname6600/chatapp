@@ -129,7 +129,7 @@ describe("friendship.socket - Event Handling", () => {
       const event: FriendshipWsEvent = {
         type: FriendshipEventType.FRIEND_STATUS_CHANGED,
         data: {
-          eventType: "FRIEND_BLOCKED",
+          eventType: "friend.blocked",
           actionUserId: "me",
           userLow: "me",
           userHigh: "other-user",
@@ -146,7 +146,7 @@ describe("friendship.socket - Event Handling", () => {
       const event: FriendshipWsEvent = {
         type: FriendshipEventType.FRIEND_STATUS_CHANGED,
         data: {
-          eventType: "FRIEND_BLOCKED",
+          eventType: "friend.blocked",
           actionUserId: "other-user",
           userLow: "me",
           userHigh: "other-user",
@@ -165,7 +165,7 @@ describe("friendship.socket - Event Handling", () => {
       const event: FriendshipWsEvent = {
         type: FriendshipEventType.FRIEND_STATUS_CHANGED,
         data: {
-          eventType: "FRIEND_UNBLOCKED",
+          eventType: "friend.unblocked",
           actionUserId: "me",
           userLow: "me",
           userHigh: "other-user",

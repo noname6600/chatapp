@@ -9,6 +9,7 @@ import type {
   EmailVerificationStatus,
   LoginRequest,
   RegisterRequest,
+  SetPasswordRequest,
   TokenPair,
 } from "../types/auth"
 
@@ -72,6 +73,17 @@ export const changePasswordApi = async (
 ): Promise<void> => {
   try {
     const res = await authApi.post<ApiResponse<null>>("/password/change", payload)
+    unwrap(res)
+  } catch (error) {
+    throw new Error(extractErrorMessage(error))
+  }
+}
+
+export const setPasswordApi = async (
+  payload: SetPasswordRequest
+): Promise<void> => {
+  try {
+    const res = await authApi.post<ApiResponse<null>>("/password/set", payload)
     unwrap(res)
   } catch (error) {
     throw new Error(extractErrorMessage(error))

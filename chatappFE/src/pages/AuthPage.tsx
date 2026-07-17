@@ -3,6 +3,7 @@ import { loginApi, registerApi } from "../api/auth.service";
 import { useAuth } from "../hooks/useAuth";
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { redirectToUrl } from "../utils/browserRedirect";
+import { getRecentLogins, removeRecentLogin, type RecentLoginUser } from "../utils/recentLogins";
 
 type Mode = "login" | "register";
 type SubmitPhase = "idle" | "verifying" | "bootstrapping";
@@ -19,6 +20,7 @@ export default function AuthPage() {
   const [searchParams] = useSearchParams();
 
   const [mode, setMode] = useState<Mode>("login");
+  const [recentUsers, setRecentUsers] = useState<RecentLoginUser[]>(() => getRecentLogins());
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -124,6 +126,18 @@ export default function AuthPage() {
     redirectToUrl(`${AUTH_GATEWAY_BASE}/oauth2/authorization/google`);
   };
 
+  const handleSelectRecentUser = (user: RecentLoginUser) => {
+    setUsername(user.email);
+    setUsernameError("");
+    setFormError("");
+    setOauthErrorDismissed(true);
+  };
+
+  const handleRemoveRecentUser = (email: string) => {
+    removeRecentLogin(email);
+    setRecentUsers(getRecentLogins());
+  };
+
   return (
 
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
@@ -133,6 +147,46 @@ export default function AuthPage() {
         <h1 className="text-2xl font-bold text-center mb-6">
           {mode === "login" ? "Login" : "Register"}
         </h1>
+
+        {/* RECENT USERS — login mode only */}
+        {mode === "login" && recentUsers.length > 0 && (
+          <div className="mb-5">
+            <p className="text-xs text-gray-400 mb-2">Recent accounts</p>
+            <div className="flex flex-col gap-1">
+              {recentUsers.map((u) => (
+                <div
+                  key={u.email}
+                  className="flex items-center gap-2 p-2 rounded-lg border border-gray-100 hover:bg-gray-50 cursor-pointer group"
+                  onClick={() => handleSelectRecentUser(u)}
+                >
+                  {u.avatarUrl ? (
+                    <img
+                      src={u.avatarUrl}
+                      alt={u.displayName}
+                      className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                    />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-semibold text-sm flex-shrink-0">
+                      {u.displayName.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-800">{u.email}</div>
+                    <div className="text-xs text-gray-400 truncate">{u.displayName}</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); handleRemoveRecentUser(u.email); }}
+                    className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-gray-500 transition text-lg leading-none flex-shrink-0"
+                    aria-label="Remove"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* FORM ERROR */}
         {displayedFormError && (

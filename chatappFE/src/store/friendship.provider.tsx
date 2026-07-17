@@ -2,8 +2,6 @@ import { useEffect } from "react";
 import { useAuth } from "./auth.store";
 import { useFriendStore } from "./friend.store";
 import {
-  connectFriendshipSocket,
-  disconnectFriendshipSocket,
   onFriendshipEvent,
   processFriendshipEvent,
 } from "../websocket/friendship.socket";
@@ -43,24 +41,19 @@ export function useFriendshipInitialization() {
     fetchUnreadCount();
   }, [accessToken, setUnreadCount]);
 
-  // Try to connect WebSocket (optional - for realtime updates)
+  // Register event handler for incoming friendship events
   useEffect(() => {
     if (!accessToken) {
-      disconnectFriendshipSocket();
       clearFriendState()
       return;
     }
 
-    connectFriendshipSocket();
-
-    // Register event handler for incoming friendship events (will update realtime if WS connects)
     const unsubscribeEvent = onFriendshipEvent((event) => {
       processFriendshipEvent(event);
     });
 
     return () => {
       unsubscribeEvent();
-      disconnectFriendshipSocket();
     };
   }, [accessToken, clearFriendState]);
 }

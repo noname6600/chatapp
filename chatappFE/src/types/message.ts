@@ -62,15 +62,16 @@ export interface ChatMessage {
 
   content: string | null
   replyToMessageId: string | null
+  replyToAuthorId?: string | null
   forwardedFromMessageId?: string | null
-  systemEventType?: "JOIN" | "PIN" | null
+  systemEventType?: string | null
   actorUserId?: string | null
   targetMessageId?: string | null
 
   clientMessageId?: string | null
 
-  createdAt: string
-  editedAt: string | null
+  createdAt: number | string
+  editedAt: number | string | null
 
   deleted: boolean
 

@@ -1,0 +1,108 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: phaseb-local-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: chatapp-postgres
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      NOTIFICATION_DATABASE_NAME: ${NOTIFICATION_DATABASE_NAME:-notification_service}
+      AUTH_DATABASE_NAME: ${AUTH_DATABASE_NAME:-auth_service}
+      USER_DATABASE_NAME: ${USER_DATABASE_NAME:-user_service}
+      CHAT_DATABASE_NAME: ${CHAT_DATABASE_NAME:-chat_service}
+      FRIENDSHIP_DATABASE_NAME: ${FRIENDSHIP_DATABASE_NAME:-friendship_service}
+      PRESENCE_DATABASE_NAME: ${PRESENCE_DATABASE_NAME:-presence_service}
+    ports:
+      - "5432:5432"
+    volumes:
+      - phaseb-local-postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init/01-create-databases.sh:/docker-entrypoint-initdb.d/01-create-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: phaseb-local-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: phaseb-local-kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: notification-service/Dockerfile
+    container_name: phaseb-local-notification-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    environment:
+      PORT: 8086
+      NOTIFICATION_DATABASE_URL: jdbc:postgresql://postgres:5432/${NOTIFICATION_DATABASE_NAME:-notification_service}
+      NOTIFICATION_DATABASE_USER: ${POSTGRES_USER:-postgres}
+      NOTIFICATION_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092,phaseb-local-kafka:9092}
+      PHASEB_LOCAL_VALIDATION_ENABLED: "true"
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://local-validation.invalid/jwks
+    ports:
+      - "8086:8086"
+
+  realtime-edge-service:
+    build:
+      context: .
+      dockerfile: realtime-edge-service/Dockerfile
+    container_name: phaseb-local-realtime-edge-service
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      notification-service:
+        condition: service_started
+    environment:
+      SPRING_SERVER_PORT: 8085
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092,phaseb-local-kafka:9092}
+      SERVICES_NOTIFICATION_URL: ${SERVICES_NOTIFICATION_URL:-http://notification-service:8086}
+      PHASEB_LOCAL_VALIDATION_ENABLED: "true"
+      JWT_JWK_SET_URI: http://local-validation.invalid/jwks
+    ports:
+      - "8085:8085"
+
+volumes:
+  phaseb-local-postgres-data:

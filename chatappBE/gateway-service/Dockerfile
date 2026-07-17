@@ -1,16 +1,18 @@
 FROM eclipse-temurin:21-jdk-alpine AS build
 WORKDIR /workspace
 
-COPY gradlew ./gradlew
-COPY gradle ./gradle
-COPY gateway-service ./gateway-service
+COPY . .
 RUN chmod +x ./gradlew
-RUN ./gradlew -p gateway-service bootJar -x test
+RUN ./gradlew :gateway-service:bootJar -x test
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
+RUN addgroup -S app && adduser -S -G app app
+ENV JAVA_TOOL_OPTIONS="-XX:InitialRAMPercentage=25.0 -XX:MaxRAMPercentage=75.0"
+
 COPY --from=build /workspace/gateway-service/build/libs/*.jar app.jar
 
 EXPOSE 8080
+USER app
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

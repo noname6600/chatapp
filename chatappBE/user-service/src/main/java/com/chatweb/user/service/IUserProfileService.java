@@ -1,0 +1,19 @@
+package com.chatweb.user.service;
+
+import com.chatweb.user.dto.AvatarUploadResponse;
+import com.chatweb.user.dto.AvatarMetadataRequest;
+import com.chatweb.user.dto.UpdateProfileRequest;
+import com.chatweb.user.dto.UserBasicProfile;
+import com.chatweb.user.dto.UserProfileResponse;
+import java.util.List;
+import java.util.UUID;
+
+public interface IUserProfileService {
+    UserProfileResponse getSelf(UUID accountId);
+    UserProfileResponse getOther(UUID targetId);
+    boolean existsByAccountId(UUID accountId);
+    void updateProfile(UUID accountId, UpdateProfileRequest req);
+    List<UserBasicProfile> getMany(List<UUID> ids);
+    List<UserBasicProfile> searchByUsername(String username);
+    AvatarUploadResponse applyAvatarMetadata(UUID accountId, AvatarMetadataRequest request);
+}

@@ -33,13 +33,14 @@ export const shouldCountNotificationAsUnreadByMode = (
   modesByRoom: Record<string, RoomNotificationMode>
 ): boolean => {
   const isRoomNotification =
-    notification.type === "MESSAGE" || notification.type === "MENTION"
+    notification.type === "MESSAGE" || notification.type === "MENTION" || notification.type === "REPLY"
 
   if (!isRoomNotification || !notification.roomId) {
     return true
   }
 
   const mode = getModeFromStore(notification.roomId, modesByRoom)
-  const isMentioned = notification.type === "MENTION"
-  return shouldDeliverRoomEventByMode(mode, isMentioned)
+  // Replies count the same as mentions under ONLY_MENTION mode (both are personally targeted).
+  const isPersonallyTargeted = notification.type === "MENTION" || notification.type === "REPLY"
+  return shouldDeliverRoomEventByMode(mode, isPersonallyTargeted)
 }

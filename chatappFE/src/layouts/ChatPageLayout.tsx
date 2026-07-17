@@ -19,6 +19,8 @@ import {
   joinPresenceRoom,
   leavePresenceRoom,
 } from "../websocket/presence.socket";
+import { onChatEvent } from "../websocket/chat.socket";
+import { ChatEventType } from "../constants/chatEvents";
 
 import { useChat } from "../store/chat.store";
 import { useRooms } from "../store/room.store";
@@ -29,7 +31,7 @@ import { useUnpin } from "../hooks/useUnpin";
 import type { PinnedMessage } from "../types/message";
 
 export default function ChatPageLayout() {
-  const { activeRoomId, setActiveRoom, upsertMessage } = useChat();
+  const { activeRoomId, setActiveRoom, upsertMessage, currentUserId } = useChat();
   const { roomsById, loadRooms, removeRoom } = useRooms();
   const { fetchRoomNotificationMode } = useNotifications();
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -37,6 +39,9 @@ export default function ChatPageLayout() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showMembers, setShowMembers] = useState(true);
   const [showPinsPanel, setShowPinsPanel] = useState(false);
+  // Tracks when the current user was removed from a room (kick/ban) so we can
+  // show a contextual message instead of the blank "select a room" screen.
+  const [removalInfo, setRemovalInfo] = useState<{ roomId: string } | null>(null);
 
   // ── Deep-link invite join (/chat?join=<roomId>) ──────────────────────────
   const [searchParams, setSearchParams] = useSearchParams();
@@ -151,7 +156,9 @@ export default function ChatPageLayout() {
       if (currentRoomId) joinPresenceRoom(currentRoomId);
     });
 
-    return unsub;
+    return () => {
+      unsub();
+    };
   }, [currentRoomId]);
 
   useEffect(() => {
@@ -160,6 +167,20 @@ export default function ChatPageLayout() {
 
     void fetchRoomNotificationMode(currentRoomId).catch(() => {});
   }, [currentRoomId, currentRoom?.type, fetchRoomNotificationMode]);
+
+  // Detect when the current user is removed (kicked/banned) from the active room.
+  useEffect(() => {
+    return onChatEvent((event) => {
+      if (event.type !== ChatEventType.MEMBER_REMOVED) return;
+      const payload = event.payload;
+      if (!currentUserId || payload.userId !== currentUserId) return;
+      // Only act when we're currently viewing that room.
+      if (activeRoomId !== payload.roomId) return;
+      setRemovalInfo({ roomId: payload.roomId });
+      removeRoom(payload.roomId);
+      void setActiveRoom("");
+    });
+  }, [currentUserId, activeRoomId, removeRoom, setActiveRoom]);
 
   const handleLeaveSuccess = async (roomId: string) => {
     setShowLeaveModal(false);
@@ -187,9 +208,11 @@ export default function ChatPageLayout() {
             {joinLifecycle === "joining" ? (
               <p>Joining group...</p>
             ) : joinLifecycle === "failed" ? (
-              <div className="flex flex-col items-center gap-3">
+              <div className="flex flex-col items-center gap-3 text-center px-6">
                 <p className="text-red-600 font-medium">
-                  {joinFailureReason === "invalid"
+                  {joinFailureReason === "banned"
+                    ? "You are banned from this group. Contact an admin to request access."
+                    : joinFailureReason === "invalid"
                     ? "This invite link is no longer valid."
                     : joinFailureReason === "already-member"
                     ? "You are already a member of this group."
@@ -204,6 +227,18 @@ export default function ChatPageLayout() {
                     Retry
                   </button>
                 )}
+              </div>
+            ) : removalInfo ? (
+              <div className="flex flex-col items-center gap-2 text-center px-6">
+                <p className="font-medium text-gray-700">You have been removed from this room.</p>
+                <p className="text-sm text-gray-400">If you think this was a mistake, contact the group admin.</p>
+                <button
+                  type="button"
+                  className="mt-2 text-sm text-blue-600 underline"
+                  onClick={() => setRemovalInfo(null)}
+                >
+                  Dismiss
+                </button>
               </div>
             ) : (
               <span>Select a room to start chatting</span>
@@ -240,7 +275,7 @@ export default function ChatPageLayout() {
 
       {currentRoom && showMembers && (
         <div className="w-60 shrink-0 border-l bg-white overflow-hidden">
-          <RoomMembersSidebar roomId={currentRoom.id} />
+          <RoomMembersSidebar roomId={currentRoom.id} roomType={currentRoom.type} />
         </div>
       )}
 

@@ -1,0 +1,397 @@
+================================================================================
+  PERFORMANCE & SCALABILITY REVIEW — CHATAPP BACKEND
+  Reviewer Role: Performance Engineer + Backend Scalability Analyst
+  Date: 2026-05-18
+  Codebase: d:/Work/PET/chatappPET/chatapp/chatappBE
+================================================================================
+
+================================================================================
+SECTION 1 — CRITICAL THROUGHPUT BOTTLENECKS
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[CRITICAL] Message Sequence: Pessimistic Row Lock Serializes All Sends Per Room
+──────────────────────────────────────────────────────────────────────────────
+Severity: CRITICAL
+File: chat-service/.../infrastructure/sequence/RedisMessageSequenceService.java
+  Method: nextSeq(roomId) → SELECT * FROM rooms WHERE id=? FOR UPDATE
+
+This is the single largest performance bottleneck in the entire system.
+
+Mechanism:
+  Every message send for a given room acquires an EXCLUSIVE lock on the rooms table row
+  for that roomId. Steps:
+  1. BEGIN TRANSACTION
+  2. SELECT * FROM rooms WHERE id=? FOR UPDATE  ← exclusive row lock acquired
+  3. nextSeq = room.lastSeq + 1
+  4. UPDATE rooms SET last_seq=? WHERE id=?
+  5. COMMIT  ← lock released
+
+All concurrent sends for the SAME room queue at step 2. With DB round-trip
+latency of ~5ms:
+  - 200 msg/sec per room → 1 second worth of DB lock contention
+  - 500 msg/sec per room → severe backpressure, timeout cascade
+  - 1000 msg/sec per room → likely service crash (connection pool exhaustion)
+
+For a popular 1,000-member group room:
+  - 10 active users typing simultaneously → 10 concurrent lock waits
+  - Each lock acquisition: 5ms wait + 5ms query = 10ms → 100 msg/sec effective ceiling
+
+The misleading class name (RedisMessageSequenceService) suggests the developer
+intended Redis INCR but implemented DB lock as a temporary measure. The class
+has not been replaced.
+
+Performance model:
+  Max room throughput ≈ 1000ms / (avg_lock_wait_ms + avg_db_latency_ms)
+  At 5ms avg: ~100 msg/sec per room ceiling
+  Under contention: ~20-50 msg/sec (lock wait grows with queue depth)
+
+Recommended fix direction:
+  PHASE 1 (immediate): Redis INCR
+    atomicLong = redisTemplate.opsForValue().increment("room:seq:" + roomId);
+    Single atomic operation, ~0.5ms, no DB involvement.
+    Handle Redis restart: at startup, seed from DB max seq.
+
+  PHASE 2 (large-scale): Batched sequence allocation
+    Allocate blocks of 100 sequence numbers per request.
+    Reduces Redis round-trips by 100x.
+
+──────────────────────────────────────────────────────────────────────────────
+[CRITICAL] CheckBlockedPairStep: Synchronous HTTP on Every Private Message Send
+──────────────────────────────────────────────────────────────────────────────
+Severity: CRITICAL
+File: chat-service/.../pipeline/send/steps/CheckBlockedPairStep.java
+  → FriendshipClient.isBlockedBetween(senderId, otherId)
+  → HTTP GET to friendship-service:8085/api/v1/internal/friends/blocked-between
+
+Every private message send = 1 HTTP call to friendship-service.
+At 100 msg/sec (private DMs): 100 req/sec to friendship-service just for block checks.
+
+Latency model:
+  HTTP round-trip = network (~1ms) + friendship-service processing (~5ms) = ~6ms
+  This 6ms is added to EVERY private message send, in series with DB operations.
+  Total private message latency: ~6ms (block check) + ~5ms (seq lock) + ~10ms (DB write) = ~21ms minimum.
+
+Under friendship-service degradation (spikes to 100ms):
+  Private message latency becomes 100ms+ → users notice delay
+
+Recommended fix direction:
+  Cache block status in Redis with 60-second TTL:
+  Key: "block:{min(u1,u2)}:{max(u1,u2)}" → boolean
+  On cache miss: call friendship-service once, cache result for 60s.
+  Cache invalidation: when block/unblock occurs, invalidate cache key.
+  This reduces friendship-service load by 99% for active conversations.
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] Username Search: Full Table Scan on LIKE %term% Query
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: user-service/.../repository/UserProfileRepository.java
+  findTop10ByUsernameContainingIgnoreCaseOrderByUsernameAsc(String username)
+
+Generated SQL (approximately):
+  SELECT * FROM user_profiles WHERE LOWER(username) LIKE '%' + lower(term) + '%'
+  ORDER BY username ASC LIMIT 10;
+
+PostgreSQL cannot use btree index for prefix-wildcard LIKE queries (%term%).
+At user counts:
+  - 10K users: ~5ms (tiny table)
+  - 100K users: ~50ms
+  - 1M users: ~500ms+ → timeout territory
+
+The findTop10 limit does NOT help: PostgreSQL must scan ALL matching rows
+before it can apply ORDER BY + LIMIT. In worst case: scans 1M rows.
+
+Recommended fix direction:
+  Add pg_trgm extension and trigram GIN index:
+    CREATE EXTENSION IF NOT EXISTS pg_trgm;
+    CREATE INDEX CONCURRENTLY idx_username_trgm ON user_profiles
+      USING GIN (username gin_trgm_ops);
+  This enables fast ILIKE queries with ~5ms latency at 1M users.
+
+================================================================================
+SECTION 2 — WEBSOCKET PERFORMANCE
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] canAccessRoom HTTP Call on Every WebSocket JOIN — Reconnect Storm Risk
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: realtime-edge-service/.../subscription/ChannelSubscriptionManager.java
+
+Every JOIN message → HTTP GET to chat-service/canAccessRoom.
+
+Reconnect scenario (network outage lasting 30 seconds):
+  - 10K connected users all disconnect
+  - Network recovers → all 10K clients reconnect simultaneously
+  - Each client sends JOIN for avg 5 rooms = 50K JOIN messages within 10 seconds
+  - 50K HTTP calls to chat-service in 10 seconds = 5K req/sec burst
+  - chat-service's default thread pool (200 threads for Spring MVC Tomcat):
+    50K requests / 200 threads = 250 requests queued per thread
+  - Connection pool to DB (HikariCP default 10): saturated immediately
+  - chat-service returns 503 → JOIN fails → client doesn't receive messages
+
+This is a thundering herd problem on reconnect.
+
+Recommended fix direction:
+  1. Cache room membership in realtime-edge: "member:{userId}:{roomId}" → boolean, TTL 5min
+  2. On cache hit: approve JOIN without HTTP call (99% of requests)
+  3. On cache miss: HTTP call to chat-service
+  4. Stagger reconnects with client-side jitter (exponential backoff + random delay)
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] WebSocket Connection Establishment Makes 3 Synchronous HTTP Calls
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: realtime-edge-service/.../websocket/RealtimeWebSocketHandler.java
+
+On /ws/presence connection:
+  1. afterConnectionEstablished → presenceLifecycleBridge.onPresenceConnected()
+     → HTTP POST to presence-service:8084/ws/connect (1000ms timeout)
+  2. If subscribed to rooms: HTTP to chat-service/canAccessRoom per room
+  3. If presence snapshot requested: HTTP to presence-service/rooms/{id}
+
+Worst case for a user with 20 rooms:
+  1 HTTP (presence connect) + 20 HTTP (room auth) + 20 HTTP (room snapshot) = 41 HTTP calls
+  At 6ms each = 246ms just for initialization HTTP calls.
+
+During connection bursts:
+  1000 users connecting per second → 41,000 HTTP calls/sec to backend services
+
+Recommended fix direction:
+  Batch initialization: Single HTTP call to chat-service that returns all room
+  memberships for userId at once. Cache result. Use for all room JOIN validations.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] Notification WebSocket: Broadcasting to All Sessions of a User
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: notification-service/.../websocket/WebSocketUserBroadcaster.java
+
+WebSocketUserBroadcaster broadcasts to ALL active WebSocket sessions of a user.
+A user with 5 browser tabs has 5 sessions. Each notification is sent 5 times
+(once per tab). At scale:
+  - 10K users × 5 avg tabs × 100 notifications/hour = 5M WebSocket sends/hour
+
+This is fine for the current implementation but at very large scale, the
+one-to-N fan-out within the same user should be optimized (send once per user,
+let the client deduplicate by notification ID).
+
+================================================================================
+SECTION 3 — ASYNC/SYNC ANALYSIS
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[STRENGTH] Pipeline Supports Async Steps for Non-Critical Work
+──────────────────────────────────────────────────────────────────────────────
+File: common/common-core/.../pipeline/PipelineExecutor.java
+      common/common-core/.../pipeline/PipelineStep.java (isAsync() method)
+
+PipelineExecutor supports async steps:
+  - Sync steps execute in order
+  - Async steps are submitted to a thread pool concurrently
+  - CompletableFuture.allOf(asyncFutures).join() waits for all async steps
+
+For message send pipeline:
+  - PersistMentionStep (async: saves mention records concurrently with other steps)
+  - PublishMessageEventStep (async: Kafka publish concurrently with response return)
+
+This means the HTTP response to the client can be returned before:
+  - Mention records are saved (slight eventual consistency)
+  - Kafka event is published (slight delay in notifications)
+
+This is correct performance optimization for non-critical side effects.
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] PipelineExecutor async steps: CompletableFuture.allOf().join() Blocks the Thread
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: common/common-core/.../pipeline/PipelineExecutor.java
+
+After launching async steps:
+  CompletableFuture.allOf(asyncFutures).join()
+
+This .join() call BLOCKS the calling thread until all async steps complete.
+For Tomcat with 200 threads: if all 200 threads are blocked in .join(), no new
+requests can be processed until at least one async step finishes.
+
+If an async step is slow (e.g., Kafka publish with max.block.ms=2000):
+  - 200 concurrent message sends → 200 threads blocked in .join() for up to 2s
+  - New message requests queue → service becomes unresponsive
+
+The step-level timeout (CompletableFuture.orTimeout) mitigates this IF the async
+thread pool doesn't starve. But the blocking .join() on the HTTP thread is still
+expensive.
+
+Recommended fix direction:
+  For async steps that don't affect the HTTP response (Kafka publish, mention saves),
+  do NOT join() on them in the response path. Let them complete independently.
+  Only join() on async steps whose results affect the response.
+
+  Or: convert to reactive/non-blocking pipeline for async steps.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] Presence Heartbeat Is Synchronous HTTP on WebSocket Message
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: realtime-edge-service/.../websocket/RealtimeWebSocketHandler.java
+
+When client sends: { "type": "presence.user.heartbeat", "active": true/false }
+→ HTTP POST to presence-service:8084/ws/heartbeat (read timeout: 2000ms)
+
+At 10K connected users with 30s heartbeat interval:
+  10K heartbeats / 30s = 333 requests/sec to presence-service, continuously.
+
+This is a constant ~333 req/sec load on presence-service from heartbeats alone.
+Each heartbeat request updates Redis (SET presence:state:{userId} WITH TTL).
+Redis handles this easily (~0.5ms/op), but the HTTP overhead multiplies cost.
+
+Recommended fix direction:
+  Batch heartbeats: collect 100ms worth of heartbeats, send as batch to presence-service.
+  Or: have realtime-edge directly write to Redis for heartbeat state updates
+  (bypassing presence-service HTTP entirely). Presence-service is the owner,
+  but realtime-edge writing to the same Redis namespace is a coupling trade-off.
+
+================================================================================
+SECTION 4 — MEMORY RISKS
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] InMemoryRealtimeSessionRegistry: Unbounded Memory Growth
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: realtime-edge-service/.../connection/InMemoryRealtimeSessionRegistry.java
+  Maps: sessions, userSessions, channelSessions (all ConcurrentHashMap)
+
+Memory per session (estimated):
+  - RealtimeSession object: ~500 bytes
+  - userId UUID: 16 bytes
+  - instanceId String: ~50 bytes
+  - subscriptions HashSet: 5 channels × 64 bytes = ~320 bytes
+  - Timestamps: 3 × 8 bytes = ~24 bytes
+  Total: ~1KB per session
+
+At 100K concurrent users with 1 session each: ~100MB for sessions alone.
+At 10K sessions × 50 channel subscriptions: channelSessions map entries = 500K entries.
+
+The cleanup job handles expired sessions (90s TTL, 30s interval) which bounds
+the memory for idle connections. But during a surge:
+  - 100K connections in 60 seconds → 100K session objects created in 60s
+  - Cleanup runs every 30s → max 30s worth of sessions accumulate
+
+Assessment: Memory is bounded by cleanup job. At 100K users: ~100MB is acceptable
+for a 2-4GB JVM heap. Monitor with JVM metrics.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] Room Entity Lazy Loading Could Trigger N+1 If Incorrectly Accessed
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: chat-service/.../room/entity/RoomMember.java (no @ManyToOne visible directly)
+
+open-in-view: false is set correctly across all services. This ensures that
+lazy loading outside @Transactional boundaries throws LazyInitializationException
+rather than silently opening a new connection.
+
+The real risk: JPA entities with @ManyToOne or @OneToMany relationships that
+are accessed in loops. For example, if RoomMemberRepository.findByRoomId() returns
+a page of members and each member's room is lazy-loaded for some reason:
+  N members → N SELECT room WHERE id=? queries.
+
+From the entity analysis, Room and RoomMember are not mapped with bidirectional
+JPA relationships visible in the entities (RoomMember has roomId as UUID, not
+@ManyToOne Room). This is the correct approach — use UUID foreign keys instead
+of JPA relationships to prevent accidental lazy loading.
+
+Assessment: Design is correct. Risk is low if the pattern is maintained.
+
+================================================================================
+SECTION 5 — GATEWAY PERFORMANCE
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[STRENGTH] Spring Cloud Gateway on WebFlux — Non-Blocking Architecture
+──────────────────────────────────────────────────────────────────────────────
+File: gateway-service (Spring WebFlux reactive)
+
+Spring Cloud Gateway runs on Netty via WebFlux. It handles connections
+non-blocking with a small event loop thread pool (typically 2× CPU cores).
+For an 8-core server: 16 Netty threads handle ALL gateway traffic.
+
+This is highly efficient for an API gateway (pure proxying + filtering, no CPU work).
+Throughput estimate: 50,000-100,000 req/sec on a single gateway instance.
+The gateway is unlikely to be the bottleneck unless the circuit breaker has issues.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] Circuit Breaker on Synchronous Feign Calls (chat-service → friendship-service)
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: chat-service/.../pipeline/send/steps/CheckBlockedPairStep.java
+
+The Feign call to friendship-service in CheckBlockedPairStep has NO circuit breaker.
+If friendship-service degrades to 2-second response time:
+  - Each private message send blocks for 2 seconds (Feign timeout)
+  - chat-service Tomcat thread pool: 200 threads × 2s blocked = 100 msg/sec ceiling
+  - Service becomes unresponsive for non-private-room messages too (same thread pool)
+
+Gateway has a CircuitBreaker for routing but the Feign call inside chat-service
+is independent of the gateway's circuit breaker.
+
+Recommended fix direction:
+  Add Resilience4j @CircuitBreaker on CheckBlockedPairStep.execute():
+    @CircuitBreaker(name="friendshipBlockCheck", fallbackMethod="assumeNotBlocked")
+  Fallback: assume not blocked (fail-open for availability) when friendship-service
+  is in OPEN state. Log the assumption for audit trail.
+
+================================================================================
+SECTION 6 — THROUGHPUT MODELING
+================================================================================
+
+Estimated throughput limits under current architecture:
+
+COMPONENT                     ESTIMATE              BOTTLENECK
+──────────────────────────────────────────────────────────────────────────────
+Gateway (WebFlux)             50K-100K req/sec       Not a bottleneck
+chat-service (REST)           ~500 req/sec           DB connection pool (default 10)
+chat-service message send     ~100 msg/sec/room      Pessimistic row lock
+private message send          ~166 msg/sec total     Feign block check + lock
+presence heartbeat            ~333 req/sec           Constant background load
+friendship block check        scales with DMs        Synchronous coupling
+username search               ~100 req/sec           Full table scan
+Kafka (single broker)         ~100K events/sec       Acceptable (not bottleneck yet)
+Redis (single instance)       ~100K ops/sec          Not a bottleneck at current scale
+WebSocket connections         ~10K simultaneous      In-memory session limit (RAM)
+──────────────────────────────────────────────────────────────────────────────
+
+PERFORMANCE IMPROVEMENT PRIORITY:
+1. Redis INCR for message sequence (CRITICAL → 10x improvement per room)
+2. Cache block status in Redis (HIGH → removes friendship-service dependency)
+3. Cache room membership in realtime-edge (HIGH → removes chat-service dependency on reconnect)
+4. Trigram index for username search (HIGH → 100x improvement at 100K+ users)
+5. Explicit HikariCP pool sizing (MEDIUM → prevents connection exhaustion)
+6. Async Kafka publish outside join() (MEDIUM → reduces thread blocking time)
+
+================================================================================
+SECTION 7 — SCALABILITY RECOMMENDATIONS (ORDERED BY IMPACT)
+================================================================================
+
+TIER 1 — Do Now (Prevent Outage at Scale):
+  1. Replace DB lock sequence with Redis INCR
+  2. Add block status cache (Redis) in CheckBlockedPairStep
+  3. Add room membership cache in ChannelSubscriptionManager
+  4. Configure HikariCP pool explicitly (min-idle=5, max=20 per service)
+
+TIER 2 — Do Before High-Traffic Launch:
+  5. Kafka 3-broker cluster with RF=3
+  6. Trigram index for username search
+  7. Enable distributed session registry in realtime-edge (Redis-backed)
+  8. Add PgBouncer in front of PostgreSQL
+
+TIER 3 — Do at Scale (>100K DAU):
+  9. Separate Redis instances per service (or Redis Cluster)
+  10. Horizontal Kafka partitioning (12+ partitions for chat.message.events)
+  11. Read replicas for PostgreSQL (separate read-heavy queries)
+  12. CDN for Cloudinary URLs (already handled by Cloudinary's CDN)
+
+================================================================================
+END OF PERFORMANCE REVIEW
+================================================================================

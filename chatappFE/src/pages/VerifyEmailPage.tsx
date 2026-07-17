@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react"
 import { useSearchParams, Link } from "react-router-dom"
 import { confirmEmailVerificationApi } from "../api/auth.service"
+import { useAuth } from "../store/auth.store"
 
 export default function VerifyEmailPage() {
   const [searchParams] = useSearchParams()
   const token = searchParams.get("token") ?? ""
+  const { refreshCurrentUser } = useAuth()
 
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading")
   const [errorMessage, setErrorMessage] = useState("")
@@ -17,7 +19,10 @@ export default function VerifyEmailPage() {
     }
 
     confirmEmailVerificationApi(token)
-      .then(() => setStatus("success"))
+      .then(() => {
+        setStatus("success")
+        void refreshCurrentUser()
+      })
       .catch((e) => {
         setStatus("error")
         setErrorMessage(e instanceof Error ? e.message : "Verification failed. The link may have expired.")

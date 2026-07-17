@@ -21,8 +21,10 @@ export const API_URL = {
   CHAT: buildApiUrl("chat"),
   PRESENCE: buildApiUrl("presence"),
   NOTIFICATION: buildApiUrl("notifications"),
+  REALTIME: buildApiUrl("realtime"),
   USER: buildApiUrl("users"),
-  UPLOAD: buildApiUrl("upload"),
-  FRIEND: buildApiUrl("friendship"),
+  UPLOAD: buildApiUrl("uploads"),
+  FRIEND: buildApiUrl("friends"),
   CHAT_INSTANCE: buildApiUrl("chat"),
+  VOICE: buildApiUrl("voice"),
 };

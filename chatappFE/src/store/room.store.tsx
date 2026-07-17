@@ -28,16 +28,22 @@ import {
   normalizeRoomNotificationMode,
   shouldDeliverRoomEventByMode,
 } from "../utils/notificationModePolicy"
+import { getTrackedActiveRoom } from "../utils/activeRoomTracker"
+import { playMessageSound, playMentionSound } from "../utils/notificationSound"
 
 const ROOM_NOTIFICATION_MODE_STORAGE_KEY = "notification_modes_by_room"
 const LEGACY_ROOM_MUTE_STORAGE_KEY = "notification_mutes_by_room"
+const RECONNECT_RECONCILE_COOLDOWN_MS = 2000
 
-const toTimestamp = (value: string | null | undefined): number => {
-  if (!value) return 0
-
+const toTimestamp = (value: string | number | null | undefined): number => {
+  if (!value && value !== 0) return 0
+  if (typeof value === "number") return value
   const parsed = Date.parse(value)
   return Number.isNaN(parsed) ? 0 : parsed
 }
+
+const toDateString = (value: string | number): string =>
+  typeof value === "number" ? new Date(value).toISOString() : value
 
 const getRoomLatestTimestamp = (room: Room): number => {
   return toTimestamp(room.latestMessageAt ?? room.lastMessage?.createdAt ?? null)
@@ -92,6 +98,8 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
   roomsByIdRef.current = roomsById
   const sortDebounceRef = useRef<number | null>(null)
   const missingRoomReconcileTimeoutRef = useRef<number | null>(null)
+  const reconnectReconcileInFlightRef = useRef<Promise<void> | null>(null)
+  const lastReconnectReconcileAtRef = useRef(0)
   const subscribedRoomIdsRef = useRef<Set<string>>(new Set())
 
   // Track processed MESSAGE_SENT events to prevent duplicate unread increments.
@@ -321,12 +329,33 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
     }, 120)
   }, [reconcileRoomState])
 
+  const reconcileRoomStateAfterReconnect = useCallback(async () => {
+    const now = Date.now()
+
+    if (reconnectReconcileInFlightRef.current) {
+      return reconnectReconcileInFlightRef.current
+    }
+
+    if (now - lastReconnectReconcileAtRef.current < RECONNECT_RECONCILE_COOLDOWN_MS) {
+      return
+    }
+
+    const reconcilePromise = reconcileRoomState().finally(() => {
+      lastReconnectReconcileAtRef.current = Date.now()
+      reconnectReconcileInFlightRef.current = null
+    })
+
+    reconnectReconcileInFlightRef.current = reconcilePromise
+    return reconcilePromise
+  }, [reconcileRoomState])
+
   const applyIncomingMessageToRoom = useCallback(
     (room: Room, msg: ChatMessage): Room => {
       const isSender = userId != null && msg.senderId === userId
       const mode = getRoomNotificationMode(msg.roomId)
       const isMentioned = Boolean(userId && msg.mentionedUserIds?.includes(userId))
-      const suppressUnreadByMode = !shouldDeliverRoomEventByMode(mode, isMentioned)
+      const isReplyToMe = Boolean(userId && msg.replyToAuthorId === userId && msg.senderId !== userId)
+      const suppressUnreadByMode = !shouldDeliverRoomEventByMode(mode, isMentioned || isReplyToMe)
 
       const senderName = resolveLastMessageSenderName({
         room,
@@ -351,13 +380,13 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (shouldPromoteAsLatest) {
-        nextRoom.latestMessageAt = msg.createdAt
+        nextRoom.latestMessageAt = toDateString(msg.createdAt)
         nextRoom.lastMessage = {
           id: msg.messageId,
           senderId: msg.senderId,
           senderName,
           content: buildPreview(msg),
-          createdAt: msg.createdAt,
+          createdAt: toDateString(msg.createdAt),
         }
       }
 
@@ -488,7 +517,7 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
             name: "New message",
             avatarUrl: null,
             createdBy: msg.senderId,
-            createdAt: msg.createdAt,
+            createdAt: toDateString(msg.createdAt),
             myRole: "MEMBER",
             unreadCount: 0,
             latestMessageAt: null,
@@ -526,6 +555,22 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
       // Mark this message as processed for future events.
       processedSet.add(msg.messageId)
 
+      // Play notification sound when badge would increment.
+      const isSender = userId != null && msg.senderId === userId
+      const soundMode = getRoomNotificationMode(msg.roomId)
+      const isMentionedForSound = Boolean(userId && msg.mentionedUserIds?.includes(userId))
+      const isReplyToMeForSound = Boolean(userId && msg.replyToAuthorId === userId && msg.senderId !== userId)
+      const suppressSound = !shouldDeliverRoomEventByMode(soundMode, isMentionedForSound || isReplyToMeForSound)
+      const isActiveRoom = getTrackedActiveRoom() === msg.roomId && document.hasFocus()
+
+      if (!isSender && !suppressSound && !isActiveRoom) {
+        if (isMentionedForSound || isReplyToMeForSound) {
+          playMentionSound()
+        } else {
+          playMessageSound()
+        }
+      }
+
       setRoomsById(prev => {
         const room = prev[msg.roomId]
         if (!room) return prev
@@ -547,14 +592,14 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
     const unsubscribe = onSocketOpen(() => {
       // Schedule reconciliation asynchronously to avoid calling during render.
       setTimeout(() => {
-        reconcileRoomState()
+        void reconcileRoomStateAfterReconnect()
       }, 100)
     })
 
     return () => {
       unsubscribe()
     }
-  }, [reconcileRoomState])
+  }, [reconcileRoomStateAfterReconnect])
 
   useEffect(() => {
     return () => {

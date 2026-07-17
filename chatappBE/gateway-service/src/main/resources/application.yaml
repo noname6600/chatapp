@@ -8,8 +8,8 @@ spring:
 
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
       timeout: 3s
 
   security:
@@ -20,18 +20,20 @@ spring:
 
   cloud:
     gateway:
-      httpclient:
-        connect-timeout: 5000
-        response-timeout: 5s
-
       server:
         webflux:
+          httpclient:
+            connect-timeout: 5000
+            response-timeout: 5s
+            pool:
+              max-idle-time: 30s
+              max-life-time: 60s
           default-filters:
             - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials, RETAIN_FIRST
             - name: RequestRateLimiter
               args:
-                redis-rate-limiter.replenishRate: 20
-                redis-rate-limiter.burstCapacity: 40
+                redis-rate-limiter.replenishRate: 200
+                redis-rate-limiter.burstCapacity: 400
                 redis-rate-limiter.requestedTokens: 1
                 deny-empty-key: false
                 key-resolver: "#{@ipKeyResolver}"
@@ -53,7 +55,7 @@ spring:
               predicates:
                 - Path=/api/v1/users/**,/api/users/**
               filters:
-                - RewritePath=/api/users/?(?<segment>.*), /api/v1/users/${segment}
+                - RewritePath=/api/users(?<segment>.*), /api/v1/users${segment}
                 - JwtAuthFilter
                 - name: Retry
                   args:
@@ -69,9 +71,9 @@ spring:
               predicates:
                 - Path=/api/v1/chat/**,/api/chat/**,/api/v1/rooms/**,/api/rooms/**,/api/v1/messages/**,/api/messages/**
               filters:
-                - RewritePath=/api(?:/v1)?/chat/?(?<segment>.*), /api/v1/${segment}
-                - RewritePath=/api/rooms/?(?<segment>.*), /api/v1/rooms/${segment}
-                - RewritePath=/api/messages/?(?<segment>.*), /api/v1/messages/${segment}
+                - RewritePath=/api(?:/v1)?/chat(?<segment>.*), /api/v1${segment}
+                - RewritePath=/api/rooms(?<segment>.*), /api/v1/rooms${segment}
+                - RewritePath=/api/messages(?<segment>.*), /api/v1/messages${segment}
                 - JwtAuthFilter
                 - name: Retry
                   args:
@@ -82,17 +84,26 @@ spring:
                     name: chat-cb
                     fallbackUri: forward:/fallback/service-unavailable
 
-            - id: chat-service-ws
-              uri: ws://${CHAT_SERVICE_HOST:localhost}:${CHAT_SERVICE_PORT:8083}
+            - id: realtime-edge-http
+              uri: http://${REALTIME_EDGE_SERVICE_HOST:localhost}:${REALTIME_EDGE_SERVICE_PORT:8090}
               predicates:
-                - Path=/ws/chat/**
+                - Path=/api/v1/realtime/**
+              filters:
+                - JwtAuthFilter
+
+            - id: realtime-edge-ws
+              uri: ws://${REALTIME_EDGE_SERVICE_HOST:localhost}:${REALTIME_EDGE_SERVICE_PORT:8090}
+              predicates:
+                - Path=/ws/**
+              filters:
+                - RewritePath=/ws/?(?<segment>.*), /realtime
 
             - id: presence-service
               uri: http://${PRESENCE_SERVICE_HOST:localhost}:${PRESENCE_SERVICE_PORT:8084}
               predicates:
                 - Path=/api/v1/presence/**,/api/presence/**
               filters:
-                - RewritePath=/api/presence/?(?<segment>.*), /api/v1/presence/${segment}
+                - RewritePath=/api/presence(?<segment>.*), /api/v1/presence${segment}
                 - JwtAuthFilter
                 - name: Retry
                   args:
@@ -103,17 +114,12 @@ spring:
                     name: presence-cb
                     fallbackUri: forward:/fallback/service-unavailable
 
-            - id: presence-service-ws
-              uri: ws://${PRESENCE_SERVICE_HOST:localhost}:${PRESENCE_SERVICE_PORT:8084}
-              predicates:
-                - Path=/ws/presence/**
-
             - id: friendship-service
               uri: http://${FRIENDSHIP_SERVICE_HOST:localhost}:${FRIENDSHIP_SERVICE_PORT:8085}
               predicates:
-                - Path=/api/v1/friendship/**,/api/friendship/**
+                - Path=/api/v1/friends/**,/api/friends/**
               filters:
-                - RewritePath=/api(?:/v1)?/friendship/?(?<segment>.*), /api/v1/${segment}
+                - RewritePath=/api(?:/v1)?/friends(?<segment>.*), /api/v1/friends${segment}
                 - JwtAuthFilter
                 - name: Retry
                   args:
@@ -124,17 +130,12 @@ spring:
                     name: friendship-cb
                     fallbackUri: forward:/fallback/service-unavailable
 
-            - id: friendship-service-ws
-              uri: ws://${FRIENDSHIP_SERVICE_HOST:localhost}:${FRIENDSHIP_SERVICE_PORT:8085}
-              predicates:
-                - Path=/ws/friendship/**
-
             - id: notification-service
               uri: http://${NOTIFICATION_SERVICE_HOST:localhost}:${NOTIFICATION_SERVICE_PORT:8086}
               predicates:
                 - Path=/api/v1/notifications/**,/api/notifications/**
               filters:
-                - RewritePath=/api/notifications/?(?<segment>.*), /api/v1/notifications/${segment}
+                - RewritePath=/api/notifications(?<segment>.*), /api/v1/notifications${segment}
                 - JwtAuthFilter
                 - name: Retry
                   args:
@@ -145,17 +146,12 @@ spring:
                     name: notification-cb
                     fallbackUri: forward:/fallback/service-unavailable
 
-            - id: notification-service-ws
-              uri: ws://${NOTIFICATION_SERVICE_HOST:localhost}:${NOTIFICATION_SERVICE_PORT:8086}
-              predicates:
-                - Path=/ws/notifications/**
-
             - id: upload-service
               uri: http://${UPLOAD_SERVICE_HOST:localhost}:${UPLOAD_SERVICE_PORT:8088}
               predicates:
-                - Path=/api/v1/upload/**,/api/upload/**
+                - Path=/api/v1/uploads/**,/api/uploads/**
               filters:
-                - RewritePath=/api(?:/v1)?/upload/?(?<segment>.*), /api/v1/${segment}
+                - RewritePath=/api(?:/v1)?/uploads(?<segment>.*), /api/v1/uploads${segment}
                 - JwtAuthFilter
                 - name: Retry
                   args:
@@ -164,6 +160,22 @@ spring:
                 - name: CircuitBreaker
                   args:
                     name: upload-cb
+                    fallbackUri: forward:/fallback/service-unavailable
+
+            - id: voice-service
+              uri: http://${VOICE_SERVICE_HOST:localhost}:${VOICE_SERVICE_PORT:8091}
+              predicates:
+                - Path=/api/v1/voice/**,/api/voice/**
+              filters:
+                - RewritePath=/api(?:/v1)?/voice(?<segment>.*), /api/v1/voice${segment}
+                - JwtAuthFilter
+                - name: Retry
+                  args:
+                    retries: 2
+                    statuses: BAD_GATEWAY, SERVICE_UNAVAILABLE
+                - name: CircuitBreaker
+                  args:
+                    name: voice-cb
                     fallbackUri: forward:/fallback/service-unavailable
 
 resilience4j:
@@ -188,6 +200,8 @@ resilience4j:
         baseConfig: default
       upload-cb:
         baseConfig: default
+      voice-cb:
+        baseConfig: default
 
   timelimiter:
     configs:
@@ -205,6 +219,8 @@ resilience4j:
       notification-cb:
         baseConfig: default
       upload-cb:
+        baseConfig: default
+      voice-cb:
         baseConfig: default
 
 management:
@@ -233,14 +249,30 @@ gateway:
       - http://${PRESENCE_SERVICE_HOST:localhost}:${PRESENCE_SERVICE_PORT:8084}
       - http://${FRIENDSHIP_SERVICE_HOST:localhost}:${FRIENDSHIP_SERVICE_PORT:8085}
       - http://${NOTIFICATION_SERVICE_HOST:localhost}:${NOTIFICATION_SERVICE_PORT:8086}
+      - http://${REALTIME_EDGE_SERVICE_HOST:localhost}:${REALTIME_EDGE_SERVICE_PORT:8090}
       - http://${UPLOAD_SERVICE_HOST:localhost}:${UPLOAD_SERVICE_PORT:8088}
-
-  cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
-    allowed-methods: "*"
-    allowed-headers: "*"
-    allow-credentials: true
+      - http://${VOICE_SERVICE_HOST:localhost}:${VOICE_SERVICE_PORT:8091}
 
   security:
     jwt:
       clock-skew-seconds: ${GATEWAY_JWT_CLOCK_SKEW_SECONDS:60}
+      issuer: ${AUTH_JWT_ISSUER:http://auth-service:8081}
+
+common:
+  web:
+    cors:
+      allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+      allowed-methods:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+        - OPTIONS
+        - HEAD
+      allowed-headers:
+        - "*"
+
+logging:
+  pattern:
+    level: "%5p [${spring.application.name:},${HOSTNAME:unknown},%X{trace_id:-},%X{span_id:-}]"

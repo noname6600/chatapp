@@ -1,0 +1,40 @@
+package com.chatweb.common.web.exception;
+
+import com.chatweb.common.core.exception.BusinessException;
+import com.chatweb.common.core.exception.IErrorCode;
+import com.chatweb.common.web.response.ApiResponse;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+class GlobalExceptionHandlerTest {
+
+    private enum TestDomainErrorCode implements IErrorCode {
+        SAMPLE(409);
+
+        private final int status;
+
+        TestDomainErrorCode(int status) {
+            this.status = status;
+        }
+
+        @Override
+        public int httpStatus() {
+            return status;
+        }
+    }
+
+    @Test
+    void handleBusiness_usesGenericErrorContract() {
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+        BusinessException ex = new BusinessException(TestDomainErrorCode.SAMPLE, "sample-message");
+
+        ResponseEntity<ApiResponse<Void>> response = handler.handleBusiness(ex);
+
+        assertEquals(HttpStatus.CONFLICT, response.getStatusCode());
+        assertEquals("SAMPLE", response.getBody().getError().getCode());
+        assertEquals("sample-message", response.getBody().getError().getMessage());
+    }
+}

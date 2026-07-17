@@ -4,10 +4,11 @@ import { extractErrorMessage } from "../utils/error"
 import type { ApiResponse } from "../types/api"
 import type { Attachment } from "../types/message"
 
-export type UploadPurpose = "chat-attachment" | "user-avatar"
+export type UploadPurpose = "chat-attachment" | "user-avatar" | "room-avatar"
 
 export type PrepareUploadResponse = {
   purpose: UploadPurpose
+  prepareToken: string
   cloudName: string
   apiKey: string
   uploadUrl: string
@@ -21,6 +22,7 @@ export type PrepareUploadResponse = {
 
 export type ConfirmUploadRequest = {
   purpose: UploadPurpose
+  prepareToken: string
   publicId: string
   secureUrl: string
   resourceType: string
@@ -63,7 +65,7 @@ export const prepareUploadApi = async (
 ): Promise<PrepareUploadResponse> => {
   try {
     const res = await uploadApi.post<ApiResponse<PrepareUploadResponse>>(
-      "/uploads/prepare",
+      "/prepare",
       { purpose, fileName }
     )
 
@@ -78,7 +80,7 @@ export const confirmUploadApi = async (
 ): Promise<UploadAssetResponse> => {
   try {
     const res = await uploadApi.post<ApiResponse<UploadAssetResponse>>(
-      "/uploads/confirm",
+      "/confirm",
       payload
     )
 
@@ -97,7 +99,6 @@ export const uploadToCloudinarySigned = async (
   formData.append("api_key", prepare.apiKey)
   formData.append("timestamp", String(prepare.timestamp))
   formData.append("signature", prepare.signature)
-  formData.append("folder", prepare.folder)
   formData.append("public_id", prepare.publicId)
 
   const response = await fetch(prepare.uploadUrl, {
@@ -119,6 +120,7 @@ export const uploadChatAttachment = async (file: File): Promise<Attachment> => {
 
   const confirmed = await confirmUploadApi({
     purpose: "chat-attachment",
+    prepareToken: prepared.prepareToken,
     publicId: uploaded.public_id,
     secureUrl: uploaded.secure_url,
     resourceType: uploaded.resource_type,

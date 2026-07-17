@@ -9,21 +9,27 @@ spring:
   # DATABASE (PostgreSQL)
   # ======================
   datasource:
-    url: ${NOTIFICATION_DATABASE_URL:jdbc:postgresql://localhost:5435/notification_service}
+    url: ${NOTIFICATION_DATABASE_URL:jdbc:postgresql://localhost:5432/notification_service}
     username: ${NOTIFICATION_DATABASE_USER:notification_user}
     password: ${NOTIFICATION_DATABASE_PASSWORD:notification_password}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 5000
+      idle-timeout: 300000
 
   jpa:
     hibernate:
       ddl-auto: update
     open-in-view: false
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
         format_sql: true
         jdbc:
           time_zone: UTC
+
   security:
     oauth2:
       resourceserver:
@@ -36,19 +42,19 @@ spring:
 
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
       timeout: 3s
 
   kafka:
     bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
-      group-id: user-service
+      group-id: notification-service
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
       properties:
-        spring.json.trusted.packages: "com.example.common.kafka.*"
+        spring.deserializer.value.delegate.class: com.chatweb.common.kafka.serialization.EventEnvelopeKafkaDeserializer
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
@@ -63,7 +69,11 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true
 
 
 common:
@@ -75,4 +85,14 @@ common:
 
 logging:
   pattern:
-    level: "%5p [${spring.application.name:},%X{traceId}]"
+    level: "%5p [${spring.application.name:},${HOSTNAME:unknown},%X{trace_id:-},%X{span_id:-}]"
+
+notification:
+  kafka:
+    retry:
+      max-attempts: ${NOTIFICATION_KAFKA_RETRY_MAX_ATTEMPTS:5}
+      initial-interval-ms: ${NOTIFICATION_KAFKA_RETRY_INITIAL_INTERVAL_MS:1000}
+      max-interval-ms: ${NOTIFICATION_KAFKA_RETRY_MAX_INTERVAL_MS:30000}
+      multiplier: ${NOTIFICATION_KAFKA_RETRY_MULTIPLIER:2.0}
+
+

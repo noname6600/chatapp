@@ -43,6 +43,21 @@ export default function RoomSettingsModal({
         ? "Only mentions"
         : "Nothing";
 
+  // Sync local form state whenever the modal opens or the room changes.
+  // Without this, switching rooms keeps the previous group's name/avatar stale.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!isOpen) return;
+    setRoomName(room.name);
+    setPreviewImage(room.avatarUrl || null);
+    setSelectedFile(null);
+    setError(null);
+    setSuccess(false);
+  // room.name and room.avatarUrl are intentionally omitted: we only want to
+  // reset on open/room-switch, not on every remote room update mid-session.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, room.id]);
+
   // Auto-clear success message after 3 seconds
   useEffect(() => {
     if (success) {

@@ -1,0 +1,598 @@
+================================================================================
+  ARCHITECTURE REVIEW — CHATAPP BACKEND
+  Reviewer Role: Principal Backend Architect + Distributed Systems Analyst
+  Date: 2026-05-18
+  Codebase: d:/Work/PET/chatappPET/chatapp/chatappBE
+================================================================================
+
+REVIEW LEGEND
+  [BLOCKER]   Must fix before production
+  [CRITICAL]  High probability of failure under load or on edge cases
+  [HIGH]      Significant architectural risk or design flaw
+  [MEDIUM]    Suboptimal design that will cause friction at scale
+  [LOW]       Minor architectural nit, acceptable for current scale
+  [STRENGTH]  Confirmed architectural strength worth preserving
+
+================================================================================
+PART 1 — MICROSERVICE BOUNDARY ANALYSIS
+================================================================================
+
+Services identified (from settings.gradle + docker-compose.yml):
+  auth-service         (8081) — Identity, JWT issuance, OAuth2
+  user-service         (8082) — User profiles, avatar
+  chat-service         (8083) — Messages, rooms, attachments, reactions, pins
+  presence-service     (8084) — Online status, room presence, typing
+  friendship-service   (8085) — Friends, blocks, requests
+  notification-service (8086) — In-app notifications
+  upload-service       (8088) — Cloudinary signature & confirm
+  gateway-service      (8080) — API gateway
+  realtime-edge-service(8090) — WebSocket session manager
+
+──────────────────────────────────────────────────────────────────────────────
+[STRENGTH] Domain Separation is Principled
+──────────────────────────────────────────────────────────────────────────────
+Each service owns exactly one bounded context with its own schema. Cross-domain
+communication goes only through defined contracts (Kafka events or HTTP Feign
+calls). No service holds a foreign key into another service's table.
+
+Evidence:
+  - chat-service uses services.user.url HTTP call for user profiles, never direct DB
+  - friendship-service calls user-service for username → ID lookup, never JOINs
+  - notification-service is purely a consumer (Kafka only), no sync dependencies
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] chat-service Owns Too Many Sub-Domains
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: chatappBE/chat-service/ (modules/message/, modules/room/)
+
+chat-service owns: rooms, members, bans, invite codes, pinned messages, reactions,
+attachments, message mentions, AND message sequencing. This is 7+ distinct concerns
+in a single service. While they are all "chat-related", the coupling within this
+service is very high. RoomController alone has 25+ endpoints.
+
+Runtime impact: All room management + messaging ops compete for the same service
+  thread pool, DB connection pool, and JVM heap. A hot path (message sending)
+  can be starved by an admin operation (bulk ban).
+
+Scalability impact: Cannot scale message throughput independently from room
+  management throughput.
+
+Maintainability: RoomController.java is already very large. As features grow,
+  this will become a god service.
+
+Recommended fix direction:
+  Consider splitting into chat-messaging-service and chat-room-service.
+  Not urgent at current scale but plan for it.
+
+Architecture level: Architectural (service boundary concern)
+
+──────────────────────────────────────────────────────────────────────────────
+[LOW] presence-service Has Two Distinct Personalities
+──────────────────────────────────────────────────────────────────────────────
+Severity: LOW
+Files: presence-service/.../controller/PresenceEdgeCommandController.java
+       presence-service/.../controller/PresenceQueryController.java
+
+presence-service exposes BOTH:
+  - An HTTP edge command API (called by realtime-edge-service — internal)
+  - A REST query API (presumably called by clients or gateway)
+
+These are two different client types with different trust levels and contracts.
+The edge command controller (/ws/connect, /heartbeat, /rooms/{id}/join) is
+designed for machine-to-machine use by realtime-edge. The query controller
+(/users, /rooms/{id}, /me) is designed for end clients.
+
+Recommended fix direction:
+  Separate these into @RestController classes with different security constraints.
+  Edge commands should have a stronger internal auth requirement (X-Internal-Service-Token).
+  Currently it is unclear whether edge commands are protected beyond JWT validation.
+
+Architecture level: Architectural (trust boundary concern)
+
+================================================================================
+PART 2 — COUPLING & COHESION ANALYSIS
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[CRITICAL] CheckBlockedPairStep: Synchronous Coupling Creates Cascading Failure
+──────────────────────────────────────────────────────────────────────────────
+Severity: CRITICAL
+File: chat-service/.../pipeline/send/steps/CheckBlockedPairStep.java
+Feign client: chat-service/.../client/FriendshipClient.java
+  URL: ${services.friendship.url}/api/v1/internal/friends/blocked-between
+
+Every private message send goes through a synchronous HTTP call to
+friendship-service. This introduces a critical runtime dependency:
+  - friendship-service down → ALL private messages fail
+  - friendship-service slow (>2s by default Feign timeout) → message API latency
+    spikes for every private message send
+
+This is a form of synchronous coupling that contradicts the value of microservices.
+The fail-closed design (block message if friendship-service unavailable) is a
+safety-first decision, but it is operationally dangerous without a circuit breaker
+specifically on this Feign call.
+
+Runtime impact:
+  - friendship-service 5-min rolling restart → ~5 minutes of total private messaging outage
+  - friendship-service degradation → latency spike on all private sends
+
+Scalability impact:
+  - Friendship service must scale in lockstep with chat message volume
+  - Under 10K msgs/sec, friendship-service needs to handle 10K req/sec for block checks
+
+Security impact: None negative — failing closed is correct
+
+Recommended fix direction:
+  Option A (preferred): Cache block status in Redis with short TTL (60-300s).
+    Read from cache first. Fall back to HTTP only on cache miss. Fail-closed
+    only if HTTP call after cache miss fails.
+  Option B: Add Resilience4j CircuitBreaker on this specific Feign call.
+    On OPEN: serve stale cached result or reject with a timeout error rather
+    than silently blocking all messages.
+
+Architecture level: Architectural (synchronous coupling risk)
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] Gateway DownstreamReadinessIndicator: All-or-Nothing Readiness
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: gateway-service/.../health/DownstreamReadinessIndicator.java
+
+The gateway's readiness probe checks ALL 7 downstream services. If upload-service
+or notification-service is down during deployment, the gateway reports unready →
+nginx does not route any traffic → ALL users are affected.
+
+This is an over-strict startup ordering that trades partial availability for
+binary UP/DOWN. In a microservices architecture, the gateway should remain
+operational and return appropriate errors per-route when specific downstream
+services are unavailable.
+
+Runtime impact:
+  - Rolling deploy of notification-service → complete gateway downtime during
+    notification-service restart (~60s start_period per docker-compose.yml)
+  - Any non-critical service flap → full site outage
+
+Scalability impact: Slows canary deployments, increases blast radius per deployment
+
+Recommended fix direction:
+  Separate readiness into "critical" services (auth, user, chat) and "optional"
+  services (notification, upload). Only block readiness on critical service failures.
+  Return 503 per-route for optional services when they are down.
+
+Architecture level: Architectural (availability model)
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] realtime-edge-service Calls Multiple Services Synchronously Per Event
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: realtime-edge-service/.../adapter/out/presence/EdgePresenceLifecycleBridge.java
+     realtime-edge-service/.../websocket/RealtimeWebSocketHandler.java
+
+On every WebSocket message, realtime-edge may make synchronous HTTP calls to:
+  - chat-service (JOIN room authorization: canAccessRoom)
+  - presence-service (connect, disconnect, heartbeat, room join/leave)
+
+These HTTP calls are in the WebSocket message handling path. Latency spikes or
+unavailability of these services directly delay WebSocket message processing.
+
+Specifically:
+  - JOIN command: HTTP to chat-service to verify room membership
+  - presence.room.join: HTTP to presence-service
+  - presence.user.heartbeat: HTTP to presence-service
+  - afterConnectionEstablished: HTTP to presence-service /ws/connect
+
+This means a WebSocket server that handles real-time events has 3 blocking HTTP
+dependency points on connection, join, and heartbeat.
+
+Recommended fix direction:
+  - JWT carries userId. Room membership should be validated locally using a
+    lightweight cache in realtime-edge rather than HTTP round-trip.
+  - Presence signals should be published async (fire-and-forget) rather than
+    blocking the WebSocket handler.
+
+Architecture level: Architectural (sync coupling in async path)
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] Shared Postgres as a Hidden Single Point of Failure
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM (HIGH if production)
+File: chatappBE/docker-compose.yml (postgres container)
+
+All 6 service databases live in the same PostgreSQL 16 instance. The database-per-
+service pattern is honored logically (separate databases) but not physically.
+A single Postgres crash, OOM, or storage exhaustion affects ALL 6 services
+simultaneously, defeating the resilience benefit of microservices.
+
+Additionally, all services use the same POSTGRES_USER credentials (default:
+"postgres/postgres"). There is no per-service database user with limited grants.
+
+Runtime impact: Postgres restart = full system outage
+Security impact: Any service's DB code can potentially access other services' data
+
+Recommended fix direction:
+  - Short term: Add per-service database users with GRANT only on own database
+  - Long term: Separate Postgres instances per service (or PaaS per-service DB)
+  - Immediate: Add PgBouncer connection pooler (no pool config seen in application.yaml)
+
+Architecture level: Infrastructure/Architectural (SPOF)
+
+================================================================================
+PART 3 — DOMAIN EVENT ARCHITECTURE
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[STRENGTH] EventEnvelope Contract is Well-Defined
+──────────────────────────────────────────────────────────────────────────────
+File: common/common-events/src/main/java/com/example/common/event/EventEnvelope.java
+      common/common-events/.../EventMetadata.java
+      common/common-events/.../SharedEventCatalog.java
+      common/common-kafka/.../EventEnvelopeKafkaDeserializer.java
+
+Every Kafka message is wrapped in EventEnvelope<T> with typed metadata
+(eventId, eventType, sourceService, createdAt, correlationId). The
+DefaultEventPayloadRegistry enforces one-to-one mapping of eventType → payload class.
+EventEnvelopeKafkaDeserializer validates against EventContractValidator on deserialization.
+Conflicting registrations are detected at startup. This is a solid foundation
+for event-driven architecture with type safety.
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] No Event Versioning Strategy
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: common/common-events/src/main/java/com/example/common/event/EventMetadata.java
+
+EventMetadata has no version field. SharedEventCatalog has no version negotiation.
+When a payload schema changes (e.g., ChatMessagePayload gains a new required field),
+old consumers fail to deserialize newer messages and vice versa.
+
+Example risk: chat-service adds `threadId` field to ChatMessagePayload.
+  notification-service is not yet deployed. For the deployment window:
+  notification-service consumes messages with threadId → Jackson deserialization
+  fails if @JsonProperty is required, or silently ignores if optional.
+
+  No consumer should fail silently, and no consumer should crash the Kafka listener.
+
+Runtime impact: Schema evolution during rolling deployment → consumer errors or
+  silent message drops depending on Jackson's deserialization config.
+
+Recommended fix direction:
+  - Add `version: int` to EventMetadata (default 1)
+  - Consumers declare which versions they handle
+  - Use backwards-compatible field additions only (new fields nullable)
+  - Consider Apache Avro or Schema Registry for strong contract enforcement
+
+Architecture level: Architectural (contract versioning)
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] After-Commit Kafka Publish Without Persistent Outbox
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+Files: auth-service/.../kafka/AccountCreatedAfterCommitPublisher.java
+       friendship-service/.../service/impl/FriendCommandService.java (publishAfterCommit)
+       chat-service/.../pipeline/send/steps/PublishMessageEventStep.java
+       notification-service/.../application/NotificationCommandService.java
+
+The pattern "publish Kafka event in TransactionSynchronization.afterCommit()" prevents
+publishing for rolled-back transactions, which is correct. However, it is NOT a
+proper transactional outbox. If the JVM crashes between DB commit and Kafka publish:
+  - DB row exists
+  - Kafka event was never published
+  - user-service never creates profile for new account
+  - notification-service never delivers message notification
+  - Friendship events are lost
+
+This is a silent data loss window. The probability is low per-event but grows
+proportionally with traffic volume.
+
+Runtime impact: Message notifications lost on JVM crash or OOM during high load
+Security impact: None
+Scalability impact: Lost events cannot be replayed without manual intervention
+
+Recommended fix direction:
+  Implement Transactional Outbox pattern:
+  1. In the same transaction: INSERT INTO outbox_events (event)
+  2. Separate process (Spring @Scheduled or Debezium CDC) polls outbox table
+  3. Publishes to Kafka + marks outbox row as published
+  4. Idempotent consumers handle at-least-once delivery
+
+Architecture level: Architectural (data consistency guarantee)
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] Topic Naming Inconsistency (Legacy + New Topic Names)
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: common/common-kafka/.../KafkaTopics.java
+
+KafkaTopics.CHAT_MESSAGE_SENT = "chat.message.sent" is marked as legacy.
+Actual topic used by PublishMessageEventStep is derived from ChatEventType enum
+which maps to "chat.message.sent" or "chat.message.events" (source unclear without
+seeing ChatEventType.MESSAGE_SENT.value() return value).
+
+The realtime-edge-service consumer group subscribes to Kafka but the exact topic
+subscriptions for chat message events were not visible in the Kafka listeners found.
+
+Risk: Duplicate consumers on overlapping topics, or missed events if producers and
+consumers use different topic name resolutions.
+
+Recommended fix direction:
+  Remove CHAT_MESSAGE_SENT legacy constant. Ensure all producers and consumers
+  reference the same KafkaTopics enum constant. Add a test that validates
+  SharedEventCatalog → KafkaTopics consistency.
+
+Architecture level: Implementation (naming consistency)
+
+================================================================================
+PART 4 — SHARED MODULES ANALYSIS
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[STRENGTH] Common Module Architecture is Clean
+──────────────────────────────────────────────────────────────────────────────
+Settings.gradle reveals 9 common modules, each with a clear responsibility:
+  common-core:       PipelineExecutor, BusinessException, ErrorCode
+  common-web:        ApiResponse, GlobalExceptionHandler, TraceIdFilter
+  common-security:   JwtHelper, SecurityConfigBase
+  common-kafka:      EventEnvelope, KafkaEventProducer, KafkaEventDispatcher
+  common-events:     EventMetadata, SharedEventCatalog, all payload DTOs
+  common-redis:      ITimeRedisCache, RedisConfig
+  common-redis-cache: (separate from common-redis, likely Spring @Cacheable integration)
+  common-feign:      Feign config, JWT forwarding interceptor (FeignJwtConfig)
+  common-websocket:  WebSocket utilities
+
+This separation prevents individual services from reimplementing infrastructure
+concerns and enforces consistency. The autoconfiguration pattern in
+KafkaAutoConfiguration.java uses @ConditionalOnClass for zero-config adoption.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] common-feign Module: FeignJwtConfig May Not Forward Trace ID
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: common/common-feign/src/.../FeignJwtConfig.java (inferred from Feign client configs)
+      friendship-service/.../client/UserClient.java (configuration = FeignJwtConfig.class)
+      chat-service/.../client/FriendshipClient.java (configuration = FeignJwtConfig.class)
+
+FeignJwtConfig is referenced in all inter-service Feign clients. It presumably
+forwards the JWT (Authorization: Bearer) to downstream services. However, there
+is no confirmed Feign interceptor that forwards X-Trace-Id header.
+
+Impact: When chat-service calls friendship-service via Feign to check block status,
+the traceId context breaks. Log correlation across service boundaries is lost.
+Debugging production issues involving multiple services requires manually correlating
+log entries by timestamp.
+
+Recommended fix direction:
+  Add RequestInterceptor to FeignJwtConfig that copies X-Trace-Id from
+  MDC to outgoing Feign request header. This is a one-line addition
+  that gives end-to-end trace correlation.
+
+Architecture level: Implementation (observability)
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] common-events SharedEventCatalog: Event Type Ownership Is Ambiguous
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: common/common-events/.../SharedEventCatalog.java
+
+SharedEventCatalog is a shared module that all services depend on. This means:
+  - Adding a new event type requires modifying a shared module
+  - Deploying the new event type requires rebuilding and redeploying ALL services
+    that depend on common-events
+  - Circular dependency risk: if service A defines an event and service B consumes
+    it, both depend on common-events, which depends on neither — this is correct
+    BUT any change to an event payload forces a coordinated multi-service deploy.
+
+This is the standard trade-off in shared event contract modules. The current
+implementation is acceptable but creates tight deployment coupling.
+
+Recommended fix direction:
+  Document this trade-off explicitly. For large payload changes, prefer
+  additive-only changes (new nullable fields). Consider versioned event types
+  for major schema changes (e.g., "chat.message.sent.v2").
+
+Architecture level: Architectural (contract coupling)
+
+================================================================================
+PART 5 — DEPLOYMENT TOPOLOGY ANALYSIS
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] realtime-edge-service Is Not in docker-compose.yml
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: chatappBE/docker-compose.yml
+
+realtime-edge-service (port 8090) is referenced in the architecture and exists
+as a complete module in settings.gradle, but has NO entry in docker-compose.yml.
+This means:
+  - Local development: realtime-edge-service must be run manually
+  - No healthcheck for realtime-edge
+  - Gateway does not route to realtime-edge in the compose topology
+  - The "unified WebSocket gateway" concept has no deployment path in docker-compose
+
+This is a critical gap between the intended architecture and the deployable artifact.
+WebSocket connections from clients will hit the per-service handlers (legacy path)
+rather than the realtime-edge-service unless it is started separately.
+
+Runtime impact: WebSocket architecture is undefined in the official deployment artifact
+
+Recommended fix direction:
+  Add realtime-edge-service to docker-compose.yml with:
+  - proper depends_on (redis, auth-service, chat-service, presence-service, friendship-service)
+  - healthcheck
+  - environment variables for JWT source, service URLs, Redis
+  - port mapping (8090)
+  Update gateway routes to point /ws/** at realtime-edge:8090
+
+Architecture level: Architectural (deployment completeness)
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] Spring Cloud Version Mismatch Between Services
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+Gateway: Spring Cloud 2025.0.1
+realtime-edge-service: Spring Cloud 2023.0.0
+
+These are different Spring Cloud release trains running in the same deployment.
+While they don't directly interact (different JVMs), this signals that
+realtime-edge-service has not been updated to match the rest of the stack.
+Spring Cloud 2023.0.0 targets Spring Boot 3.2.x; the rest of the project uses
+Spring Boot 3.5.6.
+
+Risk: Dependency resolution warnings, potential incompatibilities with
+  shared common modules that target the newer Spring Boot API surface.
+
+Recommended fix direction:
+  Upgrade realtime-edge-service to Spring Cloud 2025.0.1 + Spring Boot 3.5.6.
+
+Architecture level: Implementation (dependency alignment)
+
+──────────────────────────────────────────────────────────────────────────────
+[STRENGTH] Dependency Ordering in docker-compose.yml Is Thorough
+──────────────────────────────────────────────────────────────────────────────
+The startup chain is correctly modeled:
+  postgres+kafka+redis healthy → auth-service healthy → all other services →
+  gateway-service healthy → nginx.
+
+Health checks use real application readiness (actuator/health) rather than TCP
+port checks. start_period: 60s for microservices accommodates JVM warmup time.
+This reflects production-aware operational thinking.
+
+================================================================================
+PART 6 — SCALABILITY ASSUMPTIONS
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[CRITICAL] Single-Node Kafka With No Replication (Scalability + Reliability)
+──────────────────────────────────────────────────────────────────────────────
+Severity: CRITICAL
+File: chatappBE/docker-compose.yml (kafka service)
+  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+  Single broker, single zookeeper
+
+A single Kafka broker means:
+  - No fault tolerance: broker restart = all consumers stall
+  - No horizontal scaling: single partition limit on throughput
+  - KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true" means topics are created with
+    default replication factor of 1
+
+Under 1,000 msg/sec with typical message sizes, a single broker is fine.
+But replication factor 1 means a broker disk failure = irreversible event loss.
+
+Recommended fix direction:
+  - Minimum 3 brokers for production (odd quorum for leader election)
+  - KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+  - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+  - Consider migrating from Zookeeper to KRaft (supported in Kafka 3.x)
+
+Architecture level: Infrastructure
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] realtime-edge-service Cannot Be Horizontally Scaled (In-Memory Default)
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: realtime-edge-service/src/main/resources/application.yaml
+  realtime.session-registry.mode: in-memory
+
+InMemoryRealtimeSessionRegistry (ConcurrentHashMap) stores sessions only in
+the local JVM heap. With two realtime-edge instances:
+  - Instance A has User-1's session
+  - Instance B has User-2's session
+  - Message event for User-2 arrives at Instance A's Redis subscriber
+  - Instance A cannot find User-2's session → event is not delivered
+
+The distributed mode exists (Redis-backed) but is NOT the default.
+Nginx/load balancer would need sticky sessions as a workaround, but sticky
+sessions create uneven load distribution.
+
+Runtime impact: Message delivery failures in multi-instance deployment
+
+Recommended fix direction:
+  Set realtime.session-registry.mode: distributed (Redis-backed) before
+  running more than one realtime-edge instance. Document this requirement
+  in the README/deployment guide.
+
+Architecture level: Architectural (scaling constraint)
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] Message Sequence: Pessimistic Row Lock Is a Throughput Ceiling
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: chat-service/.../infrastructure/sequence/RedisMessageSequenceService.java
+  Method: nextSeq() → roomRepository.findByIdForUpdate(roomId) (SELECT FOR UPDATE)
+
+Despite the class name suggesting Redis, the sequence is generated by a pessimistic
+database lock on the rooms row. Every message send for a given room:
+  1. Acquires exclusive row lock on the room record
+  2. Reads lastSeq
+  3. Increments by 1
+  4. Writes back
+  5. Releases lock
+
+This serializes all message sends for a room through a single database row lock.
+For a 1,000-member group with high activity:
+  - Sustained 100 msg/sec → 100 lock acquisitions/sec on one row
+  - Each taking ~1-5ms on local DB → ~10-50% of each second waiting for lock
+  - Under 500+ msg/sec: severe contention, timeouts, retry cascades
+
+Scalability impact: Hard ceiling on per-room message throughput
+
+Recommended fix direction:
+  Replace with Redis INCR on "room:seq:{roomId}":
+  - INCR is atomic and O(1) at <1ms latency
+  - Eliminates DB locking entirely for sequence generation
+  - On Redis restart: re-seed from DB max seq at startup
+  - Rename class to DbLockedSequenceService until migration complete
+
+Architecture level: Architectural (performance bottleneck)
+
+================================================================================
+PART 7 — ARCHITECTURE STRENGTHS SUMMARY
+================================================================================
+
+[STRENGTH-1] Pipeline Pattern for Message Operations
+  File: common/common-core/.../pipeline/PipelineExecutor.java
+  Topological step ordering via Kahn's algorithm. Async step support.
+  Per-step timeout and retry. Extensible by adding Spring beans. Zero
+  coupling between steps. This is production-grade extensible design.
+
+[STRENGTH-2] JWT Key Rotation With Grace Period
+  File: auth-service/.../jwt/impl/KeyManager.java
+  24h key rotation, grace period = accessExpMs + rotationMs. JWKS serves
+  all active keys. Zero-downtime key rotation is correctly implemented.
+
+[STRENGTH-3] Token Theft Detection
+  File: auth-service/.../service/impl/TokenServiceFacade.java
+  SHA-256 hashed refresh tokens + optimistic lock + full account revocation
+  on reuse of revoked token. Correct security response to theft scenario.
+
+[STRENGTH-4] Two-Phase Upload With Policy Enforcement
+  File: upload-service/.../controller/UploadController.java
+  Prepare → Cloudinary upload → confirm with server-side policy validation.
+  Prevents clients from bypassing upload constraints or polluting Cloudinary.
+
+[STRENGTH-5] EventEnvelope with Typed Contract Registry
+  File: common/common-events/.../SharedEventCatalog.java
+        common/common-kafka/.../EventEnvelopeKafkaDeserializer.java
+  Authoritative registration of all event type → payload class mappings.
+  Deserialization validates against contract. Conflict detection at startup.
+
+[STRENGTH-6] Safe Cache Operations With DB Fallback
+  File: user-service/.../service/impl/UserProfileService.java
+  safeGet / safePut pattern catches all Redis exceptions. Redis outage
+  degrades gracefully to DB reads rather than service failure.
+
+[STRENGTH-7] After-Commit Kafka Publishing (Prevents Phantom Events)
+  Files: AccountCreatedAfterCommitPublisher, FriendCommandService.publishAfterCommit
+  TransactionSynchronization.afterCommit() prevents publishing events for
+  rolled-back transactions. Better than naive publish-before-commit.
+  (Limitation is absence of full outbox, not the pattern itself.)
+
+[STRENGTH-8] Canonical Friendship Pair Storage
+  File: friendship-service/.../service/impl/FriendCommandService.java
+  (userLow, userHigh) canonical ordering via UUID.compareTo() prevents
+  duplicate rows for the same user pair in different orderings.
+
+================================================================================
+END OF ARCHITECTURE REVIEW
+================================================================================

@@ -1,12 +1,12 @@
 rootProject.name = 'demo'
 
 // ===== COMMON MODULES =====
-//include 'common:common-security'
+include 'common:common-security'
 include 'common:common-kafka'
 include 'common:common-web'
+include 'common:common-feign'
 include 'common:common-redis'
 include 'common:common-events'
-include 'common:common-websocket'
 include 'common:common-redis-cache'
 include 'common:common-core'
 // ===== MICROSERVICES =====
@@ -18,3 +18,5 @@ include 'notification-service'
 include 'friendship-service'
 include 'upload-service'
 include 'gateway-service'
+include 'realtime-edge-service'
+include 'voice-service'

@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, MessageSquarePlus } from "lucide-react";
 import { useChat } from "../../store/chat.store";
 import { useRooms } from "../../store/room.store";
+import { useCallStore } from "../../store/call.store";
 import { getSplitRoomSections } from "../../utils/roomListIntegrity";
 import ConversationModal from "./ConversationModal";
 import GroupRoomItem from "./GroupRoomItem";
@@ -13,11 +14,32 @@ export default function RoomList() {
   const [dmsOpen, setDmsOpen] = useState(true);
   const { activeRoomId, setActiveRoom } = useChat();
   const { roomsById, roomOrder } = useRooms();
+  const incoming = useCallStore((s) => s.incoming);
+  const outgoing = useCallStore((s) => s.outgoing);
+  const active = useCallStore((s) => s.active);
 
   const { groupRoomIds, privateRoomIds } = useMemo(
     () => getSplitRoomSections(roomsById, roomOrder),
     [roomsById, roomOrder]
   );
+
+  // Bring whichever DM is ringing/in-call to the top of the list with a badge,
+  // regardless of its normal recency-sorted position.
+  const callingUserId = incoming?.callerId ?? outgoing?.calleeId ?? active?.otherUserId ?? null;
+  const callStatus: "ringing" | "active" | null = active ? "active" : callingUserId ? "ringing" : null;
+
+  const callingRoomId = useMemo(() => {
+    if (!callingUserId) return null;
+    for (const roomId of privateRoomIds) {
+      if (roomsById[roomId]?.otherUserId === callingUserId) return roomId;
+    }
+    return null;
+  }, [privateRoomIds, roomsById, callingUserId]);
+
+  const orderedPrivateRoomIds = useMemo(() => {
+    if (!callingRoomId) return privateRoomIds;
+    return [callingRoomId, ...privateRoomIds.filter((id) => id !== callingRoomId)];
+  }, [privateRoomIds, callingRoomId]);
 
   const handleRoomClick = useCallback(
     (roomId: string) => {
@@ -151,7 +173,7 @@ export default function RoomList() {
                 }`}
               >
                 {privateRoomIds.length > 0 ? (
-                  privateRoomIds.map((roomId) => {
+                  orderedPrivateRoomIds.map((roomId) => {
                     const room = roomsById[roomId];
                     if (!room) return null;
                     return (
@@ -160,6 +182,7 @@ export default function RoomList() {
                         room={room}
                         isActive={activeRoomId === roomId}
                         onClick={() => handleRoomClick(roomId)}
+                        callStatus={roomId === callingRoomId ? callStatus : null}
                       />
                     );
                   })

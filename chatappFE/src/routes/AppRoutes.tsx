@@ -23,8 +23,8 @@ const AppRoutes: React.FC = () => {
         <Route path="/login" element={<AuthPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
-        <Route path="/auth/verify-email" element={<VerifyEmailPage />} />
       </Route>
+      <Route path="/auth/verify-email" element={<VerifyEmailPage />} />
       <Route path="/auth/oauth/google/callback" element={<GoogleOAuthCallbackPage />} />
 
       {/* Private */}

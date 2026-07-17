@@ -1,0 +1,85 @@
+package com.chatweb.chat.modules.message.controller;
+
+import com.chatweb.chat.modules.message.application.command.IMessageCommandService;
+import com.chatweb.chat.modules.message.application.dto.request.DeleteMessageRequest;
+import com.chatweb.chat.modules.message.application.dto.request.EditMessageRequest;
+import com.chatweb.chat.modules.message.application.dto.request.ForwardMessageRequest;
+import com.chatweb.chat.modules.message.application.dto.request.SendMessageRequest;
+import com.chatweb.chat.modules.message.application.dto.response.MessageResponse;
+import com.chatweb.common.web.controller.BaseController;
+import com.chatweb.common.web.response.ApiResponse;
+import com.chatweb.common.security.jwt.JwtHelper;
+import com.chatweb.common.core.exception.BusinessException;
+import com.chatweb.common.core.exception.CommonErrorCode;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.UUID;
+
+@RestController
+@RequestMapping("/api/v1/messages")
+@RequiredArgsConstructor
+public class MessageCommandController extends BaseController {
+
+    private final IMessageCommandService messageCommandService;
+
+    @PostMapping
+    public ResponseEntity<ApiResponse<MessageResponse>> sendMessage(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestBody @Valid SendMessageRequest request
+    ) {
+        request.setSenderId(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")));
+        MessageResponse response =
+                messageCommandService.sendMessage(request);
+
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    @PutMapping("/{messageId}")
+    public ResponseEntity<ApiResponse<MessageResponse>> editMessage(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID messageId,
+            @RequestBody @Valid EditMessageRequest request
+    ) {
+
+        request.setMessageId(messageId);
+        request.setActorId(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")));
+
+        MessageResponse response =
+                messageCommandService.editMessage(request);
+
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    @DeleteMapping("/{messageId}")
+    public ResponseEntity<ApiResponse<Void>> deleteMessage(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID messageId,
+            @RequestBody @Valid DeleteMessageRequest request
+    ) {
+                request.setActorId(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")));
+        request.setMessageId(messageId);
+        messageCommandService.deleteMessage(request);
+
+        return ResponseEntity.ok(ApiResponse.success());
+    }
+
+        @PostMapping("/forward")
+        public ResponseEntity<ApiResponse<MessageResponse>> forwardMessage(
+                        @AuthenticationPrincipal Jwt jwt,
+                        @RequestBody @Valid ForwardMessageRequest request
+        ) {
+                request.setActorId(JwtHelper.extractUserId(jwt).orElseThrow(() -> new BusinessException(CommonErrorCode.UNAUTHORIZED, "Unauthorized")));
+
+                MessageResponse response =
+                                messageCommandService.forwardMessage(request);
+
+                return ResponseEntity.ok(ApiResponse.success(response));
+        }
+}
+
+

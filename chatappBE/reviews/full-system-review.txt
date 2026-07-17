@@ -1,0 +1,511 @@
+================================================================================
+  FULL SYSTEM DEEP REVIEW — CHATAPP BACKEND
+  Reviewer Roles: Principal Backend Architect, Distributed Systems Analyst,
+                  Security Reviewer, DevOps Reviewer, Performance Engineer
+  Date: 2026-05-18
+  Codebase: d:/Work/PET/chatappPET/chatapp/chatappBE
+================================================================================
+
+This document provides the comprehensive cross-cutting system review.
+Specialized topics are covered in detail in their dedicated review files:
+  architecture-review.txt, security-review.txt, websocket-review.txt,
+  kafka-redis-review.txt, database-review.txt, performance-review.txt,
+  infra-review.txt, code-quality-review.txt.
+
+This file focuses on cross-cutting concerns, runtime flow traces, and
+system-wide observations not captured in individual reviews.
+
+================================================================================
+PART 1 — RUNTIME FLOW ANALYSIS
+================================================================================
+
+─────────────────────────────────────────────────────
+FLOW 1: USER LOGIN (LOCAL AUTH)
+─────────────────────────────────────────────────────
+
+Step 1: POST /api/v1/auth/login {email, password}
+  Nginx → Gateway → auth-service:8081
+  Gateway: public route — no JWT validation
+
+Step 2: auth-service LocalAuthService.login()
+  - AccountRepository.findByEmail(email)
+    ● If not found: throw BusinessException(INVALID_CREDENTIALS) → 401
+    ● BCrypt.matches(password, hash) — ~100ms CPU
+    ● If false: throw BusinessException(INVALID_CREDENTIALS) → 401 (same message, prevents enumeration)
+    ● If not enabled: throw BusinessException(ACCOUNT_DISABLED) → 403
+
+Step 3: TokenServiceFacade.issue(accountId)
+  - Generate JWT: RSA sign with current private key, kid in header, exp = now+15min
+  - Generate random refresh token string (raw)
+  - SHA-256 hash the raw token
+  - INSERT refresh_tokens (hash, accountId, expiresAt=now+30days, revoked=false)
+  - Return TokenPair{accessToken, refreshToken(raw)}
+
+Step 4: Response to client: {accessToken, refreshToken}
+
+Critical paths:
+  ✓ BCrypt cost makes brute force expensive (good)
+  ✓ Same error message for "not found" and "wrong password" (prevents enumeration)
+  ✓ Refresh token stored as hash (good)
+  ⚠ No rate limiting on /login beyond global 20 req/s IP limit
+  ⚠ BCrypt ~100ms × 20 req/s = 2 seconds CPU per second → auth-service saturates at ~20 login/s
+
+─────────────────────────────────────────────────────
+FLOW 2: TOKEN REFRESH
+─────────────────────────────────────────────────────
+
+Step 1: POST /api/v1/auth/refresh {refreshToken: raw}
+  Nginx → Gateway → auth-service (public route)
+
+Step 2: TokenServiceFacade.refresh(raw)
+  - Compute SHA-256(raw) = hash
+  - RefreshTokenRepository.findByTokenHashAndRevokedFalse(hash)
+    ● Not found: throw INVALID_REFRESH_TOKEN → 401
+    ● revoked=true (already found with revokedFalse=false condition): impossible in this branch
+  - findByTokenHash(hash) [without revoked filter]:
+    ● If found AND revoked=true: THEFT DETECTED
+      → refreshTokenRepository.revokeAllByAccountId(token.accountId)
+      → throw REFRESH_TOKEN_REVOKED → 401
+  - Check expiresAt < now: throw REFRESH_TOKEN_EXPIRED → 401
+  - Optimistic lock: UPDATE refresh_tokens SET revoked=true, version=version+1 WHERE id=? AND version=?
+    ● On OptimisticLockException: concurrent refresh detected → treat as theft
+  - Issue new TokenPair → return to client
+
+Critical paths:
+  ✓ Token theft detection (revoked token reuse → full account revocation)
+  ✓ Optimistic lock prevents concurrent exchange race
+  ✓ SHA-256 storage prevents token extraction from DB
+  ⚠ No logging of theft detection event for security audit trail (inferred)
+  ⚠ No push notification to user when theft detected ("Your account was compromised")
+
+─────────────────────────────────────────────────────
+FLOW 3: WEBSOCKET CONNECT (PRESENCE PATH)
+─────────────────────────────────────────────────────
+
+Client: ws://host/ws/presence?token=JWT or Authorization header
+
+Step 1: Nginx proxies WebSocket upgrade to gateway
+Step 2: Gateway — /ws/** is PUBLIC, passes through without JWT validation
+Step 3: realtime-edge-service JwtHandshakeInterceptor
+  - Extracts JWT from query param or header
+  - Validates against gateway JWKS (http://localhost:8080/.well-known/jwks.json)
+  - If invalid: returns HTTP 401 (upgrade rejected)
+  - If valid: extracts userId, stores in session attributes {userId, accessToken}
+
+Step 4: RealtimeWebSocketHandler.afterConnectionEstablished()
+  - Creates RealtimeSession {sessionId, userId, state=CONNECTED}
+  - Registers in SessionRegistry (in-memory by default)
+  - Auto-subscribes to "presence:global"
+  - HTTP POST to presence-service/ws/connect
+    ● On success: presence-service increments connection counter, publishes USER_ONLINE
+    ● On failure: WebSocket session remains but presence state is inconsistent
+
+Step 5: RedisEventListener picks up USER_ONLINE from Redis "presence:global" channel
+  - Routes to presence delivery service
+  - Delivers to all sessions subscribed to "presence:global"
+  - Other users see the new user come online
+
+Critical paths:
+  ✓ JWT validated at upgrade time (correct pattern)
+  ⚠ Step 4 HTTP call blocks WebSocket establishment (1-3s latency possible)
+  ⚠ Failure of presence HTTP call leaves inconsistent state (session exists, presence unknown)
+  ⚠ No retry if presence HTTP call fails at connect time
+
+─────────────────────────────────────────────────────
+FLOW 4: SEND CHAT MESSAGE
+─────────────────────────────────────────────────────
+
+Client (WebSocket): {"type": "SEND", "roomId": "...", "content": "...", "clientMessageId": "..."}
+  OR
+Client (REST): POST /api/v1/messages
+
+Path A (WebSocket via realtime-edge):
+  WS message → realtime-edge handleChatMessage()
+  → HTTP POST to chat-service/api/v1/messages (with Bearer token from session)
+  → Response: SEND_ACK with message data
+
+Path B (REST via gateway):
+  POST → Nginx → Gateway (validate JWT) → JwtAuthFilter (inject X-User-Id) → chat-service
+
+Step 1: MessageCommandController.sendMessage()
+  - Extract senderId from X-User-Id header (trusted, injected by gateway)
+  - Delegate to MessageCommandService.sendMessage()
+
+Step 2: MessageCommandService (idempotency check)
+  - If clientMessageId provided: check messageRepository.findByRoomIdAndClientMessageId()
+  - If found: return existing (idempotent response, no duplicate processing)
+
+Step 3: filterMentionedUsers()
+  - For each mentioned userId: roomMemberRepository.existsByRoomIdAndUserId()
+  - Filter to only room members
+
+Step 4: validateInviteBlocks()
+  - For each ROOM_INVITE block: verify room exists, is GROUP type, sender is member
+  - Enrich block with roomName, avatarUrl, memberCount
+
+Step 5: SendMessagePipeline.execute():
+  a) ValidateRoomPermissionStep: existsByRoomIdAndUserId → if false: FORBIDDEN
+  b) CheckBlockedPairStep (PRIVATE rooms only):
+     - GET /api/v1/internal/friends/blocked-between
+     - If friendship-service down: FAIL CLOSED → throw BLOCKED_SEND (no message sent)
+  c) ValidateMessageStep: content non-empty OR attachments present
+  d) GenerateSequenceStep: (may be merged with PersistMessageStep)
+  e) CreateMessageAggregateStep: build ChatMessage entity
+  f) ExtractMentionStep: extract mentions from content text
+  g) MapAttachmentDraftStep: map attachment DTOs to entities
+  h) PersistMessageStep:
+     - SELECT rooms WHERE id=? FOR UPDATE (acquire exclusive lock)
+     - nextSeq = lastSeq + 1; room.setLastSeq(nextSeq)
+     - INSERT chat_messages (with seq)
+     - INSERT chat_attachments (if any)
+  i) PersistMentionStep (async): INSERT message_mentions
+  j) PublishMessageEventStep (async, afterCommit):
+     - updateLastMessage on Room (with preview)
+     - KafkaTemplate.send("chat.message.events", event)
+
+Step 6: Return MessageResponse to client
+
+After commit (async):
+  - Kafka delivers chat.message.events to notification-service
+  - Kafka delivers to realtime-edge (if subscribed)
+  - notification-service creates notifications for mentions and room members
+  - realtime-edge publishes to Redis "room:{roomId}"
+  - RedisEventListener delivers to all sessions subscribed to "room:{roomId}"
+  - WebSocket clients receive the message (real-time delivery)
+
+Critical paths:
+  ✓ Idempotency via clientMessageId (network retry safe)
+  ✓ Sequence monotonicity via DB lock
+  ✓ Fail-closed block check for DMs (security)
+  ⚠ DB lock is throughput bottleneck (100 msg/sec/room ceiling)
+  ⚠ friendship-service availability affects ALL private message sends
+  ⚠ If Kafka publish fails (auth-service tight timeout), no real-time delivery, no notification
+
+─────────────────────────────────────────────────────
+FLOW 5: NOTIFICATION DELIVERY
+─────────────────────────────────────────────────────
+
+Kafka: chat.message.events → notification-service MessageCreatedEventConsumer
+
+Step 1: NotificationKafkaEventApplicationService.dispatch(envelope)
+  - Dedup check: ConcurrentHashMap.containsKey(eventId) with 5-min TTL
+  - If duplicate: skip
+
+Step 2: NotificationMessageEventApplicationService.handle(payload)
+  - Determine notification type based on message:
+    - MENTION: sender mentioned recipient explicitly
+    - REPLY: message replies to recipient's message
+    - GROUP_INVITE: message contains ROOM_INVITE block for recipient
+    - MESSAGE: regular group message for non-muted recipients
+  - For each recipient: check RoomMuteSetting
+    - NOTHING: skip notification
+    - ONLY_MENTION: skip unless it's a MENTION type
+
+Step 3: For each notification to create:
+  NotificationCommandService.create(notification)
+  - @Transactional INSERT into notifications
+  - Trim to 200 max per user (DELETE older records if over limit)
+  - afterCommit: NotificationPushService.push(notification)
+    - RedisNotificationPublisher.publish("notification:{userId}", event)
+
+Step 4: Redis pub/sub delivers to notification-service's own WebSocket handler
+  - RedisNotificationSubscriber receives event
+  - WebSocketUserBroadcaster.broadcast(userId, payload)
+  - All active WebSocket sessions for that user receive the notification
+
+Step 5: NotificationEventProducer publishes NOTIFICATION_CREATED to Kafka
+  (for other consumers if any)
+
+Critical paths:
+  ✓ Room mute settings respected before notification creation
+  ✓ Deduplication prevents duplicate notifications on Kafka redelivery
+  ✓ TransactionSynchronization.afterCommit() ensures push happens after DB commit
+  ⚠ In-memory deduplication lost on restart → duplicates on service restart
+  ⚠ If user has no WebSocket session: Redis PUBLISH to "notification:{userId}" has 0 subscribers
+    → notification saved in DB (visible on REST poll) but not pushed in real-time
+
+─────────────────────────────────────────────────────
+FLOW 6: FRIENDSHIP REQUEST
+─────────────────────────────────────────────────────
+
+Step 1: POST /api/v1/friends/request/{userId}
+  Nginx → Gateway (JWT validation, inject X-User-Id) → friendship-service
+
+Step 2: FriendCommandService.sendRequest(requesterId, targetId)
+  - canonicalize pair: userLow=min(a,b), userHigh=max(a,b) by UUID.compareTo()
+  - FriendshipRepository.findBetweenUsers(userLow, userHigh)
+  - If BLOCKED: throw BLOCKED (blocked by or has blocked)
+  - If PENDING and requester already requested: throw ALREADY_REQUESTED
+  - If PENDING and other party requested: AUTO-ACCEPT (mutual request detection)
+    → update status to FRIENDS, publishAfterCommit FRIEND_REQUEST_ACCEPTED
+  - If FRIENDS: throw ALREADY_FRIENDS
+  - Else: INSERT Friendship(userLow, userHigh, status=PENDING, actionUserId=requesterId)
+  - publishAfterCommit(FRIEND_REQUEST_SENT, {requesterId, targetId})
+
+Step 3: After DB commit:
+  - Kafka publishes to friendship.request.events
+  - notification-service FriendRequestEventConsumer creates notification for target
+  - realtime-edge FriendshipKafkaEventConsumer:
+    - Publishes to Redis "friendship:{targetId}"
+    - realtime-edge delivers to target's WebSocket session
+    - Target sees real-time friend request notification
+
+Critical paths:
+  ✓ Canonical pair prevents duplicate rows for (A→B) and (B→A)
+  ✓ Mutual request auto-accept (elegant UX, correct logic)
+  ✓ After-commit publishing prevents phantom events
+  ⚠ publishAfterCommit can fail silently (Kafka unavailable) → no notification delivery
+
+─────────────────────────────────────────────────────
+FLOW 7: FILE UPLOAD (CHAT ATTACHMENT)
+─────────────────────────────────────────────────────
+
+Step 1: POST /api/v1/uploads/prepare {policy: "chat-attachment", fileName, contentType}
+  JWT authenticated → upload-service:8088
+
+Step 2: UploadController.prepare()
+  - Validate policy name exists
+  - Generate Cloudinary signature:
+    - timestamp = now
+    - params = {folder: "chat/attachments", timestamp}
+    - signature = SHA-1 HMAC of sorted params using Cloudinary API secret
+  - Return {url: "https://api.cloudinary.com/...", signature, timestamp, apiKey, folder}
+  - May return prepare-token (HMAC-signed JWT-like token with TTL 600s)
+    if upload.confirm.require-prepare-token: true
+
+Step 3: Client uploads directly to Cloudinary
+  - POST https://api.cloudinary.com/v1_1/{cloud}/image/upload
+  - Body: {file, signature, timestamp, apiKey, folder, ...}
+  - Cloudinary validates signature
+  - Returns: {public_id, secure_url, resource_type, format, bytes, width, height}
+
+Step 4: POST /api/v1/uploads/confirm {publicId, url, resourceType, format, bytes, ..., prepareToken?}
+  JWT authenticated → upload-service
+
+Step 5: UploadController.confirm()
+  - Validate prepare-token if required (verify HMAC, check TTL)
+  - Validate url starts with "https://res.cloudinary.com/"
+  - Validate publicId starts with policy folder ("chat/attachments/")
+  - Validate bytes <= policy max (10MB for chat-attachment)
+  - Validate format in allowed-formats
+  - Validate resourceType in allowed-resource-types
+  - Return ConfirmedAsset{url, publicId, resourceType, format, bytes, width, height}
+
+Step 6: Client includes confirmed asset in sendMessage request
+
+Critical paths:
+  ✓ Server-side policy validation prevents oversized/wrong-format uploads
+  ✓ Client never receives Cloudinary API secret (only signature)
+  ✓ Prepare token ties the confirm to the original prepare request
+  ⚠ Server does NOT verify with Cloudinary that publicId actually exists/was just uploaded
+  ⚠ A valid URL from another user's Cloudinary upload could pass confirmation
+
+─────────────────────────────────────────────────────
+FLOW 8: PRESENCE UPDATE (HEARTBEAT)
+─────────────────────────────────────────────────────
+
+Client (WebSocket): {"type": "presence.user.heartbeat", "active": true/false}
+
+Step 1: RealtimeWebSocketHandler.handlePresenceMessage()
+  - Extract active flag from message
+  - HTTP POST to presence-service:8084/ws/heartbeat {userId, active}
+
+Step 2: PresenceService.heartbeat(userId, active)
+  - getStoredPresenceState(userId) → Redis GET presence:state:{userId}
+  - Build nextState: if state was AUTO mode: active=true→ONLINE, active=false→AWAY
+  - saveStoredPresenceState: Redis SET presence:state:{userId} = nextState WITH TTL (refreshed)
+  - presenceEphemeralStatePort.addOnlineUser(userId): Redis SADD presence:online userId
+  - If nextStatus != previousStatus:
+    → publishUserEvent(USER_STATUS_CHANGED, {userId, status})
+    → Redis PUBLISH on "presence:global" channel
+  - Redis subscriber picks up USER_STATUS_CHANGED
+  - realtime-edge distributes to all sessions subscribed to "presence:global"
+  - All other users see status change
+
+Critical paths:
+  ✓ Effective status logic (AUTO/MANUAL mode, active flag) is clean
+  ✓ Only publishes event if status actually changed (no noise)
+  ✓ TTL refresh keeps presence alive as long as heartbeats come in
+  ⚠ HTTP call on every heartbeat (333 req/sec baseline at 10K users)
+  ⚠ Heartbeat lost → TTL expires → presence goes offline (correct but no error path)
+
+================================================================================
+PART 2 — CROSS-CUTTING CONCERNS
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] No Distributed Tracing Across Service Boundaries
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+
+TraceIdFilter generates X-Trace-Id per service. But:
+  - When chat-service calls friendship-service via Feign (CheckBlockedPairStep):
+    Is X-Trace-Id forwarded? Only if FeignJwtConfig adds it as a header.
+  - When realtime-edge calls chat-service (JOIN authorization):
+    The Bearer token is forwarded but traceId propagation unclear.
+  - When Kafka consumer processes a chat.message.events event:
+    The traceId from the original HTTP request is in the EventMetadata.correlationId
+    but is it placed in MDC when processing the Kafka message?
+
+Without confirmed trace forwarding:
+  - A production bug that spans: login → send message → notification delivery
+    requires correlating logs from 3 services by approximate timestamp
+  - This is unacceptably slow for incident response
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] No Structured API Contract Documentation
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+Files: springdoc-openapi-starter-webmvc-ui:2.8.14 is in dependencies
+
+All services have springdoc-openapi in their classpath (evident from the
+/swagger-ui/** public paths in SecurityConfig). OpenAPI docs are generated
+at /v3/api-docs and UI at /swagger-ui/swagger-ui.html.
+
+However:
+  - Swagger UI is publicly accessible (no auth, no API key required for docs)
+  - This exposes complete API schema to anyone who can reach the service
+  - In production (behind nginx + gateway), individual service swagger endpoints
+    should NOT be exposed externally
+
+Recommended fix: Disable swagger-ui in production profile:
+  springdoc.swagger-ui.enabled: false
+  springdoc.api-docs.enabled: false
+  (Keep enabled in dev/staging only)
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] Timezone Handling: UTC Configured But Not Enforced Consistently
+──────────────────────────────────────────────────────────────────────────────
+Severity: LOW
+Files: application.yaml for DB services — spring.jpa.properties.hibernate.jdbc.time_zone: UTC
+
+UTC timezone is configured for Hibernate JDBC. However:
+  - Java Instant fields are timezone-agnostic (correct)
+  - If any service uses LocalDateTime instead of Instant: timezone conversion bugs possible
+  - PostgreSQL stores timestamps with/without timezone depending on column type
+
+Assessment: Instant is the correct type for all timestamp fields (confirmed
+  from entity analysis — all timestamps are Instant). UTC configuration is correct.
+
+================================================================================
+PART 3 — ARCHITECTURE MATURITY ASSESSMENT
+================================================================================
+
+MATURITY DIMENSION          SCORE   ASSESSMENT
+──────────────────────────────────────────────────────────────────────────────
+Service Boundaries          8/10    Clean, principled, minimal coupling
+API Design                  7/10    Good REST, consistent format, idempotency
+Authentication Security     7/10    Strong JWT/RSA design, some gaps
+Authorization               7/10    Pipeline-level checks, but some gaps
+Event Architecture          6/10    Good envelope design, missing outbox+versioning
+Real-time Architecture      6/10    Dual path confusion, scaling concerns
+Database Design             6/10    Good entity/index design, no migrations
+Performance Design          5/10    DB lock bottleneck, sync coupling risks
+Resilience/Fault Tolerance  5/10    Circuit breakers at gateway only
+Observability               3/10    No metrics, no tracing, basic health only
+Testing                     5/10    Good unit tests, missing integration coverage
+DevOps/Infrastructure       4/10    No CI/CD, no metrics, single-node only
+──────────────────────────────────────────────────────────────────────────────
+OVERALL MATURITY            6/10    Solid foundation, significant production gaps
+──────────────────────────────────────────────────────────────────────────────
+
+================================================================================
+PART 4 — COMPLETE ISSUE COUNT BY SEVERITY
+================================================================================
+
+From all specialized reviews combined:
+
+BLOCKER  (must fix before production data):
+  1. No database migration framework (ddl-auto: update) — all services
+  2. realtime-edge-service missing from docker-compose.yml
+
+CRITICAL (high probability of failure/data loss under load):
+  3. Default postgres/postgres credentials
+  4. Message sequence DB row lock — throughput ceiling
+  5. Single Kafka broker, replication factor 1
+  6. realtime-edge in-memory sessions cannot scale horizontally
+  7. CheckBlockedPairStep: synch HTTP blocks all DMs when friendship-service is down
+
+HIGH (significant risk, fix before go-live):
+  8.  RSA private keys stored as plaintext in database
+  9.  WebSocket routes fully public in gateway (no defense-in-depth)
+  10. /api/v1/auth/** public on all non-auth services (vestigial, dangerous)
+  11. All secrets via environment variables, no rotation strategy
+  12. X-Internal-Service-Token not consistently applied
+  13. After-commit Kafka publish — no persistent outbox (silent event loss risk)
+  14. No event versioning strategy
+  15. realtime-edge enable-auto-commit: true (unsafe message commits)
+  16. No dead-letter queue config in chat-service and friendship-service consumers
+  17. Room entity denormalization — preview update race condition
+  18. RoomMember displayName staleness (no sync mechanism)
+  19. All services use same Postgres superuser credentials
+  20. No HikariCP pool configuration (default 10 connections)
+  21. forwardMessage() — partial transaction if Kafka publish fails
+  22. Username LIKE search — full table scan
+  23. canAccessRoom HTTP call per WebSocket JOIN — reconnect storm risk
+  24. Gateway depends_on all 7 services — deployment paralysis risk
+  25. No metrics/observability stack
+  26. No CI/CD pipeline
+  27. friendship-service and user-service severely under-tested
+  28. No Kafka integration tests
+  29. No Redis integration tests
+  30. JWT not re-checked after WebSocket connection established
+
+MEDIUM (address within first quarter of operation):
+  31+. ~25 medium-severity issues across all review files
+
+LOW:
+  Various naming, configuration, and hardening items.
+
+================================================================================
+PART 5 — CONFIRMED ARCHITECTURAL STRENGTHS
+================================================================================
+
+1. Pipeline pattern (PipelineExecutor + PipelineStep) — production-grade, extensible
+   Files: common-core/.../pipeline/, chat-service/.../pipeline/
+
+2. JWT key rotation with grace period — zero-downtime key lifecycle
+   File: auth-service/.../jwt/impl/KeyManager.java
+
+3. Token theft detection with full account revocation
+   File: auth-service/.../service/impl/TokenServiceFacade.java
+
+4. After-commit Kafka publishing (prevents phantom events)
+   Files: AccountCreatedAfterCommitPublisher, FriendCommandService, NotificationCommandService
+
+5. EventEnvelope with validated metadata + SharedEventCatalog contract registry
+   Files: common-events/.../EventMetadata.java, SharedEventCatalog.java
+
+6. Seq-based pagination for messages (no OFFSET degradation)
+   File: chat-service/.../repository/ChatMessageRepository.java
+
+7. Two-phase upload with policy enforcement
+   File: upload-service/.../controller/UploadController.java
+
+8. Canonical pair storage for friendships (UUID.compareTo ordering)
+   File: friendship-service/.../service/impl/FriendCommandService.java
+
+9. Safe Redis cache operations with DB fallback
+   File: user-service/.../service/impl/UserProfileService.java (safeGet/safePut)
+
+10. DDD layering in chat-service (controller→application→domain←infrastructure)
+    Package: chat-service/src/main/java/com/example/chat/modules/
+
+11. Idempotent message sending via clientMessageId
+    File: chat-service/.../application/command/impl/MessageCommandService.java
+
+12. Rate limiting at gateway (20 req/s, 40 burst, Redis token bucket)
+    File: gateway-service/.../config/GatewayConfig.java
+
+13. Batch-fetching of attachments/reactions (prevents N+1)
+    Files: ChatAttachmentRepository.findByMessageIdIn(), ChatReactionRepository.summarizeReactionsForMessages()
+
+14. Channel subscription authorization per channel type
+    File: realtime-edge-service/.../subscription/ChannelSubscriptionManager.java
+
+15. Descriptive BDD-style test method names across all services
+    Files: AuthServiceTest, LocalAuthServiceTest, FriendCommandServiceTest, etc.
+
+================================================================================
+END OF FULL SYSTEM REVIEW
+================================================================================

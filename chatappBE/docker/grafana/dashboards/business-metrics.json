@@ -1,0 +1,173 @@
+{
+  "title": "Business Metrics",
+  "uid": "business-metrics",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "tags": ["business", "realtime", "kafka", "redis"],
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "refresh": "30s",
+  "annotations": { "list": [] },
+  "templating": { "list": [] },
+  "links": [],
+  "panels": [
+
+    {
+      "id": 1, "type": "row", "title": "WebSocket Sessions",
+      "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "panels": []
+    },
+    {
+      "id": 2, "type": "stat", "title": "Local Active Sessions",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "colorMode": "background", "graphMode": "none", "justifyMode": "auto" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 100 }, { "color": "red", "value": 500 }] } },
+        "overrides": []
+      },
+      "targets": [{ "expr": "sum(realtime_sessions_local_active)", "legendFormat": "local", "refId": "A" }]
+    },
+    {
+      "id": 3, "type": "stat", "title": "Global Active Sessions",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "colorMode": "background", "graphMode": "none", "justifyMode": "auto" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 100 }, { "color": "red", "value": 500 }] } },
+        "overrides": []
+      },
+      "targets": [{ "expr": "sum(realtime_sessions_global_active)", "legendFormat": "global", "refId": "A" }]
+    },
+    {
+      "id": 4, "type": "timeseries", "title": "Sessions Over Time (per instance)",
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "fieldConfig": { "defaults": { "custom": { "lineWidth": 2, "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [
+        { "expr": "realtime_sessions_local_active", "legendFormat": "{{instance}} local", "refId": "A" },
+        { "expr": "realtime_sessions_global_active", "legendFormat": "{{instance}} global", "refId": "B" }
+      ]
+    },
+
+    {
+      "id": 10, "type": "row", "title": "WebSocket Delivery",
+      "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "panels": []
+    },
+    {
+      "id": 11, "type": "timeseries", "title": "Delivery Success Rate (msg/s)",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 10 }, "color": { "fixedColor": "green", "mode": "fixed" } }, "overrides": [] },
+      "targets": [{ "expr": "sum(rate(realtime_delivery_local_success_total[5m])) by (instance, deliveryType)", "legendFormat": "{{instance}} {{deliveryType}}", "refId": "A" }]
+    },
+    {
+      "id": 12, "type": "timeseries", "title": "Delivery Failure Rate (msg/s)",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 10 }, "color": { "fixedColor": "red", "mode": "fixed" } }, "overrides": [] },
+      "targets": [{ "expr": "sum(rate(realtime_delivery_local_failure_total[5m])) by (instance, deliveryType)", "legendFormat": "{{instance}} {{deliveryType}}", "refId": "A" }]
+    },
+    {
+      "id": 13, "type": "timeseries", "title": "Delivery Queue Drops (msg/s)",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 20 }, "color": { "fixedColor": "orange", "mode": "fixed" } }, "overrides": [] },
+      "targets": [{ "expr": "sum(rate(realtime_delivery_queue_drop_total[5m])) by (instance, deliveryType)", "legendFormat": "{{instance}} {{deliveryType}}", "refId": "A" }]
+    },
+
+    {
+      "id": 20, "type": "row", "title": "Kafka Events",
+      "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "panels": []
+    },
+    {
+      "id": 21, "type": "timeseries", "title": "Kafka Publish Success Rate (events/s)",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [{ "expr": "sum(rate(kafka_publish_success_total[5m])) by (topic, event_type)", "legendFormat": "{{topic}} / {{event_type}}", "refId": "A" }]
+    },
+    {
+      "id": 22, "type": "timeseries", "title": "Kafka Publish Error Rate (events/s)",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 20 }, "color": { "fixedColor": "red", "mode": "fixed" } }, "overrides": [] },
+      "targets": [{ "expr": "sum(rate(kafka_publish_error_total[5m])) by (topic, event_type, exception)", "legendFormat": "{{topic}} / {{exception}}", "refId": "A" }]
+    },
+    {
+      "id": 23, "type": "timeseries", "title": "Kafka Consumer Lag",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [{ "expr": "sum(kafka_consumergroup_lag) by (consumergroup, topic)", "legendFormat": "{{consumergroup}} / {{topic}}", "refId": "A" }]
+    },
+
+    {
+      "id": 30, "type": "row", "title": "Redis Pub/Sub",
+      "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "panels": []
+    },
+    {
+      "id": 31, "type": "timeseries", "title": "Redis Publish Rate (events/s)",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [{ "expr": "sum(rate(redis_publish_success_total[5m])) by (channel)", "legendFormat": "{{channel}}", "refId": "A" }]
+    },
+    {
+      "id": 32, "type": "timeseries", "title": "Redis Receive Rate (events/s)",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 10 } }, "overrides": [] },
+      "targets": [{ "expr": "sum(rate(redis_receive_total[5m])) by (channel)", "legendFormat": "{{channel}}", "refId": "A" }]
+    },
+    {
+      "id": 33, "type": "timeseries", "title": "Redis Errors (events/s)",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 20 }, "color": { "fixedColor": "red", "mode": "fixed" } }, "overrides": [] },
+      "targets": [
+        { "expr": "sum(rate(redis_error_total[5m])) by (channel)", "legendFormat": "error {{channel}}", "refId": "A" },
+        { "expr": "sum(rate(redis_deserialize_error_total[5m])) by (channel)", "legendFormat": "deserialize {{channel}}", "refId": "B" }
+      ]
+    },
+
+    {
+      "id": 40, "type": "row", "title": "Cross-Instance Handoff",
+      "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 },
+      "panels": []
+    },
+    {
+      "id": 41, "type": "timeseries", "title": "Handoff Publish Success Rate (events/s)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 33 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 10 }, "color": { "fixedColor": "green", "mode": "fixed" } }, "overrides": [] },
+      "targets": [{ "expr": "sum(rate(realtime_dispatch_remote_handoff_publish_success_total[5m])) by (instance, targetInstanceId)", "legendFormat": "{{instance}} → {{targetInstanceId}}", "refId": "A" }]
+    },
+    {
+      "id": 42, "type": "timeseries", "title": "Handoff Publish Failure Rate (events/s)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 33 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 20 }, "color": { "fixedColor": "red", "mode": "fixed" } }, "overrides": [] },
+      "targets": [{ "expr": "sum(rate(realtime_dispatch_remote_handoff_publish_failure_total[5m])) by (instance, targetInstanceId)", "legendFormat": "{{instance}} → {{targetInstanceId}}", "refId": "A" }]
+    }
+
+  ]
+}

@@ -19,7 +19,12 @@ export interface ChangePasswordRequest {
   newPassword: string
 }
 
+export interface SetPasswordRequest {
+  newPassword: string
+}
+
 export interface EmailVerificationStatus {
   email: string
   verified: boolean
+  hasPassword: boolean
 }

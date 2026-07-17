@@ -3,7 +3,9 @@
 .gradle
 **/.gradle
 **/build
-**/out
+**/out/
+!**/adapter/out/
+!**/domain/port/out/
 **/.idea
 **/*.iml
 node_modules

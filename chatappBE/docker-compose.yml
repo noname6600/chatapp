@@ -1,89 +1,66 @@
+# ─── Shared env-var block for all realtime-edge instances ────────────────────
+# YAML <<: merge only deep-merges at the level it is applied. If we anchored
+# the whole service and the child re-defined "environment:", the child's block
+# would silently replace the base's (not merge with it), leaving Instance 2
+# without Redis/Kafka/JWT config. Anchoring at the env-var mapping level and
+# applying <<: inside each service's "environment:" block is the correct fix.
+x-realtime-edge-env: &realtime-edge-env
+  PORT: 8090
+  SPRING_KAFKA_BOOTSTRAP_SERVERS: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092,chatapp-kafka:9092}
+  SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+  SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
+  SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:-http://auth-service:8081/.well-known/jwks.json}
+  CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+  CHAT_SERVICE_URL: ${CHAT_SERVICE_URL:-http://chat-service:8083}
+  PRESENCE_SERVICE_URL: ${PRESENCE_SERVICE_URL:-http://presence-service:8084}
+  NOTIFICATION_SERVICE_URL: ${NOTIFICATION_SERVICE_URL:-http://notification-service:8086}
+  FRIENDSHIP_SERVICE_URL: ${FRIENDSHIP_SERVICE_URL:-http://friendship-service:8085}
+  INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-}
+  REALTIME_DELIVERY_QUEUE_WORKERS: 16
+  REALTIME_WS_SIDE_EFFECTS_WORKERS: 16
+  REALTIME_WS_SIDE_EFFECTS_QUEUE_CAPACITY: 2000
+
+# ─── OpenTelemetry Java agent env vars (merged into every microservice) ───────
+# The agent attaches at JVM startup via JAVA_TOOL_OPTIONS.
+# OTEL_SERVICE_NAME is set per-service below.
+# Metrics and logs exporters are disabled — Prometheus scrapes metrics directly
+# and Promtail ships logs to Loki; only traces go to Tempo.
+x-otel-env: &otel-env
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://tempo:4318"
+  OTEL_METRICS_EXPORTER: "none"
+  OTEL_LOGS_EXPORTER: "none"
+  JAVA_TOOL_OPTIONS: "-javaagent:/otel/opentelemetry-javaagent.jar"
+  # Keep 20% of successful traces; errors are always kept via parentbased sampler.
+  OTEL_TRACES_SAMPLER: "parentbased_traceidratio"
+  OTEL_TRACES_SAMPLER_ARG: "0.2"
+
 services:
 
   # ─────────────────────────────────────────────────────────
   # INFRASTRUCTURE
   # ─────────────────────────────────────────────────────────
-  auth-db:
-    image: postgres:17-alpine
-    container_name: chatapp-auth-db
+  postgres:
+    image: postgres:16-alpine
+    container_name: chatapp-postgres
+    command: postgres -c max_connections=300 -c shared_buffers=256MB
     environment:
-      POSTGRES_DB: ${AUTH_DATABASE_NAME:-auth_service}
-      POSTGRES_USER: ${AUTH_DATABASE_USER:-auth_user}
-      POSTGRES_PASSWORD: ${AUTH_DATABASE_PASSWORD:-auth_password}
+      POSTGRES_DB: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      AUTH_DATABASE_NAME: ${AUTH_DATABASE_NAME:-auth_service}
+      USER_DATABASE_NAME: ${USER_DATABASE_NAME:-user_service}
+      CHAT_DATABASE_NAME: ${CHAT_DATABASE_NAME:-chat_service}
+      FRIENDSHIP_DATABASE_NAME: ${FRIENDSHIP_DATABASE_NAME:-friendship_service}
+      NOTIFICATION_DATABASE_NAME: ${NOTIFICATION_DATABASE_NAME:-notification_service}
+      PRESENCE_DATABASE_NAME: ${PRESENCE_DATABASE_NAME:-presence_service}
+      VOICE_DATABASE_NAME: ${VOICE_DATABASE_NAME:-voice_service}
     volumes:
-      - auth-postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init/01-create-databases.sh:/docker-entrypoint-initdb.d/01-create-databases.sh:ro
     networks:
       - chatapp-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${AUTH_DATABASE_USER:-auth_user}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  user-db:
-    image: postgres:17-alpine
-    container_name: chatapp-user-db
-    environment:
-      POSTGRES_DB: ${USER_DATABASE_NAME:-user_service}
-      POSTGRES_USER: ${USER_DATABASE_USER:-user_user}
-      POSTGRES_PASSWORD: ${USER_DATABASE_PASSWORD:-user_password}
-    volumes:
-      - user-postgres-data:/var/lib/postgresql/data
-    networks:
-      - chatapp-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${USER_DATABASE_USER:-user_user}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  chat-db:
-    image: postgres:17-alpine
-    container_name: chatapp-chat-db
-    environment:
-      POSTGRES_DB: ${CHAT_DATABASE_NAME:-chat_service}
-      POSTGRES_USER: ${CHAT_DATABASE_USER:-chat_user}
-      POSTGRES_PASSWORD: ${CHAT_DATABASE_PASSWORD:-chat_password}
-    volumes:
-      - chat-postgres-data:/var/lib/postgresql/data
-    networks:
-      - chatapp-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${CHAT_DATABASE_USER:-chat_user}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  friendship-db:
-    image: postgres:17-alpine
-    container_name: chatapp-friendship-db
-    environment:
-      POSTGRES_DB: ${FRIENDSHIP_DATABASE_NAME:-friendship_service}
-      POSTGRES_USER: ${FRIENDSHIP_DATABASE_USER:-friendship_user}
-      POSTGRES_PASSWORD: ${FRIENDSHIP_DATABASE_PASSWORD:-friendship_password}
-    volumes:
-      - friendship-postgres-data:/var/lib/postgresql/data
-    networks:
-      - chatapp-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${FRIENDSHIP_DATABASE_USER:-friendship_user}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  notification-db:
-    image: postgres:17-alpine
-    container_name: chatapp-notification-db
-    environment:
-      POSTGRES_DB: ${NOTIFICATION_DATABASE_NAME:-notification_service}
-      POSTGRES_USER: ${NOTIFICATION_DATABASE_USER:-notification_user}
-      POSTGRES_PASSWORD: ${NOTIFICATION_DATABASE_PASSWORD:-notification_password}
-    volumes:
-      - notification-postgres-data:/var/lib/postgresql/data
-    networks:
-      - chatapp-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${NOTIFICATION_DATABASE_USER:-notification_user}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -91,6 +68,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: chatapp-redis
+    command: redis-server --notify-keyspace-events Kx --appendonly yes
     networks:
       - chatapp-net
     healthcheck:
@@ -135,27 +113,137 @@ services:
       interval: 15s
       timeout: 10s
       retries: 5
+      start_period: 60s
+
+  # ─────────────────────────────────────────────────────────
+  # LIVEKIT (SFU + built-in STUN/TURN)
+  # ─────────────────────────────────────────────────────────
+  livekit:
+    image: livekit/livekit-server:v1.13.3
+    container_name: chatapp-livekit
+    command:
+      - --config
+      - /livekit.yaml
+      - --keys
+      - "${LIVEKIT_API_KEY:-devkey}: ${LIVEKIT_API_SECRET:-devsecret_at_least_32_chars_long}"
+      - --node-ip
+      - "${VPS_PUBLIC_IP}"
+    volumes:
+      - ./livekit/livekit.yaml:/livekit.yaml:ro
+    ports:
+      - "7881:7881/tcp"
+      - "7881:7881/udp"
+      - "3478:3478/udp"
+      - "50000-50500:50000-50500/udp"
+    networks:
+      - chatapp-net
+    restart: unless-stopped
+
+  livekit-2:
+    image: livekit/livekit-server:v1.13.3
+    container_name: chatapp-livekit-2
+    command:
+      - --config
+      - /livekit.yaml
+      - --keys
+      - "${LIVEKIT_API_KEY:-devkey}: ${LIVEKIT_API_SECRET:-devsecret_at_least_32_chars_long}"
+      - --node-ip
+      - "${VPS_PUBLIC_IP}"
+    volumes:
+      - ./livekit/livekit-2.yaml:/livekit.yaml:ro
+    ports:
+      - "7882:7882/tcp"
+      - "3479:3479/udp"
+      - "50501-51001:50501-51001/udp"
+    networks:
+      - chatapp-net
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────────────────
+  # OBSERVABILITY
+  # ─────────────────────────────────────────────────────────
+
+  # Downloads the OTel Java agent JAR once into a named volume shared by all services.
+  # Services depend on this completing before they start so the JAR is guaranteed present.
+  otel-agent-init:
+    image: alpine:3.19
+    container_name: chatapp-otel-agent-init
+    volumes:
+      - otel-agent:/otel
+    command: >
+      sh -c "[ -f /otel/opentelemetry-javaagent.jar ] ||
+      (apk add -q --no-cache wget &&
+      wget -q -O /otel/opentelemetry-javaagent.jar
+      https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.10.0/opentelemetry-javaagent.jar &&
+      echo 'OTel agent downloaded')"
+    restart: "no"
+    networks:
+      - chatapp-net
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    container_name: chatapp-tempo
+    command: ["-config.file=/etc/tempo.yml"]
+    volumes:
+      - ./docker/tempo/tempo.yml:/etc/tempo.yml:ro
+      - tempo-data:/var/tempo
+    networks:
+      - chatapp-net
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.2.0
+    container_name: chatapp-loki
+    command: ["-config.file=/etc/loki/loki.yml"]
+    volumes:
+      - ./docker/loki/loki.yml:/etc/loki/loki.yml:ro
+      - loki-data:/loki
+    networks:
+      - chatapp-net
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:3.2.0
+    container_name: chatapp-promtail
+    command: ["-config.file=/etc/promtail/promtail.yml"]
+    volumes:
+      - ./docker/promtail/promtail.yml:/etc/promtail/promtail.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - chatapp-net
+    restart: unless-stopped
+    depends_on:
+      - loki
 
   # ─────────────────────────────────────────────────────────
   # MICROSERVICES
   # ─────────────────────────────────────────────────────────
-  auth-service:
+  auth-service: &auth-service-base
+    container_name: chatappbe-auth-service
+    hostname: chatappbe-auth-service
+    mem_limit: 768m
     build:
       context: .
       dockerfile: auth-service/Dockerfile
-    container_name: chatapp-auth
     depends_on:
-      auth-db:
+      postgres:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-agent-init:
+        condition: service_completed_successfully
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: "auth-service"
       PORT: 8081
-      AUTH_DATABASE_URL: jdbc:postgresql://auth-db:5432/${AUTH_DATABASE_NAME:-auth_service}
-      AUTH_DATABASE_USER: ${AUTH_DATABASE_USER:-auth_user}
-      AUTH_DATABASE_PASSWORD: ${AUTH_DATABASE_PASSWORD:-auth_password}
-      KAFKA_SERVERS: kafka:9092
-      USER_SERVICE_BASE_URL: http://user-service:8082/api/v1/users
+      AUTH_DATABASE_URL: jdbc:postgresql://postgres:5432/${AUTH_DATABASE_NAME:-auth_service}
+      AUTH_DATABASE_USER: ${POSTGRES_USER:-postgres}
+      AUTH_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092,chatapp-kafka:9092}
+      USER_SERVICE_BASE_URL: ${USER_SERVICE_BASE_URL:-http://user-service:8082/api/v1/users}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
@@ -163,6 +251,10 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       OAUTH2_REDIRECT_BASE_URL: ${OAUTH2_REDIRECT_BASE_URL:-http://localhost:8080}
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
+    volumes:
+      - otel-agent:/otel:ro
     networks:
       - chatapp-net
     restart: unless-stopped
@@ -171,30 +263,47 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 360s
 
-  user-service:
+  auth-service-2:
+    <<: *auth-service-base
+    container_name: chatappbe-auth-service-2
+    hostname: chatappbe-auth-service-2
+    networks:
+      chatapp-net:
+        aliases:
+          - auth-service
+
+  user-service: &user-service-base
+    container_name: chatappbe-user-service
+    hostname: chatappbe-user-service
+    mem_limit: 640m
     build:
       context: .
       dockerfile: user-service/Dockerfile
-    container_name: chatapp-user
     depends_on:
-      user-db:
+      postgres:
         condition: service_healthy
       kafka:
         condition: service_healthy
       auth-service:
         condition: service_healthy
+      otel-agent-init:
+        condition: service_completed_successfully
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: "user-service"
       PORT: 8082
-      USER_DATABASE_URL: jdbc:postgresql://user-db:5432/${USER_DATABASE_NAME:-user_service}
-      USER_DATABASE_USER: ${USER_DATABASE_USER:-user_user}
-      USER_DATABASE_PASSWORD: ${USER_DATABASE_PASSWORD:-user_password}
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_PORT: 6379
+      USER_DATABASE_URL: jdbc:postgresql://postgres:5432/${USER_DATABASE_NAME:-user_service}
+      USER_DATABASE_USER: ${POSTGRES_USER:-postgres}
+      USER_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092,chatapp-kafka:9092}
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:-http://auth-service:8081/.well-known/jwks.json}
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+    volumes:
+      - otel-agent:/otel:ro
     networks:
       - chatapp-net
     restart: unless-stopped
@@ -203,15 +312,26 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 360s
 
-  chat-service:
+  user-service-2:
+    <<: *user-service-base
+    container_name: chatappbe-user-service-2
+    hostname: chatappbe-user-service-2
+    networks:
+      chatapp-net:
+        aliases:
+          - user-service
+
+  chat-service: &chat-service-base
+    container_name: chatappbe-chat-service
+    hostname: chatappbe-chat-service
+    mem_limit: 768m
     build:
       context: .
       dockerfile: chat-service/Dockerfile
-    container_name: chatapp-chat
     depends_on:
-      chat-db:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -219,18 +339,25 @@ services:
         condition: service_healthy
       auth-service:
         condition: service_healthy
+      otel-agent-init:
+        condition: service_completed_successfully
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: "chat-service"
       PORT: 8083
-      CHAT_DATABASE_URL: jdbc:postgresql://chat-db:5432/${CHAT_DATABASE_NAME:-chat_service}
-      CHAT_DATABASE_USER: ${CHAT_DATABASE_USER:-chat_user}
-      CHAT_DATABASE_PASSWORD: ${CHAT_DATABASE_PASSWORD:-chat_password}
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_PORT: 6379
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
-      SERVICES_USER_URL: http://user-service:8082
-      SERVICES_FRIENDSHIP_URL: http://friendship-service:8085
+      CHAT_DATABASE_URL: jdbc:postgresql://postgres:5432/${CHAT_DATABASE_NAME:-chat_service}
+      CHAT_DATABASE_USER: ${POSTGRES_USER:-postgres}
+      CHAT_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092,chatapp-kafka:9092}
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:-http://auth-service:8081/.well-known/jwks.json}
+      SERVICES_USER_URL: ${SERVICES_USER_URL:-http://user-service:8082}
+      SERVICES_FRIENDSHIP_URL: ${SERVICES_FRIENDSHIP_URL:-http://friendship-service:8085}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
+    volumes:
+      - otel-agent:/otel:ro
     networks:
       - chatapp-net
     restart: unless-stopped
@@ -239,13 +366,37 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 360s
 
-  presence-service:
+  chat-service-2:
+    <<: *chat-service-base
+    container_name: chatappbe-chat-service-2
+    hostname: chatappbe-chat-service-2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      chat-service:
+        condition: service_healthy
+      otel-agent-init:
+        condition: service_completed_successfully
+    networks:
+      chatapp-net:
+        aliases:
+          - chat-service
+
+  presence-service: &presence-service-base
+    container_name: chatappbe-presence-service
+    hostname: chatappbe-presence-service
+    mem_limit: 512m
     build:
       context: .
       dockerfile: presence-service/Dockerfile
-    container_name: chatapp-presence
     depends_on:
       redis:
         condition: service_healthy
@@ -253,13 +404,21 @@ services:
         condition: service_healthy
       auth-service:
         condition: service_healthy
+      otel-agent-init:
+        condition: service_completed_successfully
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: "presence-service"
       PORT: 8084
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_PORT: 6379
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092,chatapp-kafka:9092}
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:-http://auth-service:8081/.well-known/jwks.json}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-}
+      CHAT_SERVICE_URL: ${CHAT_SERVICE_URL:-http://chat-service:8083}
+    volumes:
+      - otel-agent:/otel:ro
     networks:
       - chatapp-net
     restart: unless-stopped
@@ -268,29 +427,62 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 360s
 
-  friendship-service:
-    build:
-      context: .
-      dockerfile: friendship-service/Dockerfile
-    container_name: chatapp-friendship
+  presence-service-2:
+    <<: *presence-service-base
+    container_name: chatappbe-presence-service-2
+    hostname: chatappbe-presence-service-2
     depends_on:
-      friendship-db:
+      redis:
         condition: service_healthy
       kafka:
         condition: service_healthy
       auth-service:
         condition: service_healthy
+      presence-service:
+        condition: service_healthy
+      otel-agent-init:
+        condition: service_completed_successfully
+    networks:
+      chatapp-net:
+        aliases:
+          - presence-service
+
+  friendship-service: &friendship-service-base
+    container_name: chatappbe-friendship-service
+    hostname: chatappbe-friendship-service
+    mem_limit: 640m
+    build:
+      context: .
+      dockerfile: friendship-service/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      otel-agent-init:
+        condition: service_completed_successfully
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: "friendship-service"
       PORT: 8085
-      FRIENDSHIP_DATABASE_URL: jdbc:postgresql://friendship-db:5432/${FRIENDSHIP_DATABASE_NAME:-friendship_service}
-      FRIENDSHIP_DATABASE_USER: ${FRIENDSHIP_DATABASE_USER:-friendship_user}
-      FRIENDSHIP_DATABASE_PASSWORD: ${FRIENDSHIP_DATABASE_PASSWORD:-friendship_password}
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
-      USER_SERVICE_URL: http://user-service:8082
+      FRIENDSHIP_DATABASE_URL: jdbc:postgresql://postgres:5432/${FRIENDSHIP_DATABASE_NAME:-friendship_service}
+      FRIENDSHIP_DATABASE_USER: ${POSTGRES_USER:-postgres}
+      FRIENDSHIP_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092,chatapp-kafka:9092}
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:-http://auth-service:8081/.well-known/jwks.json}
+      USER_SERVICE_URL: ${USER_SERVICE_URL:-http://user-service:8082}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-}
+    volumes:
+      - otel-agent:/otel:ro
     networks:
       - chatapp-net
     restart: unless-stopped
@@ -299,30 +491,62 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 360s
 
-  notification-service:
-    build:
-      context: .
-      dockerfile: notification-service/Dockerfile
-    container_name: chatapp-notification
+  friendship-service-2:
+    <<: *friendship-service-base
+    container_name: chatappbe-friendship-service-2
+    hostname: chatappbe-friendship-service-2
     depends_on:
-      notification-db:
+      postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       kafka:
         condition: service_healthy
       auth-service:
         condition: service_healthy
+      friendship-service:
+        condition: service_healthy
+      otel-agent-init:
+        condition: service_completed_successfully
+    networks:
+      chatapp-net:
+        aliases:
+          - friendship-service
+
+  notification-service: &notification-service-base
+    container_name: chatappbe-notification-service
+    hostname: chatappbe-notification-service
+    mem_limit: 640m
+    build:
+      context: .
+      dockerfile: notification-service/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      otel-agent-init:
+        condition: service_completed_successfully
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: "notification-service"
       PORT: 8086
-      NOTIFICATION_DATABASE_URL: jdbc:postgresql://notification-db:5432/${NOTIFICATION_DATABASE_NAME:-notification_service}
-      NOTIFICATION_DATABASE_USER: ${NOTIFICATION_DATABASE_USER:-notification_user}
-      NOTIFICATION_DATABASE_PASSWORD: ${NOTIFICATION_DATABASE_PASSWORD:-notification_password}
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
+      NOTIFICATION_DATABASE_URL: jdbc:postgresql://postgres:5432/${NOTIFICATION_DATABASE_NAME:-notification_service}
+      NOTIFICATION_DATABASE_USER: ${POSTGRES_USER:-postgres}
+      NOTIFICATION_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092,chatapp-kafka:9092}
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:-http://auth-service:8081/.well-known/jwks.json}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+    volumes:
+      - otel-agent:/otel:ro
     networks:
       - chatapp-net
     restart: unless-stopped
@@ -331,23 +555,105 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 360s
 
-  upload-service:
+  notification-service-2:
+    <<: *notification-service-base
+    container_name: chatappbe-notification-service-2
+    hostname: chatappbe-notification-service-2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+      otel-agent-init:
+        condition: service_completed_successfully
+    networks:
+      chatapp-net:
+        aliases:
+          - notification-service
+
+  realtime-edge-service: &realtime-edge-service-base
+    container_name: chatappbe-realtime-edge-service
+    hostname: chatappbe-realtime-edge-service
+    mem_limit: 640m
+    build:
+      context: .
+      dockerfile: realtime-edge-service/Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      chat-service:
+        condition: service_healthy
+      presence-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+      friendship-service:
+        condition: service_healthy
+      otel-agent-init:
+        condition: service_completed_successfully
+    environment:
+      <<: [*otel-env, *realtime-edge-env]
+      OTEL_SERVICE_NAME: "realtime-edge-service"
+      REALTIME_INSTANCE_ID: chatappbe-realtime-edge-service
+    volumes:
+      - otel-agent:/otel:ro
+    networks:
+      - chatapp-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8090/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 360s
+
+  realtime-edge-service-2:
+    <<: *realtime-edge-service-base
+    container_name: chatappbe-realtime-edge-service-2
+    hostname: chatappbe-realtime-edge-service-2
+    environment:
+      <<: [*otel-env, *realtime-edge-env]
+      OTEL_SERVICE_NAME: "realtime-edge-service"
+      REALTIME_INSTANCE_ID: chatappbe-realtime-edge-service-2
+    networks:
+      chatapp-net:
+        aliases:
+          - realtime-edge-service
+
+  upload-service: &upload-service-base
+    container_name: chatappbe-upload-service
+    hostname: chatappbe-upload-service
+    mem_limit: 384m
     build:
       context: .
       dockerfile: upload-service/Dockerfile
-    container_name: chatapp-upload
     depends_on:
       auth-service:
         condition: service_healthy
+      otel-agent-init:
+        condition: service_completed_successfully
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: "upload-service"
       PORT: 8088
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://auth-service:8081/.well-known/jwks.json
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:-http://auth-service:8081/.well-known/jwks.json}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
       CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
       CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
       CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+      UPLOAD_CONFIRM_PREPARE_TOKEN_SECRET: ${UPLOAD_CONFIRM_PREPARE_TOKEN_SECRET}
+    volumes:
+      - otel-agent:/otel:ro
     networks:
       - chatapp-net
     restart: unless-stopped
@@ -356,16 +662,105 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 360s
+
+  upload-service-2:
+    <<: *upload-service-base
+    container_name: chatappbe-upload-service-2
+    hostname: chatappbe-upload-service-2
+    networks:
+      chatapp-net:
+        aliases:
+          - upload-service
+
+  # ─────────────────────────────────────────────────────────
+  # VOICE SERVICE
+  # ─────────────────────────────────────────────────────────
+  voice-service: &voice-service-base
+    container_name: chatappbe-voice-service
+    hostname: chatappbe-voice-service
+    mem_limit: 640m
+    build:
+      context: .
+      dockerfile: voice-service/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      livekit:
+        condition: service_started
+      otel-agent-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: "voice-service"
+      PORT: 8091
+      VOICE_DATABASE_URL: jdbc:postgresql://postgres:5432/${VOICE_DATABASE_NAME:-voice_service}
+      VOICE_DATABASE_USER: ${POSTGRES_USER:-postgres}
+      VOICE_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092,chatapp-kafka:9092}
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:-http://auth-service:8081/.well-known/jwks.json}
+      SERVICES_USER_URL: ${SERVICES_USER_URL:-http://user-service:8082}
+      SERVICES_CHAT_URL: ${SERVICES_CHAT_URL:-http://chat-service:8083}
+      SERVICES_FRIENDSHIP_URL: ${SERVICES_FRIENDSHIP_URL:-http://friendship-service:8085}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-devsecret_at_least_32_chars_long}
+      LIVEKIT_URL_INTERNAL: ${LIVEKIT_URL_INTERNAL:-ws://chatapp-livekit:7880}
+      LIVEKIT_URL_EXTERNAL: ${LIVEKIT_URL_EXTERNAL:-ws://localhost:7880}
+      LIVEKIT_ENABLED: ${LIVEKIT_ENABLED:-true}
+    volumes:
+      - otel-agent:/otel:ro
+    networks:
+      - chatapp-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8091/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 360s
+
+  voice-service-2:
+    <<: *voice-service-base
+    container_name: chatappbe-voice-service-2
+    hostname: chatappbe-voice-service-2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      voice-service:
+        condition: service_healthy
+      otel-agent-init:
+        condition: service_completed_successfully
+    networks:
+      chatapp-net:
+        aliases:
+          - voice-service
 
   # ─────────────────────────────────────────────────────────
   # API GATEWAY
   # ─────────────────────────────────────────────────────────
-  gateway-service:
+  gateway-service: &gateway-service-base
+    container_name: chatappbe-gateway-service
+    hostname: chatappbe-gateway-service
+    mem_limit: 640m
     build:
       context: .
       dockerfile: gateway-service/Dockerfile
-    container_name: chatapp-gateway
     depends_on:
       redis:
         condition: service_healthy
@@ -381,27 +776,42 @@ services:
         condition: service_healthy
       notification-service:
         condition: service_healthy
+      realtime-edge-service:
+        condition: service_healthy
       upload-service:
         condition: service_healthy
+      voice-service:
+        condition: service_healthy
+      otel-agent-init:
+        condition: service_completed_successfully
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: "gateway-service"
       PORT: 8080
-      AUTH_SERVICE_HOST: auth-service
-      AUTH_SERVICE_PORT: 8081
-      USER_SERVICE_HOST: user-service
-      USER_SERVICE_PORT: 8082
-      CHAT_SERVICE_HOST: chat-service
-      CHAT_SERVICE_PORT: 8083
-      PRESENCE_SERVICE_HOST: presence-service
-      PRESENCE_SERVICE_PORT: 8084
-      FRIENDSHIP_SERVICE_HOST: friendship-service
-      FRIENDSHIP_SERVICE_PORT: 8085
-      NOTIFICATION_SERVICE_HOST: notification-service
-      NOTIFICATION_SERVICE_PORT: 8086
-      UPLOAD_SERVICE_HOST: upload-service
-      UPLOAD_SERVICE_PORT: 8088
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
+      AUTH_SERVICE_HOST: ${AUTH_SERVICE_HOST:-auth-service}
+      AUTH_SERVICE_PORT: ${AUTH_SERVICE_PORT:-8081}
+      USER_SERVICE_HOST: ${USER_SERVICE_HOST:-user-service}
+      USER_SERVICE_PORT: ${USER_SERVICE_PORT:-8082}
+      CHAT_SERVICE_HOST: ${CHAT_SERVICE_HOST:-chat-service}
+      CHAT_SERVICE_PORT: ${CHAT_SERVICE_PORT:-8083}
+      PRESENCE_SERVICE_HOST: ${PRESENCE_SERVICE_HOST:-presence-service}
+      PRESENCE_SERVICE_PORT: ${PRESENCE_SERVICE_PORT:-8084}
+      FRIENDSHIP_SERVICE_HOST: ${FRIENDSHIP_SERVICE_HOST:-friendship-service}
+      FRIENDSHIP_SERVICE_PORT: ${FRIENDSHIP_SERVICE_PORT:-8085}
+      NOTIFICATION_SERVICE_HOST: ${NOTIFICATION_SERVICE_HOST:-notification-service}
+      NOTIFICATION_SERVICE_PORT: ${NOTIFICATION_SERVICE_PORT:-8086}
+      UPLOAD_SERVICE_HOST: ${UPLOAD_SERVICE_HOST:-upload-service}
+      UPLOAD_SERVICE_PORT: ${UPLOAD_SERVICE_PORT:-8088}
+      REALTIME_EDGE_SERVICE_HOST: ${REALTIME_EDGE_SERVICE_HOST:-realtime-edge-service}
+      REALTIME_EDGE_SERVICE_PORT: ${REALTIME_EDGE_SERVICE_PORT:-8090}
+      VOICE_SERVICE_HOST: ${VOICE_SERVICE_HOST:-voice-service}
+      VOICE_SERVICE_PORT: ${VOICE_SERVICE_PORT:-8091}
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      GATEWAY_JWT_CLOCK_SKEW_SECONDS: ${GATEWAY_JWT_CLOCK_SKEW_SECONDS:-60}
+    volumes:
+      - otel-agent:/otel:ro
     networks:
       - chatapp-net
     restart: unless-stopped
@@ -410,16 +820,21 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 420s
+
+  gateway-service-2:
+    <<: *gateway-service-base
+    container_name: chatappbe-gateway-service-2
+    hostname: chatappbe-gateway-service-2
 
   # ─────────────────────────────────────────────────────────
   # FRONTEND
   # ─────────────────────────────────────────────────────────
-  frontend:
+  frontend: &frontend-base
+    container_name: chatappbe-frontend
     build:
       context: ../chatappFE
       dockerfile: Dockerfile
-    container_name: chatapp-frontend
     networks:
       - chatapp-net
     restart: unless-stopped
@@ -441,6 +856,10 @@ services:
         condition: service_healthy
       gateway-service:
         condition: service_healthy
+      gateway-service-2:
+        condition: service_healthy
+      grafana:
+        condition: service_started
     ports:
       - "80:80"
       - "443:443"
@@ -463,6 +882,110 @@ services:
     networks:
       - chatapp-net
     restart: "no"
+
+  kafka-setup:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: chatapp-kafka-setup
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - chatapp-net
+    restart: "no"
+    command: >
+      bash -c "
+        echo 'Creating/updating Kafka topics...' &&
+        for topic in chat.message.sent chat.message.events chat.reaction.updated friendship.events friendship.request.events notification.realtime account.created system.dead-letter system.retry voice.room.events voice.call.events; do
+          kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic $$topic --partitions 2 --replication-factor 1 &&
+          kafka-topics --bootstrap-server kafka:9092 --alter --topic $$topic --partitions 2 2>/dev/null || true;
+        done &&
+        echo 'Kafka topics ready.'
+      "
+
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: chatapp-kafka-exporter
+    command:
+      - "--kafka.server=kafka:9092"
+      - "--topic.filter=.*"
+      - "--group.filter=.*"
+      - "--web.listen-address=:9308"
+    networks:
+      - chatapp-net
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: chatapp-node-exporter
+    command:
+      - '--path.rootfs=/host'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host:ro,rslave
+    pid: host
+    networks:
+      - chatapp-net
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: chatapp-alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--config.expand-env=true'
+    environment:
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM: ${RESEND_FROM:-}
+    volumes:
+      - ./docker/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    networks:
+      - chatapp-net
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    container_name: chatapp-prometheus
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-remote-write-receiver'
+    networks:
+      - chatapp-net
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: chatapp-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-changeme}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: https://metrics.chatweb.nani.id.vn
+      GF_SERVER_DOMAIN: metrics.chatweb.nani.id.vn
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+      - tempo
+      - loki
+    networks:
+      - chatapp-net
+    restart: unless-stopped
 
   certbot-renew:
     image: certbot/certbot:latest
@@ -487,8 +1010,10 @@ networks:
     driver: bridge
 
 volumes:
-  auth-postgres-data:
-  user-postgres-data:
-  chat-postgres-data:
-  friendship-postgres-data:
-  notification-postgres-data:
+  postgres-data:
+  prometheus-data:
+  grafana-data:
+  alertmanager-data:
+  otel-agent:
+  tempo-data:
+  loki-data:

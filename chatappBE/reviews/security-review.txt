@@ -1,0 +1,600 @@
+================================================================================
+  SECURITY REVIEW — CHATAPP BACKEND
+  Reviewer Role: Security Reviewer + Staff Security Engineer
+  Date: 2026-05-18
+  Codebase: d:/Work/PET/chatappPET/chatapp/chatappBE
+================================================================================
+
+SEVERITY SCALE
+  [CRITICAL]  Active exploit path or data exposure risk
+  [HIGH]      Significant security weakness, exploitable under realistic conditions
+  [MEDIUM]    Defense-in-depth gap or configuration risk
+  [LOW]       Minor hardening recommendation
+  [STRENGTH]  Positive security design worth preserving
+
+================================================================================
+SECTION 1 — JWT LIFECYCLE REVIEW
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[STRENGTH] RSA-2048 Key Rotation Is Correctly Implemented
+──────────────────────────────────────────────────────────────────────────────
+File: auth-service/src/main/java/com/example/auth/jwt/impl/KeyManager.java
+      auth-service/src/main/java/com/example/auth/entity/JwtKeyEntity.java
+
+- RSA-2048 key pair is generated using Java's standard SecureRandom-backed KeyPairGenerator.
+- Keys are stored in jwt_key_entities table with: kid, publicKey, privateKey, active flag, expiredAt.
+- Rotation every 24h (auth.jwt.signing-key.rotation-ms: 86400000).
+- Grace period: 1,800,000ms (30 minutes). This allows issued tokens to remain valid
+  while new tokens use the new key. Confirmed by grace period calculation in KeyManager.
+- JWKS endpoint (/.well-known/jwks.json) serves ALL non-expired keys.
+- Gateway caches JWKS with 60-second clock skew tolerance.
+
+Assessment: Production-grade key lifecycle management.
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] RSA Private Keys Stored in Database as Plain Text
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: auth-service/src/main/java/com/example/auth/entity/JwtKeyEntity.java
+  Field: String privateKey (TEXT column)
+
+The RSA-2048 private key is stored as TEXT in the jwt_key_entities table.
+There is no evidence of column-level encryption. If the database is compromised:
+  - Attacker obtains private keys → can forge arbitrary JWTs
+  - All active and past sessions can be forged
+  - Token theft detection is bypassed entirely
+  - The system has no way to detect forged tokens (valid RSA signature)
+
+This is the most critical single security risk in the entire system.
+
+Security impact:
+  - Full authentication bypass on DB compromise
+  - Forged JWTs for any user, with any claims
+  - Impossible to detect without external anomaly detection
+
+Recommended fix direction:
+  Option A: Encrypt private keys at rest using AES-256-GCM with a
+    master key from an HSM or AWS KMS / GCP Cloud KMS / HashiCorp Vault.
+    Store only the encrypted blob in the DB.
+  Option B: Store private keys in a secret management system (Vault, AWS Secrets Manager)
+    keyed by kid. Store only public key and metadata in DB.
+  Option C (minimum): Use AWS RDS encryption at rest / disk encryption so
+    DB files are encrypted even if the disk is stolen.
+
+Architecture level: Implementation + infrastructure
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] JWT Grace Period Is Only 30 Minutes (Inconsistent With Token Lifetime)
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: auth-service/src/main/resources/application.yaml
+  auth.jwt.access-token-expiration-ms: 900000 (15 minutes)
+  auth.jwt.signing-key.grace-period-ms: 1800000 (30 minutes)
+
+Access tokens live 15 minutes. Grace period is 30 minutes. This means:
+  - A token issued 1 second before key rotation will be valid for 15 minutes
+  - The old key's grace period covers this correctly (30 min > 15 min) ✓
+
+However, the grace period in the code comment says "grace = accessExpMs + rotationMs"
+but the actual config sets 1800000 (30min) not 900000+86400000 (25.25h).
+The grace period may be misconfigured vs. the stated formula.
+
+If grace < accessTokenExpMs: tokens become invalid before they actually expire.
+Verify: grace period MUST be >= accessTokenExpMs to avoid premature rejection.
+
+Recommended fix direction:
+  Set grace-period-ms to max(accessTokenExpMs * 2, 1800000). Document the
+  formula in application.yaml with a comment.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] JWT Key Rotation Race Window (Multi-Instance auth-service)
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: auth-service/.../jwt/impl/KeyManager.java
+  @Scheduled(fixedDelay=600000) — key reload every 10 minutes
+
+With multiple auth-service instances:
+  - Instance A rotates key at T+0 → writes new key to DB, uses new kid for signing
+  - Instance B's scheduled reload runs at T+0+600s (up to 10 min later)
+  - During this window: Instance B's in-memory keyStore doesn't have the new key
+  - A token refresh validated by Instance B using the new kid → "Unknown kid" → 401
+
+This creates a up-to-10-minute window where new tokens (from Instance A) are rejected
+by other auth-service instances for operations like token verification on internal calls.
+
+Note: Gateway validates JWT against JWKS (HTTP, with its own cache TTL). JWKS includes
+all active keys so gateway validation is unaffected. The risk is only for auth-service
+internal JWT validation (used for protected auth endpoints like /password/change).
+
+Recommended fix direction:
+  Reduce @Scheduled fixedDelay to 60000ms (1 minute). Or use a distributed
+  cache (Redis) for the in-memory keyStore so all instances share the same state.
+
+================================================================================
+SECTION 2 — REFRESH TOKEN SECURITY
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[STRENGTH] Token Theft Detection Is Production-Grade
+──────────────────────────────────────────────────────────────────────────────
+File: auth-service/.../service/impl/TokenServiceFacade.java
+      auth-service/src/main/java/com/example/auth/entity/RefreshToken.java
+
+- Refresh tokens are stored as SHA-256 hash (never the raw value)
+- RefreshToken entity has: tokenHash (unique index), revoked flag, revokedAt
+- On refresh: if token is found but revoked=true → THEFT DETECTED → revoke ALL tokens for account
+- Optimistic locking on the revoke step prevents concurrent exchange attacks
+- Indexes: idx_refresh_token_hash (unique), idx_refresh_account, idx_refresh_expires
+
+The token rotation + theft detection model follows OWASP recommendations for
+Refresh Token Rotation. This is excellent security implementation.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] Refresh Token TTL Is 30 Days — No Sliding Window
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: auth-service/src/main/resources/application.yaml
+  auth.jwt.refresh-token-expiration-ms: 2592000000 (30 days)
+
+Refresh tokens are rotated on use but have a fixed 30-day TTL. A token issued
+today expires 30 days later regardless of activity. An attacker with a stolen
+refresh token has up to 30 days to use it (after which it would be expired).
+
+The rotation mechanism mitigates this (once used by legitimate user, old token
+is revoked). But if the attacker uses it BEFORE the legitimate user, the victim
+gets forced logout (theft detection), which is correct but disruptive.
+
+More aggressive mitigation: implement sliding window TTL — refresh the expiry
+on each successful exchange (re-issue with new expiresAt = now + 30 days).
+This is already implied by token rotation since a new token is issued each time.
+The new token would have its own expiresAt. The remaining issue is that a token
+that is NEVER used (user never logs in for 30 days) doesn't expire until 30 days.
+
+Assessment: Acceptable. No action required unless compliance mandates shorter TTL.
+
+──────────────────────────────────────────────────────────────────────────────
+[LOW] No Refresh Token Binding to Client Fingerprint
+──────────────────────────────────────────────────────────────────────────────
+Severity: LOW
+File: auth-service/.../entity/RefreshToken.java
+
+Refresh tokens are not bound to device fingerprint, IP address, or user-agent.
+A stolen refresh token can be used from any IP/device without triggering additional
+verification (only rotation + revocation detection applies).
+
+Impact: A stolen cookie or token in localStorage can be used from any device.
+
+Recommended fix direction (future hardening):
+  Store ipAddress, userAgent in RefreshToken. On refresh: validate these match.
+  If mismatch: require re-authentication or send an alert email.
+
+================================================================================
+SECTION 3 — GATEWAY SECURITY
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[STRENGTH] Gateway JWT Validation Is Reactive and Correct
+──────────────────────────────────────────────────────────────────────────────
+File: gateway-service/src/main/java/com/example/gateway/config/SecurityConfig.java
+
+- NimbusReactiveJwtDecoder with JWK set URI caching
+- 60-second clock skew tolerance
+- Detailed 401 error classification: missing_token, expired_token, invalid_signature,
+  claim_mismatch, invalid_token — all returned to client for debugging
+- 403 for insufficient scope
+- X-User-Id header injection via JwtAuthFilterGatewayFilterFactory
+- Public paths are minimal and correct: /api/v1/auth/**, /well-known/**, /ws/**, /fallback/**
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] WebSocket Routes (/ws/**) Are Fully Public in Gateway
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: gateway-service/.../config/SecurityConfig.java
+  Public path: "/ws/**"
+
+All WebSocket paths are whitelisted as public in the gateway's Spring Security
+configuration. The gateway does NOT validate JWT on WebSocket upgrade requests.
+Authentication is delegated entirely to the downstream WebSocket handler
+(realtime-edge-service's JwtHandshakeInterceptor).
+
+Risks:
+  1. If a WebSocket endpoint has a bug or misconfiguration in its JWT validation,
+     there is no defense-in-depth layer at the gateway.
+  2. The gateway's IP-based rate limiter applies to ALL requests. But since
+     WebSocket connections are long-lived, a single connection holds the rate
+     limit state even after consuming the initial burst. Rate limiting on WebSocket
+     upgrade is less effective than on REST requests.
+  3. gateway.filter.JwtAuthFilterGatewayFilterFactory is NOT applied to WebSocket
+     routes — downstream services do NOT receive X-User-Id for WebSocket connections.
+
+Security impact: Single layer of auth for WebSocket. No defense in depth.
+
+Recommended fix direction:
+  - Apply JWT validation at gateway for WebSocket upgrade requests too.
+    (The JwtHandshakeInterceptor provides the actual userId; gateway just needs
+     to validate the token is well-formed and not expired before upgrading.)
+  - Apply rate limiting per user (JWT sub) for WebSocket upgrades, not just per IP.
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] Services Expose JWT Public Path (/api/v1/auth/**) Without Gateway Context
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+Files: user-service SecurityConfig — public path: /api/v1/auth/**
+       chat-service SecurityConfig — public path: /api/v1/auth/**
+       notification-service SecurityConfig — public path: /api/v1/auth/**
+       friendship-service SecurityConfig — public path: /api/v1/auth/**
+
+Every non-auth service has /api/v1/auth/** as a public path in its own Spring
+Security configuration. This was likely intended to cover the gateway's auth prefix
+routing, but individual services should NEVER have /api/v1/auth/** as a valid
+public path on their own.
+
+If any service is accidentally exposed directly (misconfigured network, port mapping,
+or future debugging scenario), /api/v1/auth/** would be publicly accessible on
+those services with no authentication required. This creates a wide-open public
+path on services that should have no public paths except /actuator/health.
+
+These services have no /api/v1/auth/** endpoints of their own. The public path
+is vestigial and should be removed from all non-auth services.
+
+Security impact: Defense-in-depth failure; unnecessary public surface area on services
+
+Recommended fix direction:
+  Remove /api/v1/auth/** from SecurityConfig of: user-service, chat-service,
+  notification-service, friendship-service, presence-service, upload-service.
+  These services should only permit:
+    - /actuator/health/**
+    - /v3/api-docs/** and /swagger-ui/** (dev only)
+    - Their own endpoints under /api/v1/{service}/** (JWT protected)
+    - /ws/** (only services with WebSocket endpoints)
+
+Architecture level: Implementation (security misconfiguration)
+
+================================================================================
+SECTION 4 — INTERNAL SERVICE AUTHENTICATION
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] X-Internal-Service-Token Only on Some Services, Not All
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+Files: user-service SecurityConfig — InternalServiceAuthFilter on /api/v1/users/internal/**
+       friendship-service SecurityConfig — InternalServiceAuthFilter on /api/v1/internal/**
+       chat-service SecurityConfig — NO InternalServiceAuthFilter visible
+       presence-service SecurityConfig — NO InternalServiceAuthFilter visible
+
+user-service and friendship-service correctly protect their internal endpoints
+with X-Internal-Service-Token header validation. However, chat-service and
+presence-service do not show evidence of this filter on their internal endpoints
+(if any).
+
+More critically: the FriendshipClient in chat-service calls:
+  GET /api/v1/internal/friends/blocked-between
+This endpoint on friendship-service IS protected by InternalServiceAuthFilter.
+FeignJwtConfig presumably adds the internal token header. But this is not confirmed.
+
+If FeignJwtConfig only forwards the JWT (Authorization: Bearer) and NOT the
+X-Internal-Service-Token, then:
+  - chat-service calls friendship-service's internal endpoint
+  - friendship-service's InternalServiceAuthFilter checks for X-Internal-Service-Token
+  - Header is absent → 401 or 403 on the internal call
+  - Message sends fail
+
+This needs verification. If FeignJwtConfig does add the internal token, then the
+concern is that not all services requiring internal auth have the filter applied.
+
+Recommended fix direction:
+  1. Audit FeignJwtConfig to confirm it adds X-Internal-Service-Token header
+  2. Ensure ALL services that expose /internal/** endpoints use InternalServiceAuthFilter
+  3. Document the internal token rotation strategy (how is INTERNAL_AUTH_TOKEN rotated?)
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] Internal Service Token Is a Shared Secret (No Per-Service Identity)
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+Files: user-service/application.yaml — internal.auth.token: ${INTERNAL_AUTH_TOKEN}
+       friendship-service/application.yaml — same
+
+All services use the SAME shared secret for internal authentication. This means:
+  - If any one service is compromised and the token is leaked, ALL internal
+    endpoints across ALL services become accessible to the attacker.
+  - No service-level granularity: chat-service can call user-service's internal
+    API with the same token that notification-service uses.
+
+Recommended fix direction:
+  Option A: Per-service tokens (CHAT_TO_USER_TOKEN, NOTIFICATION_TO_USER_TOKEN, etc.)
+  Option B: mTLS (mutual TLS) between services — each service has its own cert.
+  Option C: Use a service mesh (Istio/Linkerd) that handles service identity automatically.
+
+================================================================================
+SECTION 5 — CORS CONFIGURATION
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] CORS Inconsistency: Gateway vs Individual Services
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+Files: gateway-service application.yaml — allowed-methods: GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD
+       auth-service application.yaml — allowed-methods: GET, POST, PUT, DELETE, OPTIONS
+       other services — allowed-methods: "*"
+
+Gateway has explicit allowed-methods list. Other services use allowed-methods: "*".
+In production, all traffic goes through gateway, so individual service CORS
+settings are only relevant if services are accessed directly (e.g., debugging,
+misconfigured client, or future API expansion).
+
+However, allowed-methods: "*" on individual services is overly permissive and
+permits potentially dangerous HTTP methods like TRACE, CONNECT, or DELETE on
+services that don't support them.
+
+Also: auth-service lacks PATCH in allowed-methods, which may cause issues if
+PATCH /api/v1/auth/* is ever added.
+
+Recommended fix direction:
+  Standardize all services to explicit allowed-methods: GET, POST, PUT, PATCH, DELETE, OPTIONS.
+  Remove "*" from all service-level CORS configurations.
+
+──────────────────────────────────────────────────────────────────────────────
+[LOW] CORS Exposes Localhost Origins in Development Config
+──────────────────────────────────────────────────────────────────────────────
+Severity: LOW
+File: most services: allowed-origins: http://localhost:5173, http://localhost:5174, http://localhost:3000
+
+Multiple localhost origins are in the default application.yaml (not an override).
+If the CORS_ALLOWED_ORIGINS environment variable is not set in production, these
+defaults apply. This permits any browser on the same machine as the server to
+make cross-origin requests.
+
+In a containerized deployment (Docker), localhost in the container is the container
+itself, so this is generally harmless. But it signals that production and development
+configs are not properly separated.
+
+Recommended fix direction:
+  Use environment-specific configuration profiles (Spring Profiles) or always
+  set CORS_ALLOWED_ORIGINS in production. Add a startup check that CORS_ALLOWED_ORIGINS
+  is explicitly set (no localhost default in production).
+
+================================================================================
+SECTION 6 — INPUT VALIDATION & INJECTION RISKS
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[LOW] spring.json.trusted.packages: "*" in Kafka Consumers
+──────────────────────────────────────────────────────────────────────────────
+Severity: LOW (mitigated by custom deserializer)
+Files: notification-service/application.yaml — spring.json.trusted.packages: "*"
+       user-service/application.yaml — spring.json.trusted.packages: "*"
+
+The wildcard trusted packages configuration allows Kafka to deserialize messages
+into ANY Java class present on the classpath. In a compromised Kafka scenario,
+an attacker could publish a message with a type header pointing to a gadget class
+that triggers RCE during deserialization.
+
+Mitigation present: EventEnvelopeKafkaDeserializer validates against EventPayloadRegistry
+before deserialization, which limits which classes can be instantiated. However,
+the default JsonDeserializer for other services doesn't have this guard.
+
+Recommended fix direction:
+  Replace "*" with explicit package: spring.json.trusted.packages: com.example.*
+  This limits deserialization to the application's own classes even if
+  EventEnvelopeKafkaDeserializer is not used.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] Cloudinary URL Validation Is Client-Provided
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: user-service/.../service/impl/UserProfileService.java
+  Validation: applyAvatarMetadata() checks url.startsWith("https://res.cloudinary.com/")
+              and publicId.startsWith("user/avatar/")
+
+The avatar URL and publicId are provided by the client in the confirm request body.
+The server validates:
+  - URL starts with https://res.cloudinary.com/ (prevents arbitrary URL injection)
+  - publicId starts with user/avatar/ (enforces folder constraint)
+  - max 5MB size (from the client-provided `bytes` field)
+  - format in allowed list (from client-provided `format` field)
+
+However, the server does NOT verify with Cloudinary's API that the publicId
+actually exists or was recently uploaded. An attacker could:
+  1. Craft a confirm request with a valid Cloudinary URL from another user's account
+  2. Pass all validation checks (correct URL prefix, valid format, size within limit)
+  3. Set their avatar to point to another user's image (if they know the publicId)
+
+This is a SSRF/ID reference risk (insecure direct object reference on Cloudinary assets).
+
+Note: Upload service's confirm endpoint validates the prepare token (if enabled):
+  upload.confirm.require-prepare-token: true
+  This mitigates the attack if the prepare token is tied to the uploading user.
+
+Recommended fix direction:
+  Verify with Cloudinary that the uploaded asset:
+  - Belongs to the configured cloud name
+  - Was uploaded within the last 10 minutes (freshness check)
+  - Or: use signed delivery URLs with Cloudinary (prevents external linking)
+
+================================================================================
+SECTION 7 — SECRET MANAGEMENT
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] All Secrets Passed as Environment Variables Without Rotation Strategy
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: chatappBE/docker-compose.yml, chatappBE/.env.production.example
+
+Secrets managed only via environment variables:
+  - GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+  - CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET
+  - RESEND_API_KEY
+  - UPLOAD_CONFIRM_PREPARE_TOKEN_SECRET
+  - INTERNAL_AUTH_TOKEN
+  - POSTGRES_PASSWORD
+
+Environment variables are:
+  - Visible in `docker inspect` to any user with Docker socket access
+  - Logged in container startup logs if log level is DEBUG
+  - Passed to child processes (subprocess.env leak potential)
+  - Not rotatable without container restart
+
+No evidence of HashiCorp Vault, AWS Secrets Manager, or Kubernetes Secrets.
+
+Security impact: Any user with Docker daemon access can read all application secrets
+
+Recommended fix direction:
+  Short term: Use Docker Secrets (docker-compose secrets: field) to mount secrets
+    as files rather than environment variables.
+  Long term: Integrate HashiCorp Vault or AWS Secrets Manager with Spring Cloud Vault.
+  Immediate: Never commit .env.production to git (add to .gitignore, verify).
+
+──────────────────────────────────────────────────────────────────────────────
+[CRITICAL] Default Postgres Credentials Are postgres/postgres
+──────────────────────────────────────────────────────────────────────────────
+Severity: CRITICAL
+File: chatappBE/docker-compose.yml
+  POSTGRES_USER: ${POSTGRES_USER:-postgres}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+
+If .env.production is not provided or if POSTGRES_PASSWORD is not set:
+  - PostgreSQL runs with user postgres / password postgres
+  - ALL 6 service databases are accessible with "postgres/postgres"
+  - This is the default credential that every automated scanner tries first
+
+This is a misconfiguration that could lead to full database compromise in any
+environment where the PostgreSQL port is reachable.
+
+Security impact: Full database compromise, all user data exposure
+
+Recommended fix direction:
+  1. Remove default fallback: POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} (no :- default)
+  2. Service will fail to start if env var not set (fail-fast is safer than defaulting to weak creds)
+  3. Add startup validation script that rejects insecure default passwords
+
+================================================================================
+SECTION 8 — AUTH FLOW SPECIFIC RISKS
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] OAuth2 Exchange Token (OAuthLoginExchange) Has No Rate Limiting
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+File: auth-service/src/main/java/com/example/auth/entity/OAuthLoginExchange.java
+File: auth-service/.../service/impl/OAuthAuthService.java (exchange flow)
+
+The /api/v1/auth/oauth/google/exchange endpoint accepts a code from the mobile/SPA
+OAuth2 flow. OAuthLoginExchange has a 2-minute TTL. The code is stored as SHA-256 hash.
+
+However, there is no specific rate limiting on this endpoint beyond the global
+IP-based gateway rate limiter (20 req/s). An attacker could:
+  - Brute-force the OAuth exchange code space (though codes should be high entropy)
+  - Generate many exchange sessions to exhaust DB storage
+
+Gateway rate limit (20 req/s per IP) provides some protection but not targeted
+endpoint-level protection.
+
+Recommended fix direction:
+  Add endpoint-specific rate limiting on /api/v1/auth/oauth/google/exchange.
+  Reduce attempts to 5 per IP per minute (much stricter than global rate limit).
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] Password Reset Has No Account Enumeration Protection
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: auth-service/.../controller/AuthController.java (POST /password/forgot)
+
+POST /api/v1/auth/password/forgot accepts an email and sends a reset link.
+If the email does not exist, the behavior likely differs (email not sent, possibly
+different response) from when it does exist (email sent, 200 response).
+
+An attacker can enumerate registered emails by observing response differences:
+  - Email exists: 200 OK (email sent)
+  - Email doesn't exist: 200 OK but with different behavior or 404
+
+Best practice: return identical response (200 OK, "if email exists, reset link was sent")
+regardless of whether the account exists.
+
+The code was not directly read for this exact behavior but it is a common auth
+vulnerability. ForgotPasswordService was mocked in tests, so behavior is inferred.
+
+Recommended fix direction:
+  Always return "If this email is registered, you will receive a password reset link"
+  with identical HTTP status and response body, regardless of whether the account exists.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] Email Verification Token Is Not Rate-Limited
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: auth-service/.../controller/AuthController.java
+  POST /api/v1/auth/email/verification/send
+
+A user can request email verification resend repeatedly. With no service-level
+rate limiting on this endpoint (beyond global 20 req/s), an attacker can:
+  - Spam the email verification endpoint with a target user's email
+  - Flood the target's inbox with verification emails (email bombing via SSRF-like behavior)
+  - Exhaust Resend API email sending quota
+
+Recommended fix direction:
+  Add per-account rate limiting on verification email resend (max 3/hour).
+  Store resend timestamp in VerificationToken table and check before sending.
+
+================================================================================
+SECTION 9 — AUTHORIZATION MODEL
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[STRENGTH] Room Permission Model Is Explicitly Validated in Pipeline
+──────────────────────────────────────────────────────────────────────────────
+File: chat-service/.../pipeline/send/steps/ValidateRoomPermissionStep.java
+File: chat-service/.../pipeline/edit/steps/AuthorizeEditMessageStep.java
+File: chat-service/.../pipeline/delete/steps/AuthorizeDeleteMessageStep.java
+
+Every message operation validates the actor's room membership and authorization:
+  - Send: validates sender is a room member (ValidateRoomPermissionStep)
+  - Edit: validates actor is the original sender (AuthorizeEditMessageStep)
+  - Delete: validates actor is the original sender (AuthorizeDeleteMessageStep)
+  - Forward: explicit roomMemberRepository.existsByRoomIdAndUserId() check
+
+Authorization checks are in the domain pipeline, not the controller. This means
+they cannot be bypassed by creating a new API endpoint that calls the service
+layer directly.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] No Role-Based Access for Admin Room Operations Beyond "Admin" Check
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: chat-service/.../controller/RoomController.java
+  Endpoints: /kick, /ban, /ban-bulk, /transfer-ownership, /unban
+
+These admin operations should require the caller to have Role.ADMIN or Role.OWNER
+in the room. While this check likely exists in the service layer (RoomCommandService),
+it was not directly confirmed in the code read.
+
+If authorization for admin operations is not consistently enforced, a regular
+member could potentially ban other members, kick the owner, or transfer ownership.
+
+Recommended fix direction:
+  Confirm RoomCommandService validates Role.ADMIN or Role.OWNER for all admin
+  endpoints. Add a test specifically for unauthorized admin operation attempts.
+
+================================================================================
+SECTION 10 — OPEN SECURITY ITEMS (SUMMARY)
+================================================================================
+
+| # | Severity | Issue                                        | Location                              |
+|---|----------|----------------------------------------------|---------------------------------------|
+| 1 | HIGH     | RSA private keys stored as plaintext in DB   | auth-service JwtKeyEntity             |
+| 2 | CRITICAL | Default postgres/postgres credentials        | docker-compose.yml                    |
+| 3 | HIGH     | WebSocket routes fully public in gateway     | gateway SecurityConfig                |
+| 4 | HIGH     | /api/v1/auth/** public on non-auth services  | user/chat/friendship SecurityConfig   |
+| 5 | HIGH     | All secrets via env vars, no rotation        | docker-compose + .env.production      |
+| 6 | HIGH     | X-Internal-Service-Token not on all services | Security configs                      |
+| 7 | MEDIUM   | spring.json.trusted.packages: "*"            | notification/user-service config      |
+| 8 | MEDIUM   | Cloudinary asset ownership not verified      | upload-service + user-service         |
+| 9 | MEDIUM   | Password reset account enumeration           | auth-service ForgotPasswordService    |
+|10 | MEDIUM   | Email verification resend not rate-limited   | auth-service AuthController           |
+|11 | MEDIUM   | Internal token is shared across all services | Internal auth configuration           |
+|12 | MEDIUM   | CORS allowed-methods: "*" on most services   | Service application.yaml configs      |
+
+================================================================================
+END OF SECURITY REVIEW
+================================================================================

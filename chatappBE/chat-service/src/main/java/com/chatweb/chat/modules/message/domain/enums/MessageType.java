@@ -1,0 +1,8 @@
+package com.chatweb.chat.modules.message.domain.enums;
+
+public enum MessageType {
+    TEXT,
+    ATTACHMENT,
+    MIXED,
+    SYSTEM
+}

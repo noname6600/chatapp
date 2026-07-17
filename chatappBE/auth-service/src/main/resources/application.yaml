@@ -6,8 +6,19 @@ spring:
   application:
     name: auth-service
 
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+
+  session:
+    store-type: redis
+    redis:
+      namespace: auth-service:session
+    timeout: 600s
+
   kafka:
-    bootstrap-servers: ${KAFKA_SERVERS:localhost:9092}
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
@@ -21,17 +32,26 @@ spring:
     username: ${AUTH_DATABASE_USER:auth_user}
     password: ${AUTH_DATABASE_PASSWORD:auth_password}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 5000
+      idle-timeout: 300000
 
   jpa:
     hibernate:
       ddl-auto: update
     open-in-view: false
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
         format_sql: true
         jdbc:
           time_zone: UTC
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
 
   security:
     oauth2:
@@ -58,6 +78,7 @@ auth:
   jwt:
     access-token-expiration-ms: 900000
     refresh-token-expiration-ms: 2592000000
+    issuer: ${AUTH_JWT_ISSUER:http://auth-service:8081}
 
   oauth:
     exchange-expiration-ms: ${AUTH_OAUTH_EXCHANGE_EXPIRATION_MS:120000}
@@ -76,11 +97,20 @@ app:
 user-service:
   base-url: ${USER_SERVICE_BASE_URL:http://localhost:8082/api/v1/users}
 
+internal:
+  auth:
+    header: ${INTERNAL_AUTH_HEADER:X-Internal-Service-Token}
+    token: ${INTERNAL_AUTH_TOKEN:dev-internal-token}
+
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true
 
 common:
   security:
@@ -98,4 +128,6 @@ common:
 
 logging:
   pattern:
-    level: "%5p [${spring.application.name:},%X{traceId}]"
+    level: "%5p [${spring.application.name:},${HOSTNAME:unknown},%X{trace_id:-},%X{span_id:-}]"
+
+

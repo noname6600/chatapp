@@ -24,6 +24,7 @@ import { useUserStore } from "../../store/user.store";
 import {
   formatMessageTimeShort,
   formatMessageTimestamp,
+  getSafeDate,
 } from "../../utils/messageTimestamp";
 import { buildReplyPreviewModel } from "../../utils/replyPreview";
 
@@ -422,7 +423,7 @@ export default function MessageItem({
           }}
         />
 
-        {isEditing ? (
+        {m.deleted ? null : isEditing ? (
           editingBlocks !== null ? (
             <BlockMessageEditor
               blocks={editingBlocks}
@@ -446,42 +447,44 @@ export default function MessageItem({
             />
           )
         ) : (
-          <MessageContent
-            content={m.content ?? ""}
-            editedAt={m.editedAt}
-            replyPreview={
-              hasReplyReference
-                ? {
-                    senderId: repliedMessage?.senderId ?? "unknown",
-                    senderAvatar: replyPreview.senderAvatar,
-                    repliedToName: replyPreview.senderName,
-                    previewText: replyPreview.previewText,
-                    kind: replyPreview.kind,
-                    isOwnTarget: replyPreview.isOwnTarget,
-                    isMissingOriginal: replyPreview.isMissingOriginal,
-                    repliedMessageId: repliedMessageId ?? null,
-                  }
-                : null
-            }
-            blocks={m.blocks ?? []}
-            forwardedFromMessageId={m.forwardedFromMessageId ?? null}
-            resolveMentionLabel={resolveMentionLabel.resolveLabel}
-            resolveMentionUserId={resolveMentionLabel.resolveUserId}
-            onJumpToMessage={onJumpToMessage}
-          />
-        )}
+          <>
+            <MessageContent
+              content={m.content ?? ""}
+              editedAt={m.editedAt}
+              replyPreview={
+                hasReplyReference
+                  ? {
+                      senderId: repliedMessage?.senderId ?? "unknown",
+                      senderAvatar: replyPreview.senderAvatar,
+                      repliedToName: replyPreview.senderName,
+                      previewText: replyPreview.previewText,
+                      kind: replyPreview.kind,
+                      isOwnTarget: replyPreview.isOwnTarget,
+                      isMissingOriginal: replyPreview.isMissingOriginal,
+                      repliedMessageId: repliedMessageId ?? null,
+                    }
+                  : null
+              }
+              blocks={m.blocks ?? []}
+              forwardedFromMessageId={m.forwardedFromMessageId ?? null}
+              resolveMentionLabel={resolveMentionLabel.resolveLabel}
+              resolveMentionUserId={resolveMentionLabel.resolveUserId}
+              onJumpToMessage={onJumpToMessage}
+            />
 
-        {/* Attachments */}
-        {!hasStructuredBlocks && <AttachmentDisplay attachments={m.attachments} />}
+            {/* Attachments */}
+            {!hasStructuredBlocks && <AttachmentDisplay attachments={m.attachments} />}
 
-        {/* Reactions */}
-        {m.reactions && m.reactions.length > 0 && (
-          <ReactionGroup
-            reactions={m.reactions}
-            onReactionClick={toggleReaction}
-            disabled={reactionLoading}
-            currentUserId={currentUserId}
-          />
+            {/* Reactions */}
+            {m.reactions && m.reactions.length > 0 && (
+              <ReactionGroup
+                reactions={m.reactions}
+                onReactionClick={toggleReaction}
+                disabled={reactionLoading}
+                currentUserId={currentUserId}
+              />
+            )}
+          </>
         )}
       </div>
 
@@ -530,7 +533,7 @@ function MessageHeader({
   show: boolean;
   userId: string;
   displayName: string;
-  createdAt: string;
+  createdAt: number | string;
   deliveryStatus?: string;
   onRetry?: () => void;
   onDelete?: () => void;
@@ -577,7 +580,7 @@ function MessageHeader({
               ? "text-red-400"
               : "text-gray-400"
         }`}
-        title={new Date(createdAt).toLocaleString()}
+        title={getSafeDate(createdAt)?.toLocaleString() ?? ""}
       >
         {formatMessageTimestamp(createdAt)}
       </span>
@@ -772,7 +775,7 @@ function MessageContent({
   onJumpToMessage,
 }: {
   content: string;
-  editedAt: string | null;
+  editedAt: number | string | null;
   replyPreview: {
     senderId: string;
     senderAvatar: string | null;

@@ -1,0 +1,17 @@
+package com.chatweb.friendship.service;
+
+import com.chatweb.friendship.enums.FriendshipStatus;
+
+import java.util.List;
+import java.util.UUID;
+
+public interface IFriendQueryService {
+    List<UUID> getFriends(UUID userId);
+    List<UUID> getIncomingRequests(UUID userId);
+    List<UUID> getOutgoingRequests(UUID userId);
+    List<UUID> getBlockedByMe(UUID userId);
+    List<UUID> getBlockedMe(UUID userId);
+    FriendshipStatus getStatus(UUID user1, UUID user2);
+    boolean existsBlockBetween(UUID user1, UUID user2);
+    long getUnreadFriendRequestCount(UUID userId);
+}

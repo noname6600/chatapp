@@ -1,0 +1,500 @@
+================================================================================
+  CODE QUALITY & MAINTAINABILITY REVIEW — CHATAPP BACKEND
+  Reviewer Role: Staff Software Engineer + Code Quality Analyst
+  Date: 2026-05-18
+  Codebase: d:/Work/PET/chatappPET/chatapp/chatappBE
+================================================================================
+
+================================================================================
+SECTION 1 — NAMING CONSISTENCY
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] Critical Naming Misnomer: RedisMessageSequenceService
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH (Maintainability + Operational Risk)
+File: chat-service/src/main/java/com/example/chat/modules/message/infrastructure/sequence/RedisMessageSequenceService.java
+
+Class name: RedisMessageSequenceService
+Interface: IMessageSequenceService
+Package: infrastructure.sequence
+
+The class name implies this uses Redis for sequence generation. The implementation
+uses PostgreSQL SELECT FOR UPDATE. This misleads:
+  - Engineers who read the class name assume Redis semantics (fast, non-blocking)
+  - Engineers who profile the DB don't look here for lock contention
+  - Code review misses the performance bottleneck because the name implies "fast"
+
+The implementation matches the package name (infrastructure.sequence — correct)
+but the class name is wrong. This is a high-severity naming issue because it
+directly obscures a critical performance bottleneck.
+
+Recommended fix: Rename to DbLockedMessageSequenceService or
+  PostgresSequenceService. Update IMessageSequenceService bindings.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] Inconsistent Redis Config Environment Variable Names
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+Files:
+  notification-service/application.yaml: redis.host / redis.port
+  user-service/application.yaml:         spring.data.redis.host / spring.data.redis.port
+  chat-service/application.yaml:         spring.data.redis.host / spring.data.redis.port
+  presence-service/application.yaml:     spring.data.redis.host / spring.data.redis.port
+
+Environment variables in docker-compose.yml:
+  notification-service: REDIS_HOST, REDIS_PORT
+  other services: SPRING_DATA_REDIS_HOST, SPRING_DATA_REDIS_PORT
+
+This inconsistency means:
+  - Infrastructure team must know which services use which env var name
+  - If a deployment script updates SPRING_DATA_REDIS_HOST but not REDIS_HOST,
+    notification-service silently uses its default (localhost:6379) in production
+  - No validation catches this at startup
+
+Recommended fix: Standardize all services to SPRING_DATA_REDIS_HOST / SPRING_DATA_REDIS_PORT.
+  Update notification-service/application.yaml to:
+    spring.data.redis.host: ${SPRING_DATA_REDIS_HOST:redis}
+    spring.data.redis.port: ${SPRING_DATA_REDIS_PORT:6379}
+
+──────────────────────────────────────────────────────────────────────────────
+[LOW] Package Naming: "modules" Prefix in chat-service Only
+──────────────────────────────────────────────────────────────────────────────
+Severity: LOW
+File: chat-service/src/main/java/com/example/chat/modules/...
+
+chat-service uses a modules/ intermediate package:
+  com.example.chat.modules.message.application.*
+  com.example.chat.modules.room.entity.*
+
+Other services (user-service, auth-service, friendship-service) don't use this pattern:
+  com.example.user.service.*
+  com.example.auth.controller.*
+
+This is not wrong — the modules/ pattern organizes a complex service by bounded
+sub-domains within the service. But it is inconsistent with other services.
+
+Assessment: Acceptable. chat-service is the most complex service and the
+  extra hierarchy is justified. Document the convention.
+
+================================================================================
+SECTION 2 — PACKAGE ORGANIZATION & LAYERING
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[STRENGTH] chat-service DDD-Style Layering Is Principled
+──────────────────────────────────────────────────────────────────────────────
+chat-service follows a clear layered architecture:
+  modules/message/
+    controller/       (HTTP entry point, extract JWT claims, delegate)
+    application/
+      command/        (command service interface + impl)
+      query/          (query service interface + impl)
+      pipeline/       (pipeline steps organized by operation)
+      dto/            (request/response DTOs)
+      mapper/         (entity ↔ DTO mapping)
+      service/        (event publisher interface)
+    domain/
+      entity/         (JPA entities)
+      enums/          (domain enums)
+      repository/     (data access interfaces)
+      service/        (domain service interfaces)
+    infrastructure/
+      sequence/       (sequence generation — DB locked)
+      client/         (Feign HTTP clients to other services)
+
+This is textbook DDD layering. Dependency direction flows inward:
+  infrastructure → application → domain ← application ← controller
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] user-service and friendship-service Have Flat Package Structure
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+user-service: com.example.user.{controller, service, entity, repository, kafka, dto}
+friendship-service: com.example.friendship.{controller, service, entity, repository, kafka}
+
+These services use a flat package structure without application/domain/infrastructure
+separation. For smaller services this is acceptable, but as features grow:
+  - Controllers will be tempted to directly access repositories (bypassing service layer)
+  - No clear boundary between domain logic and infrastructure concerns
+  - Feign clients mixed with domain code
+
+Assessment: Acceptable at current size. If each service grows beyond 10 classes
+  per package, consider adopting layered structure.
+
+================================================================================
+SECTION 3 — CLASS RESPONSIBILITY ANALYSIS
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] RoomController Has 25+ Endpoints — God Controller Risk
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: chat-service/.../room/controller/RoomController.java
+
+RoomController handles:
+  - Room creation (group, private chat)
+  - Room joining (by code, by roomId, by invite)
+  - Room metadata (name, avatar, code)
+  - Room membership (list, count, page)
+  - Member management (kick, ban, unban, ban-bulk)
+  - Ownership transfer
+  - Read status
+  - Pinned messages (create, delete, list)
+  - Avatar upload (current + deprecated legacy)
+
+That's 25+ endpoints in a single controller class. While Spring MVC allows this,
+the class is difficult to navigate and will only grow.
+
+Recommended fix: Split into focused controllers:
+  RoomLifecycleController:    create, join, leave
+  RoomMembershipController:   members, kick, ban, unban, transfer
+  RoomMetadataController:     name, avatar, code
+  RoomPinController:          pins CRUD
+  RoomReadController:         mark read
+
+──────────────────────────────────────────────────────────────────────────────
+[STRENGTH] MessageCommandService Delegates to Pipeline — Not a God Class
+──────────────────────────────────────────────────────────────────────────────
+File: chat-service/.../application/command/impl/MessageCommandService.java
+
+Despite handling 4 operations (send, edit, delete, forward), MessageCommandService
+is well-bounded because:
+  - send, edit, delete delegate entirely to their respective pipelines
+  - forward is the most complex (inline logic) but self-contained
+  - Business validation is distributed across pipeline steps
+  - The class is ~270 lines with clear method boundaries
+
+The pipeline pattern is the key: instead of growing MessageCommandService, new
+behavior goes into a new pipeline step.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] NotificationCommandService Handles Both Domain Logic and Transport Concerns
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: notification-service/.../application/NotificationCommandService.java
+
+NotificationCommandService appears to handle:
+  - Domain: creating notifications, trimming to 200
+  - Transport: pushing to WebSocket via TransactionSynchronization.afterCommit()
+  - Counting: updating unread count
+
+The afterCommit() push is a side effect that mixes domain (notification created)
+with transport (push via Redis). This couples domain logic to the delivery mechanism.
+
+Recommended fix: Extract push-after-commit to a separate NotificationDeliveryService.
+  NotificationCommandService: pure domain (create, trim, count)
+  NotificationDeliveryService: transport (push to Redis pub/sub, SSE, WebSocket)
+
+================================================================================
+SECTION 4 — PIPELINE QUALITY REVIEW
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[STRENGTH] Pipeline Step Design Is Excellent
+──────────────────────────────────────────────────────────────────────────────
+Files: chat-service/.../pipeline/send/steps/*
+       chat-service/.../pipeline/edit/steps/*
+       chat-service/.../pipeline/delete/steps/*
+
+Each pipeline step:
+  - Has exactly one responsibility (Single Responsibility Principle)
+  - Is a Spring @Component (injectable, testable in isolation)
+  - Declares dependencies via runAfter() (topological ordering, no hidden ordering)
+  - Can be made async via isAsync()
+  - Has a descriptive name that says exactly what it does
+
+Examples of excellent naming:
+  ValidateRoomPermissionStep: validates permission (not "SecurityStep" which is vague)
+  CheckBlockedPairStep: checks if pair is blocked (intent is explicit)
+  GenerateSequenceStep: generates sequence (single action, clear)
+  PersistMentionStep: persists mentions (not "SaveStuffStep")
+
+The edit pipeline mirrors the send pipeline structure (ValidateEdit → LoadAggregate →
+AuthorizeEdit → ApplyEdit → PersistEdit → PublishEdit). Consistent pattern.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] PipelineGraphResolver Uses Kahn's Algorithm — But Cycle Detection Behavior?
+──────────────────────────────────────────────────────────────────────────────
+Severity: LOW
+File: common/common-core/.../pipeline/PipelineGraphResolver.java
+
+PipelineGraphResolver sorts steps topologically using Kahn's algorithm.
+Kahn's algorithm naturally detects cycles (when the sorted list has fewer elements
+than the input, a cycle exists). The question is whether a cycle throws an exception
+with a helpful message or silently produces incorrect ordering.
+
+If two steps declare runAfter() on each other (circular dependency):
+  - At best: IllegalStateException("Cyclic dependency in pipeline steps")
+  - At worst: no error, incorrect ordering, silent functional failure
+
+Recommended fix: Verify PipelineGraphResolver throws with a clear error message
+  naming the steps involved in the cycle. Add a test for cycle detection.
+
+================================================================================
+SECTION 5 — DTO & MAPPER QUALITY
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] RoomMember Stores displayName/avatarUrl (Denormalization Without Sync)
+──────────────────────────────────────────────────────────────────────────────
+Already covered in database-review.txt. From a code quality perspective:
+  The denormalized fields are populated at join time and never updated.
+  There is no UserProfileUpdatedEvent that chat-service subscribes to.
+  A comment or @implNote on the fields explaining the staleness trade-off is absent.
+
+Recommended fix: Add a code comment:
+  // Denormalized from user-service at join time. May become stale if user updates profile.
+  // No sync mechanism; tolerated for read performance.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] Large ChatMessagePayload — May Contain More Than Consumers Need
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+File: common/common-events/.../ChatMessagePayload.java
+
+ChatMessagePayload contains: messageId, roomId, senderId, seq, type, content,
+replyToMessageId, attachments, blocks, mentionedUserIds, recipientUserIds, isDirect.
+
+Every consumer (notification-service, realtime-edge) receives the full payload
+including the message content (potentially hundreds of characters). For
+notification-service, the content is used for the notification preview (first
+200 chars). For realtime-edge, the full payload is forwarded to WebSocket clients.
+
+For high-volume rooms (1000 messages/sec), large payload × many consumers =
+significant Kafka storage and network bandwidth. Each 1KB message × 3 consumers
+= 3KB per message. At 1000 msg/sec: 3MB/sec Kafka throughput for this topic alone.
+
+Assessment: Acceptable at current scale. Consider payload slimming if bandwidth
+  becomes a concern at >1M msg/day.
+
+================================================================================
+SECTION 6 — EXCEPTION HANDLING QUALITY
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[STRENGTH] GlobalExceptionHandler Covers All Common Cases Without Over-Engineering
+──────────────────────────────────────────────────────────────────────────────
+File: common-web/.../exception/GlobalExceptionHandler.java
+
+Handlers cover:
+  - BusinessException (typed error codes from service layer)
+  - MethodArgumentNotValidException (Bean Validation @Valid failures)
+  - ConstraintViolationException (constraint validation failures)
+  - HttpMessageNotReadableException (malformed JSON body)
+  - AccessDeniedException (403 — Spring Security)
+  - AuthenticationException (401 — Spring Security)
+  - MethodArgumentTypeMismatchException (type conversion failures — e.g., bad UUID format)
+  - Exception (catch-all 500)
+
+The fallback Exception handler logs at ERROR but does NOT leak stack trace to
+client. ApiError contains code/message/details — no internal implementation details.
+This is the correct balance between debuggability and security.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] IllegalStateException Used for Pipeline Validation Failures
+──────────────────────────────────────────────────────────────────────────────
+Severity: LOW
+File: chat-service/.../application/command/impl/MessageCommandService.java
+  Line ~81: throw new IllegalStateException("Saved message missing after send pipeline")
+  Line ~84: throw new IllegalStateException("Saved message missing after edit pipeline")
+
+Using IllegalStateException for "saved message is null after pipeline" is a
+programmer error indicator, not a business exception. This is correct —
+if savedMessage is null after the pipeline, it's a programming bug.
+
+However, IllegalStateException is not handled by GlobalExceptionHandler specifically.
+It falls through to the catch-all Exception handler → 500 Internal Server Error.
+This is acceptable but:
+  - The error message leaks implementation details to the client log
+  - A custom InternalPipelineException would allow targeted handling
+
+Assessment: Low severity. The behavior (500) is correct. Cosmetic improvement only.
+
+================================================================================
+SECTION 7 — TESTING QUALITY REVIEW
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[CRITICAL] friendship-service and user-service Are Severely Under-Tested
+──────────────────────────────────────────────────────────────────────────────
+Severity: CRITICAL (from production readiness perspective)
+Files:
+  friendship-service: 7 test files (estimated ~35% coverage)
+  user-service: 6 test files (estimated ~40% coverage)
+
+The friendship-service contains critical business logic:
+  - Canonical pair ordering (userLow/userHigh) — tested ✓
+  - Friend request state machine (send, accept, decline) — partially tested
+  - Block/unblock logic — minimally tested
+  - Auto-accept when mutual request — unclear if tested
+
+With 7 test files total for a service with multiple controllers, services,
+and Kafka consumers, many paths are untested.
+
+user-service gaps:
+  - Avatar validation (min tested)
+  - Profile search pagination (not tested)
+  - Username collision handling (partially tested)
+  - Cache eviction on update (partially tested)
+
+Recommended fix: Set a coverage target (70% minimum) and enforce via build.
+  Add missing unit tests for friendship state machine edge cases:
+  - Auto-accept on mutual pending request
+  - Block cannot be sent to non-existent user
+  - Unblocking a non-blocked user
+  - Friend request to already-blocked user
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] No Kafka Integration Tests — Event Contract Not Tested End-to-End
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+Files: All 68 test files — no EmbeddedKafka or Testcontainers Kafka found
+
+All Kafka-related tests mock the KafkaTemplate. This means:
+  - EventEnvelope serialization/deserialization roundtrip is not tested
+  - Consumer group offset behavior is not tested
+  - Dead letter publishing is not tested
+  - Topic naming (chat-service produces topic X, notification-service consumes it) is not tested
+
+A breaking change to ChatMessagePayload (new @JsonProperty required field) would:
+  - Pass all unit tests (both producer and consumer mock the transport)
+  - Fail in production (real deserialization fails)
+
+Recommended fix: Add integration tests with EmbeddedKafka (from spring-kafka-test):
+  @EmbeddedKafka(topics = {"account.created", "chat.message.events"})
+  Test: producer sends event → consumer receives and processes it.
+  Verify: EventEnvelope deserialization works for all payload types.
+
+──────────────────────────────────────────────────────────────────────────────
+[HIGH] No Redis Integration Tests — Cache Behavior Not Verified With Real Redis
+──────────────────────────────────────────────────────────────────────────────
+Severity: HIGH
+Files: All tests mock ITimeRedisCache
+
+Redis-specific behaviors not tested:
+  - TTL expiry actually evicting cache entries
+  - Redis INCR atomicity (for when Redis INCR is added for sequence generation)
+  - Keyspace notifications for presence TTL expiry
+  - Rate limiter behavior (token bucket algorithm correctness)
+  - Concurrent cache reads and writes
+
+Recommended fix: Use Testcontainers with Redis:
+  @Testcontainers
+  @Container static RedisContainer redis = new RedisContainer("redis:7-alpine");
+  Tests can then verify actual Redis behavior rather than mocked abstractions.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] No WebSocket Integration Tests
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+Files: 68 test files — no WebSocket test client usage found
+
+WebSocket behavior is entirely untested:
+  - JWT handshake validation
+  - Channel subscription and authorization
+  - Message routing (JOIN → room subscription)
+  - Disconnect and cleanup
+  - Presence lifecycle (connect → heartbeat → disconnect)
+
+These are the most user-visible features and have zero test coverage.
+
+Recommended fix: Add integration tests using Spring's WebSocket test client:
+  StandardWebSocketClient client = new StandardWebSocketClient();
+  WebSocketSession session = client.doHandshake(handler, uri).get();
+  Test: connect with valid JWT → JOIN room → send message → verify ACK
+
+──────────────────────────────────────────────────────────────────────────────
+[STRENGTH] Chat-Service Integration Tests Use Real DB (H2)
+──────────────────────────────────────────────────────────────────────────────
+Files:
+  RoomRepositoryRoomsOfUserAdvancedIntegrationTest — @DataJpaTest with real queries
+  RoomPinServiceIntegrationTest — real JPA operations
+  MessageCommandServiceForwardTransactionalRollbackTest — verifies DB rollback behavior
+  RoomServiceInviteJoinIntegrationTest — multi-step room join flow
+
+Using real H2 databases for integration tests catches:
+  - Query correctness (SQL mistakes that Mockito would miss)
+  - Transaction boundary issues (rollback verification is only possible with real DB)
+  - Constraint violations (unique constraint enforcement)
+
+The investment in @DataJpaTest integration tests is the right approach.
+
+──────────────────────────────────────────────────────────────────────────────
+[STRENGTH] Test Naming Convention Is Excellent
+──────────────────────────────────────────────────────────────────────────────
+Example test method names:
+  login_returnsDeterministicInvalidCredentials_whenEmailDoesNotExist
+  sendRequest_shouldAutoAccept_whenMutualPendingRequestExists
+  forward_shouldThrow_whenSourceMessageIsDeleted
+  updateProfile_shouldThrow_whenUsernameAlreadyTaken
+
+Pattern: action_expectedBehavior_givenCondition
+
+This is the Behavior-Driven style. Test names serve as documentation and make
+CI failure reports immediately informative without reading test bodies.
+
+================================================================================
+SECTION 8 — ABSTRACTION QUALITY
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+[STRENGTH] Interface-Backed Service Design Enables Testability
+──────────────────────────────────────────────────────────────────────────────
+All services follow the interface pattern:
+  IMessageCommandService → MessageCommandService
+  IPresenceService → PresenceService
+  IFriendCommandService → FriendCommandService (implied)
+  IMessageSequenceService → RedisMessageSequenceService
+
+This enables:
+  - Easy Mockito mocking in unit tests
+  - Future implementation swapping (e.g., different SequenceService)
+  - Clear contract definition separate from implementation
+
+The interfaces are in the appropriate domain layer (not in infrastructure),
+maintaining the correct dependency direction.
+
+──────────────────────────────────────────────────────────────────────────────
+[MEDIUM] FeignJwtConfig Is a Black Box — Behavior Not Confirmed
+──────────────────────────────────────────────────────────────────────────────
+Severity: MEDIUM
+Files: common/common-feign/.../FeignJwtConfig.java (content not read directly)
+       All Feign clients reference: configuration = FeignJwtConfig.class
+
+FeignJwtConfig is referenced but its content was not read. It presumably adds
+the Authorization: Bearer header to outgoing Feign requests. What it MIGHT NOT do:
+  - Forward X-Trace-Id (distributed trace correlation)
+  - Forward X-Internal-Service-Token (for internal endpoint access)
+  - Handle token expiry (if stored access token expires, Feign calls fail silently)
+
+Without reading this class directly, these are "likely issues" rather than
+"confirmed issues".
+
+Recommended fix: Read FeignJwtConfig.java and verify it handles all three concerns.
+
+================================================================================
+SECTION 9 — CODE QUALITY SUMMARY
+================================================================================
+
+STRENGTHS:
+  + Pipeline pattern with topological step ordering — excellent extensible design
+  + Interface-backed services — testable and swappable
+  + Descriptive test method names (BDD style)
+  + DDD-style layering in chat-service
+  + GlobalExceptionHandler is comprehensive without over-engineering
+  + After-commit Kafka publishing prevents phantom events
+  + Batch-fetching of attachments/reactions prevents N+1
+
+IMPROVEMENTS NEEDED:
+  - Rename RedisMessageSequenceService (HIGH — naming hides performance bottleneck)
+  - Standardize Redis env var names (MEDIUM — deployment misconfiguration risk)
+  - Split RoomController into focused sub-controllers (MEDIUM — maintainability)
+  - friendship-service and user-service need more unit tests (CRITICAL)
+  - Add Kafka + Redis integration tests (HIGH — contract not verified end-to-end)
+  - Add WebSocket integration tests (MEDIUM — critical path untested)
+  - Add comment to denormalized fields explaining staleness (LOW)
+
+================================================================================
+END OF CODE QUALITY REVIEW
+================================================================================

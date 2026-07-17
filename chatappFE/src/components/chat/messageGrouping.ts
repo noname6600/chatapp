@@ -4,6 +4,13 @@ export interface MessageGroup {
   messages: ChatMessage[]
 }
 
+function toMs(v: number | string): number {
+  if (typeof v === "number") return v < 1_000_000_000_000 ? v * 1000 : v
+  const n = Number(v)
+  if (!Number.isNaN(n) && Number.isFinite(n)) return n < 1_000_000_000_000 ? n * 1000 : n
+  return new Date(v).getTime()
+}
+
 export function groupMessages(messages: ChatMessage[]): MessageGroup[] {
   if (!messages.length) return []
 
@@ -20,9 +27,7 @@ export function groupMessages(messages: ChatMessage[]): MessageGroup[] {
       previous.type !== "SYSTEM" &&
       current.senderId === previous.senderId &&
       !(current.attachments?.length || previous.attachments?.length) &&
-      new Date(current.createdAt).getTime() -
-        new Date(previous.createdAt).getTime() <
-        2 * 60 * 1000
+      toMs(current.createdAt) - toMs(previous.createdAt) < 2 * 60 * 1000
 
     if (!shouldGroup && currentGroup.length) {
       groups.push({ messages: currentGroup })

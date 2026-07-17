@@ -1,0 +1,67 @@
+package com.chatweb.chat.modules.message.application.pipeline.reaction.steps;
+
+import com.chatweb.chat.modules.message.application.pipeline.reaction.ToggleReactionContext;
+import com.chatweb.chat.modules.message.application.service.IReactionEventPublisher;
+import com.chatweb.chat.modules.message.domain.entity.ChatMessage;
+import com.chatweb.chat.modules.message.domain.repository.ChatMessageRepository;
+import com.chatweb.chat.modules.room.entity.RoomMember;
+import com.chatweb.chat.modules.room.repository.RoomMemberRepository;
+import com.chatweb.common.core.pipeline.PipelineStep;
+import com.chatweb.common.integration.chat.ReactionPayload;
+import com.chatweb.common.integration.enums.ReactionAction;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
+import com.chatweb.chat.support.TransactionPublisher;
+
+@Component
+@RequiredArgsConstructor
+public class PublishReactionEventStep
+        implements PipelineStep<ToggleReactionContext> {
+
+    private final IReactionEventPublisher eventPublisher;
+    private final ChatMessageRepository messageRepository;
+    private final RoomMemberRepository roomMemberRepository;
+
+    @Override
+    public void execute(ToggleReactionContext context) {
+
+        if (context.getReactionCreatedAt() == null) {
+            throw new IllegalStateException(
+                    "Reaction createdAt missing"
+            );
+        }
+
+        ChatMessage message = messageRepository.findById(context.getMessageId())
+                .orElseThrow(() -> new IllegalStateException("Message not found for reaction event"));
+
+        String actorDisplayName = roomMemberRepository
+                .findByRoomIdAndUserId(message.getRoomId(), context.getUserId())
+                .map(RoomMember::getDisplayName)
+                .filter(name -> name != null && !name.isBlank())
+                .orElse(null);
+
+        ReactionPayload payload = ReactionPayload.builder()
+                .messageId(context.getMessageId())
+                .roomId(message.getRoomId())
+                .userId(context.getUserId())
+                .emoji(context.getEmoji())
+                .action(
+                        context.isRemoved()
+                                ? ReactionAction.REMOVE
+                                : ReactionAction.ADD
+                )
+                .createdAt(context.getReactionCreatedAt())
+                .messageAuthorId(message.getSenderId())
+                .actorDisplayName(actorDisplayName)
+                .build();
+
+        TransactionPublisher.publishAfterCommit(() -> eventPublisher.publishReactionUpdated(payload));
+    }
+
+    @Override
+    public Class<? extends PipelineStep<?>>[] runAfter() {
+        return new Class[]{
+                PersistReactionStep.class
+        };
+    }
+}

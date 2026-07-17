@@ -31,7 +31,11 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true
 
 
 common:
@@ -43,7 +47,27 @@ common:
 
 logging:
   pattern:
-    level: "%5p [${spring.application.name:},%X{traceId}]"
+    level: "%5p [${spring.application.name:},${HOSTNAME:unknown},%X{trace_id:-},%X{span_id:-}]"
 
 presence:
   auto-away-threshold-seconds: 60
+  redis:
+    listener:
+      enabled: ${PRESENCE_REDIS_LISTENER_ENABLED:true}
+    keyspace-notification:
+      check:
+        enabled: ${PRESENCE_REDIS_KEYSPACE_CHECK_ENABLED:true}
+        fail-on-missing: ${PRESENCE_REDIS_KEYSPACE_CHECK_FAIL_ON_MISSING:false}
+
+services:
+  chat:
+    url: ${CHAT_SERVICE_URL:http://localhost:8083}
+    http:
+      connect-timeout-ms: ${CHAT_HTTP_CONNECT_TIMEOUT_MS:1000}
+      read-timeout-ms: ${CHAT_HTTP_READ_TIMEOUT_MS:2000}
+
+internal:
+  auth:
+    header: ${INTERNAL_AUTH_HEADER:X-Internal-Service-Token}
+    token: ${INTERNAL_AUTH_TOKEN:}
+

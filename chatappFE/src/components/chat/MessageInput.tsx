@@ -8,6 +8,7 @@ import {
   sendTyping,
   sendStopTyping,
 } from "../../websocket/presence.socket";
+import { TYPING_STOP_DEBOUNCE_MS } from "../../config/presence.config";
 import { getRoomMembers } from "../../api/room.service";
 import { Button } from "../ui/Button";
 import { useReply } from "../../hooks/useReply";
@@ -16,6 +17,8 @@ import { useMention } from "../../hooks/useMention";
 import { useUserStore } from "../../store/user.store";
 import { editMessageApi } from "../../api/chat.service";
 import { useChat } from "../../store/chat.store";
+import { useRooms } from "../../store/room.store";
+import { useFriendStore } from "../../store/friend.store";
 import { uploadChatAttachment } from "../../api/upload.service";
 import {
   extractClipboardFiles,
@@ -77,6 +80,19 @@ export default function MessageInput({ roomId }: Props) {
   const { editingMessage, clearEdit } = useEdit();
   const fetchUsers = useUserStore((s) => s.fetchUsers);
   const { sendMessage, currentUserId } = useChat();
+
+  // Detect blocked relationships for PRIVATE rooms so the input is disabled
+  // before the user even tries to send (rather than waiting for the API error).
+  const { roomsById } = useRooms();
+  const otherUserId = roomsById[roomId]?.type === "PRIVATE" ? (roomsById[roomId]?.otherUserId ?? null) : null;
+  const friendStatus = useFriendStore((s) => otherUserId ? s.map[otherUserId] : undefined);
+  const resolveStatus = useFriendStore((s) => s.resolve);
+  const isBlockedRelationship = friendStatus === "BLOCKED_BY_ME" || friendStatus === "BLOCKED_ME";
+
+  useEffect(() => {
+    if (otherUserId) void resolveStatus(otherUserId);
+  }, [otherUserId, resolveStatus]);
+
   const {
     isOpen: mentionOpen,
     suggestions,
@@ -218,7 +234,7 @@ export default function MessageInput({ roomId }: Props) {
 
       typingTimeoutRef.current = window.setTimeout(() => {
         stopTyping();
-      }, 1500);
+      }, TYPING_STOP_DEBOUNCE_MS);
     } else {
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
@@ -583,6 +599,16 @@ export default function MessageInput({ roomId }: Props) {
       }, 200);
     }
   };
+
+  if (isBlockedRelationship) {
+    return (
+      <div className="shrink-0 border-t border-gray-200 bg-white px-4 py-3 text-sm text-gray-400 text-center">
+        {friendStatus === "BLOCKED_BY_ME"
+          ? "You have blocked this user. Unblock them to send messages."
+          : "You cannot message this user."}
+      </div>
+    );
+  }
 
   return (
     <div className="shrink-0 space-y-2 border-t border-gray-200 bg-white p-3 md:p-4">

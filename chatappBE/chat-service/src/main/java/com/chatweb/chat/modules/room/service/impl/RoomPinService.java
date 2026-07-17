@@ -1,0 +1,171 @@
+package com.chatweb.chat.modules.room.service.impl;
+
+import com.chatweb.chat.modules.message.application.dto.response.MessageResponse;
+import com.chatweb.chat.modules.message.application.mapper.MessageMapper;
+import com.chatweb.chat.modules.message.application.service.IMessagePinEventPublisher;
+import com.chatweb.chat.modules.message.application.service.ISystemMessageService;
+import com.chatweb.chat.modules.message.domain.entity.ChatAttachment;
+import com.chatweb.chat.modules.message.domain.entity.ChatMessage;
+import com.chatweb.chat.modules.message.domain.entity.RoomPinnedMessage;
+import com.chatweb.chat.modules.message.domain.enums.SystemEventType;
+import com.chatweb.chat.modules.message.domain.repository.ChatAttachmentRepository;
+import com.chatweb.chat.modules.message.domain.repository.ChatMessageRepository;
+import com.chatweb.chat.modules.message.domain.repository.RoomPinnedMessageRepository;
+import com.chatweb.chat.modules.message.domain.service.IMessagePreviewService;
+import com.chatweb.chat.modules.room.repository.RoomMemberRepository;
+import com.chatweb.chat.modules.room.service.IRoomPinService;
+import com.chatweb.common.core.exception.BusinessException;
+import com.chatweb.common.core.exception.CommonErrorCode;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import com.chatweb.chat.support.TransactionPublisher;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+@Transactional
+public class RoomPinService implements IRoomPinService {
+
+    private final RoomMemberRepository roomMemberRepository;
+    private final ChatMessageRepository chatMessageRepository;
+    private final ChatAttachmentRepository chatAttachmentRepository;
+    private final RoomPinnedMessageRepository roomPinnedMessageRepository;
+    private final ISystemMessageService systemMessageService;
+    private final MessageMapper messageMapper;
+    private final IMessagePinEventPublisher pinEventPublisher;
+    private final IMessagePreviewService previewService;
+
+    @Override
+    public void pinMessage(UUID roomId, UUID actorId, UUID messageId) {
+        ensureMember(roomId, actorId);
+
+        ChatMessage targetMessage = chatMessageRepository.findById(messageId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND, "Message not found"));
+
+        if (!roomId.equals(targetMessage.getRoomId())) {
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST, "Message does not belong to the room");
+        }
+
+        if (Boolean.TRUE.equals(targetMessage.getDeleted())) {
+            throw new BusinessException(CommonErrorCode.BAD_REQUEST, "Cannot pin deleted message");
+        }
+
+        List<ChatAttachment> attachments = chatAttachmentRepository.findByMessageId(messageId);
+
+        roomPinnedMessageRepository.findByRoomIdAndMessageId(roomId, messageId)
+                .ifPresent(existing -> {
+                    throw new BusinessException(CommonErrorCode.CONFLICT, "Message already pinned");
+                });
+
+        Instant pinnedAt = Instant.now();
+        roomPinnedMessageRepository.save(
+                RoomPinnedMessage.builder()
+                        .id(UUID.randomUUID())
+                        .roomId(roomId)
+                        .messageId(messageId)
+                        .pinnedBy(actorId)
+                        .previewKind(resolvePreviewKind(targetMessage, attachments))
+                        .previewText(previewService.buildPreview(targetMessage, attachments))
+                        .pinnedAt(pinnedAt)
+                        .build()
+        );
+
+        systemMessageService.sendSystemMessage(roomId, SystemEventType.PIN, actorId, messageId);
+        TransactionPublisher.publishAfterCommit(() -> pinEventPublisher.publishMessagePinned(roomId, messageId, actorId, pinnedAt));
+    }
+
+    @Override
+    public void unpinMessage(UUID roomId, UUID actorId, UUID messageId) {
+        ensureMember(roomId, actorId);
+
+        RoomPinnedMessage existing = roomPinnedMessageRepository
+                .findByRoomIdAndMessageId(roomId, messageId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND, "Pinned message not found"));
+
+        roomPinnedMessageRepository.delete(existing);
+        TransactionPublisher.publishAfterCommit(() -> pinEventPublisher.publishMessageUnpinned(roomId, messageId, actorId, Instant.now()));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MessageResponse> getPinnedMessages(UUID roomId, UUID actorId) {
+        ensureMember(roomId, actorId);
+
+        List<RoomPinnedMessage> pins = roomPinnedMessageRepository.findByRoomIdOrderByPinnedAtDesc(roomId);
+
+        if (pins.isEmpty()) {
+            return List.of();
+        }
+
+        List<UUID> pinnedMessageIds = pins.stream().map(RoomPinnedMessage::getMessageId).toList();
+
+        Map<UUID, ChatMessage> messagesById = chatMessageRepository.findAllById(pinnedMessageIds)
+                .stream()
+                .filter(message -> !Boolean.TRUE.equals(message.getDeleted()))
+                .collect(Collectors.toMap(ChatMessage::getId, Function.identity()));
+
+        Map<UUID, List<ChatAttachment>> attachmentsByMessageId = chatAttachmentRepository
+                .findByMessageIdIn(pinnedMessageIds)
+                .stream()
+                .collect(Collectors.groupingBy(ChatAttachment::getMessageId));
+
+        List<MessageResponse> responses = new ArrayList<>();
+
+        for (RoomPinnedMessage pin : pins) {
+            ChatMessage message = messagesById.get(pin.getMessageId());
+            if (message == null) {
+                continue;
+            }
+            responses.add(applyPinnedPreview(
+                    messageMapper.toResponse(
+                            message,
+                            attachmentsByMessageId.getOrDefault(message.getId(), List.of()),
+                            List.of()
+                    ),
+                    pin
+            ));
+        }
+
+        return responses;
+    }
+
+    private MessageResponse applyPinnedPreview(MessageResponse response, RoomPinnedMessage pin) {
+        String previewText = pin.getPreviewText();
+        if (previewText == null || previewText.isBlank()) {
+            return response;
+        }
+        response.setContent(previewText);
+        return response;
+    }
+
+    private String resolvePreviewKind(ChatMessage message, List<ChatAttachment> attachments) {
+        if (message.getBlocksJson() != null && !message.getBlocksJson().isBlank()) {
+            return "BLOCK";
+        }
+        if (attachments == null || attachments.isEmpty()) {
+            return "TEXT";
+        }
+        if (attachments.size() > 1) {
+            return "MEDIA";
+        }
+        return switch (attachments.get(0).getType()) {
+            case IMAGE -> "IMAGE";
+            case VIDEO -> "VIDEO";
+            case FILE -> "FILE";
+        };
+    }
+
+    private void ensureMember(UUID roomId, UUID actorId) {
+        if (!roomMemberRepository.existsByRoomIdAndUserId(roomId, actorId)) {
+            throw new BusinessException(CommonErrorCode.FORBIDDEN, "Not a room member");
+        }
+    }
+}

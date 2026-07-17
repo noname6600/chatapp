@@ -1,5 +1,6 @@
 import { X, Pin } from "lucide-react"
 import type { PinnedMessage } from "../../types/message"
+import { getSafeDate } from "../../utils/messageTimestamp"
 
 interface PinnedMessagesPanelProps {
   open: boolean
@@ -50,7 +51,7 @@ export default function PinnedMessagesPanel({
                     title="Jump to pinned message"
                   >
                     <div className="text-[11px] text-gray-500 mb-0.5 truncate">
-                      {message.createdAt ? new Date(message.createdAt).toLocaleString() : "Pinned message"}
+                      {getSafeDate(message.createdAt)?.toLocaleString() ?? "Pinned message"}
                     </div>
                     <div className="text-sm text-gray-800 truncate">
                       {message.content?.trim() || "(attachment or structured content)"}

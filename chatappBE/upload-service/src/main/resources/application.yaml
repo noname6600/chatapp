@@ -15,7 +15,11 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true
 
 common:
   security:
@@ -25,11 +29,15 @@ common:
       allowed-headers: "*"
 
 cloudinary:
-  cloud-name: ${CLOUDINARY_CLOUD_NAME:dblxoplvg}
-  api-key: ${CLOUDINARY_API_KEY:877947325938691}
-  api-secret: ${CLOUDINARY_API_SECRET:KfHivMv0wUQ9D-89rVx8Wu5U12w}
+  cloud-name: ${CLOUDINARY_CLOUD_NAME}
+  api-key: ${CLOUDINARY_API_KEY}
+  api-secret: ${CLOUDINARY_API_SECRET}
 
 upload:
+  confirm:
+    require-prepare-token: ${UPLOAD_CONFIRM_REQUIRE_PREPARE_TOKEN:true}
+    prepare-token-secret: ${UPLOAD_CONFIRM_PREPARE_TOKEN_SECRET:}
+    prepare-token-ttl-seconds: ${UPLOAD_CONFIRM_PREPARE_TOKEN_TTL_SECONDS:600}
   policy:
     chat-attachment:
       folder: chat/attachments
@@ -41,7 +49,14 @@ upload:
       max-bytes: 5242880
       allowed-formats: [jpg, jpeg, png, webp]
       allowed-resource-types: [image]
+    room-avatar:
+      folder: room_avatars
+      max-bytes: 5242880
+      allowed-formats: [jpg, jpeg, png, webp]
+      allowed-resource-types: [image]
 
 logging:
   pattern:
-    level: "%5p [${spring.application.name:},%X{traceId}]"
+    level: "%5p [${spring.application.name:},${HOSTNAME:unknown},%X{trace_id:-},%X{span_id:-}]"
+
+

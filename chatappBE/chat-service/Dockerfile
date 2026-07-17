@@ -8,7 +8,11 @@ RUN ./gradlew :chat-service:bootJar -x test
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
+RUN addgroup -S app && adduser -S -G app app
+ENV JAVA_TOOL_OPTIONS="-XX:InitialRAMPercentage=25.0 -XX:MaxRAMPercentage=75.0"
+
 COPY --from=build /workspace/chat-service/build/libs/*.jar app.jar
 
 EXPOSE 8083
+USER app
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

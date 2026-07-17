@@ -1,0 +1,105 @@
+spring:
+  application:
+    name: realtime-edge-service
+  webflux:
+    # Non-blocking servlet config
+    base-path: /
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+      group-id: realtime-edge
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      properties:
+        spring.deserializer.value.delegate.class: com.chatweb.common.kafka.serialization.EventEnvelopeKafkaDeserializer
+        spring.json.trusted.packages: "com.chatweb.common.event,com.chatweb.common.integration"
+      enable-auto-commit: false
+
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8081/.well-known/jwks.json}
+
+server:
+  port: 8090
+
+# Realtime edge configuration
+realtime:
+  session-registry:
+    mode: ${REALTIME_SESSION_REGISTRY_MODE:redis}
+    instance-id: ${REALTIME_INSTANCE_ID:${spring.application.name}-local}
+    lease:
+      ttl-seconds: ${REALTIME_SESSION_LEASE_TTL_SECONDS:90}
+      cleanup-enabled: ${REALTIME_SESSION_CLEANUP_ENABLED:true}
+      cleanup-interval-ms: ${REALTIME_SESSION_CLEANUP_INTERVAL_MS:30000}
+      cleanup-batch-size: ${REALTIME_SESSION_CLEANUP_BATCH_SIZE:500}
+  dispatch:
+    handoff:
+      enabled: ${REALTIME_DISPATCH_HANDOFF_ENABLED:true}
+      channel-prefix: ${REALTIME_DISPATCH_HANDOFF_CHANNEL_PREFIX:realtime.edge.handoff}
+      publish:
+        max-attempts: ${REALTIME_HANDOFF_PUBLISH_MAX_ATTEMPTS:3}
+        initial-backoff-ms: ${REALTIME_HANDOFF_PUBLISH_INITIAL_BACKOFF_MS:50}
+        backoff-multiplier: ${REALTIME_HANDOFF_PUBLISH_BACKOFF_MULTIPLIER:2.0}
+  redis:
+    listener:
+      enabled: true
+  presence:
+    snapshot:
+      followup-enabled: ${REALTIME_PRESENCE_SNAPSHOT_FOLLOWUP_ENABLED:true}
+
+services:
+  chat:
+    url: ${CHAT_SERVICE_URL:http://localhost:8083}
+    http:
+      connect-timeout-ms: ${CHAT_HTTP_CONNECT_TIMEOUT_MS:1000}
+      read-timeout-ms: ${CHAT_HTTP_READ_TIMEOUT_MS:2000}
+  presence:
+    url: ${PRESENCE_SERVICE_URL:http://localhost:8084}
+    http:
+      connect-timeout-ms: ${PRESENCE_HTTP_CONNECT_TIMEOUT_MS:1000}
+      read-timeout-ms: ${PRESENCE_HTTP_READ_TIMEOUT_MS:2000}
+      low-priority-warn-interval-ms: ${PRESENCE_HTTP_LOW_PRIORITY_WARN_INTERVAL_MS:60000}
+  friendship:
+    url: ${FRIENDSHIP_SERVICE_URL:http://localhost:8085}
+    http:
+      connect-timeout-ms: ${FRIENDSHIP_HTTP_CONNECT_TIMEOUT_MS:1000}
+      read-timeout-ms: ${FRIENDSHIP_HTTP_READ_TIMEOUT_MS:2000}
+  notification:
+    url: ${NOTIFICATION_SERVICE_URL:http://localhost:8086}
+    http:
+      connect-timeout-ms: ${NOTIFICATION_HTTP_CONNECT_TIMEOUT_MS:1000}
+      read-timeout-ms: ${NOTIFICATION_HTTP_READ_TIMEOUT_MS:2000}
+
+logging:
+  pattern:
+    level: "%5p [${spring.application.name:},${HOSTNAME:unknown},%X{trace_id:-},%X{span_id:-}]"
+  level:
+    root: INFO
+    com.chatweb.realtime: DEBUG
+    org.springframework.web.socket: DEBUG
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+common:
+  security:
+    cors:
+      allowed-origins: "${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost:3000}"
+      allowed-methods: "*"
+      allowed-headers: "*"

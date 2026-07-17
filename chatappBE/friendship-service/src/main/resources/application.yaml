@@ -9,10 +9,15 @@ spring:
   # DATABASE (PostgreSQL)
   # ======================
   datasource:
-    url: ${FRIENDSHIP_DATABASE_URL:jdbc:postgresql://localhost:5436/friendship_service}
+    url: ${FRIENDSHIP_DATABASE_URL:jdbc:postgresql://localhost:5432/friendship_service}
     username: ${FRIENDSHIP_DATABASE_USER:friendship_user}
     password: ${FRIENDSHIP_DATABASE_PASSWORD:friendship_password}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 5000
+      idle-timeout: 300000
 
   jpa:
     hibernate:
@@ -24,6 +29,11 @@ spring:
         format_sql: false
         jdbc:
           time_zone: UTC
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
   security:
     oauth2:
       resourceserver:
@@ -36,9 +46,9 @@ spring:
       group-id: friendship-service
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
       properties:
-        spring.json.trusted.packages: "*"
+        spring.deserializer.value.delegate.class: com.chatweb.common.kafka.serialization.EventEnvelopeKafkaDeserializer
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
@@ -51,7 +61,11 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true
 
 
 common:
@@ -63,8 +77,14 @@ common:
 
 logging:
   pattern:
-    level: "%5p [${spring.application.name:},%X{traceId}]"
+    level: "%5p [${spring.application.name:},${HOSTNAME:unknown},%X{trace_id:-},%X{span_id:-}]"
 
 services:
   user:
     url: ${USER_SERVICE_URL:http://localhost:8082}
+
+internal:
+  auth:
+    header: ${INTERNAL_AUTH_HEADER:X-Internal-Service-Token}
+    token: ${INTERNAL_AUTH_TOKEN:}
+

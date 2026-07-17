@@ -1,0 +1,23 @@
+package com.chatweb.common.kafka.exception;
+
+/**
+ * Exception thrown when a Kafka messaging operation fails.
+ * @since 2.2
+ */
+public class KafkaMessagingException extends RuntimeException {
+
+    private final String topic;
+
+    public KafkaMessagingException(String topic, String message, Throwable cause) {
+        super(message, cause);
+        this.topic = topic;
+    }
+
+    public KafkaMessagingException(String topic, String message) {
+        this(topic, message, null);
+    }
+
+    public String getTopic() {
+        return topic;
+    }
+}
