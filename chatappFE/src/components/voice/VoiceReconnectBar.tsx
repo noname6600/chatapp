@@ -59,9 +59,20 @@ export default function VoiceReconnectBar() {
     }
   }, [setReconnectPrompt])
 
+  // Actively clear the prompt the moment this tab becomes the live connection
+  // for that room — not just hide it. Leaving it in place and only hiding it
+  // via the render check below meant a later, perfectly normal Leave (which
+  // drops isConnected back to false) made this stale prompt reappear, since
+  // hiding it never actually cleared the underlying state.
+  useEffect(() => {
+    if (reconnectPrompt && storeIsConnected && storeActiveVoiceRoomId === reconnectPrompt.chatRoomId) {
+      setReconnectPrompt(null)
+    }
+  }, [reconnectPrompt, storeIsConnected, storeActiveVoiceRoomId, setReconnectPrompt])
+
   if (!reconnectPrompt) return null
   // Defensive re-check so the bar disappears immediately on a successful
-  // reconnect instead of waiting for the next poll tick.
+  // reconnect instead of waiting for the effect above/next poll tick.
   if (storeIsConnected && storeActiveVoiceRoomId === reconnectPrompt.chatRoomId) return null
 
   const roomName = roomsById[reconnectPrompt.chatRoomId]?.name ?? "a voice channel"

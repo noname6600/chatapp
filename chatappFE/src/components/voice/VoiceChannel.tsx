@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import {
-  Mic, MicOff, Headphones, Volume2, Phone, PhoneOff,
+  Mic, MicOff, Headphones, Volume2, VolumeX, Phone, PhoneOff,
   Loader2, X, MonitorPlay, AlertTriangle,
 } from "lucide-react"
 import { useVoiceRoom } from "../../hooks/useVoiceRoom"
@@ -139,7 +139,11 @@ function ParticipantRow({
       {/* Right icons — mute/deafen status badges, settings, watch-screen */}
       <div className="flex items-center gap-1 flex-shrink-0">
         {isMuted ? (
+          // They muted their own mic — nobody in the room can hear them.
           <span title="Muted"><MicOff size={13} className="text-red-400" /></span>
+        ) : !isSelf && mutedForMe ? (
+          // Distinct from the above: only you can't hear them, everyone else can.
+          <span title="Muted for you"><VolumeX size={13} className="text-amber-400" /></span>
         ) : isSpeaking ? (
           <Mic size={13} className="text-green-400" />
         ) : (
@@ -221,6 +225,18 @@ export default function VoiceChannel({ chatRoomId }: Props) {
   useEffect(() => {
     refreshParticipants()
   }, [refreshParticipants])
+
+  // Also re-fetch whenever this room's connection actually completes,
+  // regardless of what triggered it. The join()-based paths already
+  // proactively refresh via their own onBackendJoined callback below, but
+  // reconnecting via the global VoiceReconnectBar calls join() with no
+  // callback (it doesn't know this component even exists) — without this,
+  // a room you were already viewing when you reconnected from elsewhere
+  // never shows yourself as a participant until an unrelated event happens
+  // to refetch it.
+  useEffect(() => {
+    if (isConnected) refreshParticipants()
+  }, [isConnected, refreshParticipants])
 
   // Re-fetch immediately after our own join/leave completes, instead of relying
   // solely on the realtime echo — that echo can race with this component's own
